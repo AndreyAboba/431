@@ -1369,3 +1369,4 @@ local function Init(UI, Core, notify)
 end
 
 return { Init = Init }
+print('1')
