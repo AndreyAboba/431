@@ -22,9 +22,7 @@ local GunSilent = {
         BulletTrailsFadeTime = { Value = 1, Default = 1 },
         BulletTrailsColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitChance = { Value = 100, Default = 100 },
-        PredictionStrength = { Value = 1.5, Default = 1.5 },
-        PingCompensation = { Value = 0.1, Default = 0.1 },
-        SmoothingFactor = { Value = 0.02, Default = 0.02 },
+        PredictionStrength = { Value = 1.2, Default = 1.2 },
         ResolverEnabled = { Value = true, Default = true },
         ResolverThreshold = { Value = 0.3, Default = 0.3 },
         PositionHistorySize = { Value = 30, Default = 30 },
@@ -472,7 +470,7 @@ local function predictTargetPositionGun(target)
     -- Дистанция, пинг и время до цели
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
-    local ping = getCurrentPing() + GunSilent.Settings.PingCompensation.Value
+    local ping = getCurrentPing() -- Только реальный пинг, без Compensation
     local totalRange = getGunRange(equippedTool)
     local timeToTarget = (distance / bulletSpeed) + ping
 
@@ -496,6 +494,9 @@ local function predictTargetPositionGun(target)
         local verticalVelocity = Vector3.new(0, resolvedVelocity.Y, 0)
         local horizontalSpeed = horizontalVelocity.Magnitude
         local horizontalDirection = horizontalSpeed > 0 and horizontalVelocity.Unit or Vector3.new(0, 0, 0)
+
+        -- Учет высоты головы для "Head"
+        local headOffset = (GunSilent.Settings.HitPart.Value == "Head" and hitPart == targetChar.Head) and Vector3.new(0, hitPart.Size.Y / 2, 0) or Vector3.new(0, 0, 0)
 
         -- Учет гравитации
         local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
@@ -524,7 +525,7 @@ local function predictTargetPositionGun(target)
         local verticalDisplacement = verticalVelocity * predictionTime + gravityAdjustment
 
         -- Итоговая позиция
-        predictedPos = clientPos + horizontalDisplacement + verticalDisplacement
+        predictedPos = clientPos + horizontalDisplacement + verticalDisplacement + headOffset
 
         -- Ограничение на максимальное смещение
         local maxDisplacement = distance * (isInVehicle and 0.7 or 0.4)
@@ -533,7 +534,10 @@ local function predictTargetPositionGun(target)
             predictedPos = clientPos + (predictedPos - clientPos).Unit * maxDisplacement
         end
 
-        -- Минимальное сглаживание
+        -- Сглаживание с проверкой ошибки
+        if GunSilent.State.LastPredictionPos and (predictedPos - GunSilent.State.LastPredictionPos).Magnitude > 5 then
+            GunSilent.State.LastPredictionPos = nil -- Сброс при большой ошибке
+        end
         if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
             predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
         end
@@ -1067,28 +1071,6 @@ local function Init(UI, Core, notify)
                 }, 'PredictionStrength'),
                 callback = function(value) GunSilent.Settings.PredictionStrength.Value = value end
             }
-            CombatElements.PingCompensation = {
-                element = combatSection:Slider({
-                    Name = "Ping Compensation",
-                    Minimum = 0.0,
-                    Maximum = 0.2,
-                    Default = GunSilent.Settings.PingCompensation.Value,
-                    Precision = 3,
-                    Callback = function(value) GunSilent.Settings.PingCompensation.Value = value end
-                }, 'PingCompensation'),
-                callback = function(value) GunSilent.Settings.PingCompensation.Value = value end
-            }
-            CombatElements.SmoothingFactor = {
-                element = combatSection:Slider({
-                    Name = "Smoothing Factor",
-                    Minimum = 0.0,
-                    Maximum = 0.1,
-                    Default = GunSilent.Settings.SmoothingFactor.Value,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
-                }, 'SmoothingFactor'),
-                callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
-            }
             CombatElements.ResolverEnabled = {
                 element = combatSection:Toggle({
                     Name = "Resolver Enabled",
@@ -1338,8 +1320,6 @@ local function Init(UI, Core, notify)
                 CombatElements.TrajectoryBeam.callback(CombatElements.TrajectoryBeam.element:GetState())
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
                 CombatElements.PredictionStrength.callback(CombatElements.PredictionStrength.element:GetValue())
-                CombatElements.PingCompensation.callback(CombatElements.PingCompensation.element:GetValue())
-                CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BulletSpeed.callback(CombatElements.BulletSpeed.element:GetValue())
@@ -1367,5 +1347,5 @@ local function Init(UI, Core, notify)
 
     initializeGunSilent()
 end
-print('1')
+
 return { Init = Init }
