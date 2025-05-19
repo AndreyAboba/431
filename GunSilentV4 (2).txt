@@ -43,7 +43,11 @@ local GunSilent = {
         HitVisualEnabled = { Value = false, Default = false },
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
-        HitVisualTransparency = { Value = 0.5, Default = 0.5 }
+        HitVisualTransparency = { Value = 0.5, Default = 0.5 },
+        -- Новые параметры для адаптивности
+        AngularPredictionFactor = { Value = 1.0, Default = 1.0 }, -- Для учета резких поворотов
+        DynamicPredictionAdjust = { Value = true, Default = true }, -- Адаптивная корректировка
+        PredictionDecay = { Value = 0.8, Default = 0.8 }, -- Затухание предсказания при нестабильности
     },
     State = {
         LastEventId = 0,
@@ -76,7 +80,10 @@ local GunSilent = {
         PendingHits = {},
         ActiveHitboxes = {},
         LastPing = 0,
-        PingUpdateTime = 0
+        PingUpdateTime = 0,
+        LastAngularVelocity = {},
+        LastTargetDirection = {},
+        PredictionStability = {},
     }
 }
 
@@ -417,7 +424,7 @@ local function getCurrentPing()
 end
 
 local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity end
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity, 0 end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
@@ -431,6 +438,7 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     end
 
     local calculatedVelocity = Vector3.new(0, 0, 0)
+    local angularVelocity = 0
     local useCFrame = #filteredHistory > 2 and (function()
         local meanPos = Vector3.new(0, 0, 0)
         for _, entry in ipairs(filteredHistory) do meanPos = meanPos + entry.pos end
@@ -457,10 +465,20 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
                     totalVelocity = totalVelocity + velocity * weight
                     totalWeight = totalWeight + weight
                     validEntries = validEntries + 1
+
+                    -- Расчет угловой скорости (для дрифта)
+                    if i > 1 then
+                        local prevVelocity = (prevEntry.pos - filteredHistory[i-1].pos) / (prevEntry.time - filteredHistory[i-1].time)
+                        if prevVelocity.Magnitude > 0 and velocity.Magnitude > 0 then
+                            local angle = math.acos(math.clamp(prevVelocity.Unit:Dot(velocity.Unit), -1, 1))
+                            angularVelocity = angularVelocity + (angle / timeDelta) * weight
+                        end
+                    end
                 end
             end
         end
         calculatedVelocity = validEntries > 0 and totalVelocity / totalWeight or Vector3.new(0, 0, 0)
+        angularVelocity = validEntries > 0 and angularVelocity / totalWeight or 0
 
         if isInVehicle(targetChar) and targetChar:FindFirstChild("HumanoidRootPart") then
             local rootCFrame = targetChar.HumanoidRootPart.CFrame
@@ -469,7 +487,7 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
         end
     end
 
-    return calculatedVelocity
+    return calculatedVelocity, angularVelocity
 end
 
 local function predictTargetPositionGun(target)
@@ -489,7 +507,7 @@ local function predictTargetPositionGun(target)
     local isTeleporting = GunSilent.State.LastTargetPosition[targetId] and (targetPos - GunSilent.State.LastTargetPosition[targetId]).Magnitude > 50
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
-    -- Дистанция до цели и параметры
+    -- Дистанция, пинг и время до цели
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
     local ping = getCurrentPing() + GunSilent.Settings.PingCompensation.Value
@@ -504,7 +522,12 @@ local function predictTargetPositionGun(target)
     while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do table.remove(positionHistory, 1) end
 
     local clientPos = targetPos
-    local resolvedVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
+    local resolvedVelocity, angularVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
+
+    -- Инициализация состояния стабильности предсказания
+    if not GunSilent.State.PredictionStability[targetId] then
+        GunSilent.State.PredictionStability[targetId] = 1.0
+    end
 
     local predictedPos = clientPos
     if not isTeleporting then
@@ -515,42 +538,72 @@ local function predictTargetPositionGun(target)
         local horizontalVelocity = Vector3.new(resolvedVelocity.X, 0, resolvedVelocity.Z)
         local verticalVelocity = Vector3.new(0, resolvedVelocity.Y, 0)
         local horizontalSpeed = horizontalVelocity.Magnitude
+        local horizontalDirection = horizontalSpeed > 0 and horizontalVelocity.Unit or Vector3.new(0, 0, 0)
 
         -- Учет гравитации
         local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
 
-        -- Фактор влияния RangePlus: чем больше дальность, тем меньше предсказываемое смещение
+        -- Расчет текущего направления движения
+        local currentDirection = horizontalDirection
+        local lastDirection = GunSilent.State.LastTargetDirection[targetId] or currentDirection
+        GunSilent.State.LastTargetDirection[targetId] = currentDirection
+
+        -- Учет резких поворотов (дрифта)
+        local lastAngularVelocity = GunSilent.State.LastAngularVelocity[targetId] or 0
+        GunSilent.State.LastAngularVelocity[targetId] = angularVelocity
+        local angularAcceleration = (angularVelocity - lastAngularVelocity) / (positionHistory[#positionHistory].time - (positionHistory[#positionHistory-1] and positionHistory[#positionHistory-1].time or currentTime))
+        local angularAdjustment = 0
+        if angularVelocity > 0 and isInVehicle then
+            local turnRadius = horizontalSpeed / angularVelocity
+            local angularDisplacement = angularVelocity * timeToTarget * GunSilent.Settings.AngularPredictionFactor.Value
+            angularAdjustment = turnRadius * (1 - math.cos(angularDisplacement))
+            local perpendicularDirection = currentDirection:Cross(Vector3.new(0, 1, 0)).Unit
+            predictedPos = predictedPos + perpendicularDirection * angularAdjustment
+        end
+
+        -- Факторы для адаптивности
         local rangeFactor = math.clamp(totalRange / (totalRange + distance), 0.1, 1.0)
-        rangeFactor = 1 - rangeFactor -- Инвертируем: больше дальность -> меньше предикция
-
-        -- Фактор пинга: больше пинг -> больше предсказываемое смещение
+        rangeFactor = 1 - rangeFactor
         local pingFactor = math.clamp(ping * 10, 0.5, 1.5)
-
-        -- Фактор скорости цели: быстрее цель -> больше предсказываемое смещение
         local speedFactor = math.clamp(targetSpeed / (isInVehicle and 150 or 50), 0.5, 1.5)
 
-        -- Итоговое время предсказания с учетом всех факторов
-        local predictionTime = timeToTarget * GunSilent.Settings.PredictionStrength.Value * pingFactor * speedFactor * rangeFactor
+        -- Динамическая корректировка предсказания
+        local stability = GunSilent.State.PredictionStability[targetId]
+        if GunSilent.Settings.DynamicPredictionAdjust.Value then
+            local directionChange = lastDirection:Dot(currentDirection)
+            if directionChange < 0.9 then -- Резкое изменение направления
+                stability = stability * GunSilent.Settings.PredictionDecay.Value
+            else
+                stability = math.min(1.0, stability + 0.1)
+            end
+            GunSilent.State.PredictionStability[targetId] = stability
+        end
 
-        -- Предсказание горизонтального и вертикального смещения
+        -- Итоговое время предсказания с учетом всех факторов
+        local predictionTime = timeToTarget * GunSilent.Settings.PredictionStrength.Value * pingFactor * speedFactor * rangeFactor * stability
+
+        -- Предсказание смещения
         local horizontalDisplacement = horizontalVelocity * predictionTime
         local verticalDisplacement = verticalVelocity * predictionTime + gravityAdjustment
 
-        -- Итоговая предсказанная позиция
+        -- Итоговая позиция
         predictedPos = clientPos + horizontalDisplacement + verticalDisplacement
 
         -- Ограничение на максимальное смещение
-        local maxDisplacement = distance * 0.3
+        local maxDisplacement = distance * (isInVehicle and 0.5 or 0.3)
         local displacement = (predictedPos - clientPos).Magnitude
         if displacement > maxDisplacement then
             predictedPos = clientPos + (predictedPos - clientPos).Unit * maxDisplacement
         end
 
-        -- Сглаживание предсказания
+        -- Сглаживание
         if GunSilent.State.LastPredictionPos then
             predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
         end
         GunSilent.State.LastPredictionPos = predictedPos
+    else
+        -- При телепортации сбрасываем стабильность
+        GunSilent.State.PredictionStability[targetId] = 1.0
     end
 
     return {
@@ -1132,6 +1185,36 @@ local function Init(UI, Core, notify)
                 }, 'BulletSpeed'),
                 callback = function(value) GunSilent.Settings.BulletSpeed.Value = value end
             }
+            CombatElements.AngularPredictionFactor = {
+                element = combatSection:Slider({
+                    Name = "Angular Prediction Factor",
+                    Minimum = 0.5,
+                    Maximum = 2.0,
+                    Default = GunSilent.Settings.AngularPredictionFactor.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.AngularPredictionFactor.Value = value end
+                }, 'AngularPredictionFactor'),
+                callback = function(value) GunSilent.Settings.AngularPredictionFactor.Value = value end
+            }
+            CombatElements.DynamicPredictionAdjust = {
+                element = combatSection:Toggle({
+                    Name = "Dynamic Prediction Adjust",
+                    Default = GunSilent.Settings.DynamicPredictionAdjust.Value,
+                    Callback = function(value) GunSilent.Settings.DynamicPredictionAdjust.Value = value end
+                }, 'DynamicPredictionAdjust'),
+                callback = function(value) GunSilent.Settings.DynamicPredictionAdjust.Value = value end
+            }
+            CombatElements.PredictionDecay = {
+                element = combatSection:Slider({
+                    Name = "Prediction Decay",
+                    Minimum = 0.5,
+                    Maximum = 0.9,
+                    Default = GunSilent.Settings.PredictionDecay.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.PredictionDecay.Value = value end
+                }, 'PredictionDecay'),
+                callback = function(value) GunSilent.Settings.PredictionDecay.Value = value end
+            }
         end
     end
 
@@ -1356,9 +1439,11 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BulletSpeed.callback(CombatElements.BulletSpeed.element:GetValue())
+                CombatElements.AngularPredictionFactor.callback(CombatElements.AngularPredictionFactor.element:GetValue())
+                CombatElements.DynamicPredictionAdjust.callback(CombatElements.DynamicPredictionAdjust.element:GetState())
+                CombatElements.PredictionDecay.callback(CombatElements.PredictionDecay.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
-                VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
                 VisualsElements.UseGradient.callback(VisualsElements.UseGradient.element:GetState())
                 local hitParticlesModeOptions = VisualsElements.HitParticlesMode.element:GetOptions()
@@ -1369,11 +1454,9 @@ local function Init(UI, Core, notify)
                 VisualsElements.HitParticlesCount.callback(VisualsElements.HitParticlesCount.element:GetValue())
                 VisualsElements.HitParticlesLifetime.callback(VisualsElements.HitParticlesLifetime.element:GetValue())
                 VisualsElements.HitParticlesMoveDistance.callback(VisualsElements.HitParticlesMoveDistance.element:GetValue())
-                VisualsElements.HitParticlesColor.callback(VisualsElements.HitParticlesColor.element:GetValue())
                 VisualsElements.HitVisualEnabled.callback(VisualsElements.HitVisualEnabled.element:GetState())
                 VisualsElements.HitVisualFadeTime.callback(VisualsElements.HitVisualFadeTime.element:GetValue())
                 VisualsElements.HitVisualTransparency.callback(VisualsElements.HitVisualTransparency.element:GetValue())
-                VisualsElements.HitVisualColor.callback(VisualsElements.HitVisualColor.element:GetValue())
             end
         }, 'SyncSettings')
     end
