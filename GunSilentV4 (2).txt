@@ -42,6 +42,7 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
+        SmoothingFactor = { Value = 0.5, Default = 0.5 } -- Добавлено для сглаживания
     },
     State = {
         LastEventId = 0,
@@ -470,7 +471,7 @@ local function predictTargetPositionGun(target)
     -- Дистанция, пинг и время до цели
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
-    local ping = getCurrentPing() -- Только реальный пинг, без Compensation
+    local ping = getCurrentPing()
     local totalRange = getGunRange(equippedTool)
     local timeToTarget = (distance / bulletSpeed) + ping
 
@@ -496,7 +497,10 @@ local function predictTargetPositionGun(target)
         local horizontalDirection = horizontalSpeed > 0 and horizontalVelocity.Unit or Vector3.new(0, 0, 0)
 
         -- Учет высоты головы для "Head"
-        local headOffset = (GunSilent.Settings.HitPart.Value == "Head" and hitPart == targetChar.Head) and Vector3.new(0, hitPart.Size.Y / 2, 0) or Vector3.new(0, 0, 0)
+        local headOffset = Vector3.new(0, 0, 0)
+        if GunSilent.Settings.HitPart.Value == "Head" and hitPart and hitPart.Size then
+            headOffset = Vector3.new(0, hitPart.Size.Y / 2, 0)
+        end
 
         -- Учет гравитации
         local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
@@ -512,13 +516,13 @@ local function predictTargetPositionGun(target)
         if directionChange < 0.85 and horizontalSpeed > 20 and isInVehicle then
             local perpendicularVector = currentDirection:Cross(Vector3.new(0, 1, 0)).Unit
             local turnAngle = math.acos(directionChange)
-            local turnRadius = horizontalSpeed * timeToTarget / (turnAngle + 0.1)
+            local turnRadius = math.min(horizontalSpeed * timeToTarget / (turnAngle + 0.1), distance * 0.5) -- Ограничение дрифта
             driftAdjustment = perpendicularVector * turnRadius * 0.5
         end
 
         -- Динамическая корректировка скорости
         local speedBoost = isInVehicle and 1.5 or 1.0
-        local predictionTime = timeToTarget * GunSilent.Settings.PredictionStrength.Value * speedBoost
+        local predictionTime = math.min(timeToTarget * GunSilent.Settings.PredictionStrength.Value * speedBoost, distance / bulletSpeed * 2) -- Ограничение предикции
 
         -- Предсказание смещения
         local horizontalDisplacement = (horizontalVelocity * predictionTime) + driftAdjustment
@@ -536,7 +540,7 @@ local function predictTargetPositionGun(target)
 
         -- Сглаживание с проверкой ошибки
         if GunSilent.State.LastPredictionPos and (predictedPos - GunSilent.State.LastPredictionPos).Magnitude > 5 then
-            GunSilent.State.LastPredictionPos = nil -- Сброс при большой ошибке
+            GunSilent.State.LastPredictionPos = nil
         end
         if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
             predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
@@ -743,9 +747,7 @@ local function updateVisualsGun(target)
     end
 
     if GunSilent.Settings.TrajectoryBeam.Value and GunSilent.Settings.PredictVisual.Value then
-        if not GunSilent.State.TrajectoryBeam or not GunSilent.State.TrajectoryBeam.Parent or
-           not GunSilent.State.TrajectoryAttachment0 or not GunSilent.State.TrajectoryAttachment0.Parent or
-           not GunSilent.State.TrajectoryAttachment1 or not GunSilent.State.TrajectoryAttachment1.Parent then
+        if not GunSilent.State.TrajectoryBeam or not GunSilent.State.TrajectoryAttachment0 or not GunSilent.State.TrajectoryAttachment1 then
             createTrajectoryBeam(startPos, predictionPos)
         else
             GunSilent.State.TrajectoryAttachment0.Position = startPos
@@ -1101,6 +1103,17 @@ local function Init(UI, Core, notify)
                 }, 'BulletSpeed'),
                 callback = function(value) GunSilent.Settings.BulletSpeed.Value = value end
             }
+            CombatElements.SmoothingFactor = {
+                element = combatSection:Slider({
+                    Name = "Smoothing Factor",
+                    Minimum = 0,
+                    Maximum = 1,
+                    Default = GunSilent.Settings.SmoothingFactor.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
+                }, 'SmoothingFactor'),
+                callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
+            }
         end
     end
 
@@ -1323,6 +1336,7 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BulletSpeed.callback(CombatElements.BulletSpeed.element:GetValue())
+                CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
