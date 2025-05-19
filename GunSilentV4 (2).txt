@@ -1367,6 +1367,5 @@ local function Init(UI, Core, notify)
 
     initializeGunSilent()
 end
-
-return { Init = Init }
 print('1')
+return { Init = Init }
