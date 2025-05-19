@@ -483,20 +483,23 @@ local function predictTargetPositionGun(target)
     local equippedTool = getEquippedGunTool()
     if not hitPart or not targetRoot or not equippedTool then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
 
+    -- Текущая позиция цели
     local targetPos = hitPart.Position
     local targetId = tostring(target.UserId)
     local isTeleporting = GunSilent.State.LastTargetPosition[targetId] and (targetPos - GunSilent.State.LastTargetPosition[targetId]).Magnitude > 50
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
+    -- Дистанция до цели и параметры
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
     local ping = getCurrentPing() + GunSilent.Settings.PingCompensation.Value
-    local timeToTarget = distance / bulletSpeed + ping
+    local totalRange = getGunRange(equippedTool)
+    local timeToTarget = (distance / bulletSpeed) + ping
 
+    -- История позиций
     local positionHistory = GunSilent.State.PositionHistory[target] or {}
     GunSilent.State.PositionHistory[target] = positionHistory
     local currentTime = tick()
-
     positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
     while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do table.remove(positionHistory, 1) end
 
@@ -507,42 +510,47 @@ local function predictTargetPositionGun(target)
     if not isTeleporting then
         local targetSpeed = resolvedVelocity.Magnitude
         local isInVehicle = isInVehicle(targetChar)
-        local predictionStrength = GunSilent.Settings.PredictionStrength.Value * (isInVehicle and 1.5 or 1)
 
-        -- Учет гравитации для более точной траектории
-        local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * 0.5, 0)
-        
-        -- Горизонтальная предикция
+        -- Разделяем скорость на горизонтальную и вертикальную составляющие
         local horizontalVelocity = Vector3.new(resolvedVelocity.X, 0, resolvedVelocity.Z)
+        local verticalVelocity = Vector3.new(0, resolvedVelocity.Y, 0)
         local horizontalSpeed = horizontalVelocity.Magnitude
-        local horizontalDirection = horizontalSpeed > 0 and horizontalVelocity.Unit or Vector3.new(0, 0, 0)
 
-        -- Факторы, зависящие от дистанции и пинга
-        local distanceFactor = math.clamp(1 - (distance / (GunSilent.Settings.RangePlus.Value + 50)), 0.5, 1.0)
-        local pingFactor = math.clamp(ping * 10, 0.8, 1.2)
-        local speedFactor = math.clamp(horizontalSpeed / (isInVehicle and 150 or 50), 0.5, 1.5)
+        -- Учет гравитации
+        local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
 
-        -- Улучшенное время предикции
-        local totalPredictionTime = timeToTarget * predictionStrength * speedFactor * distanceFactor * pingFactor
+        -- Фактор влияния RangePlus: чем больше дальность, тем меньше предсказываемое смещение
+        local rangeFactor = math.clamp(totalRange / (totalRange + distance), 0.1, 1.0)
+        rangeFactor = 1 - rangeFactor -- Инвертируем: больше дальность -> меньше предикция
 
-        -- Предсказание с учетом горизонтальной скорости
-        local horizontalPrediction = horizontalDirection * horizontalSpeed * totalPredictionTime
-        local verticalPrediction = Vector3.new(0, resolvedVelocity.Y * totalPredictionTime, 0)
+        -- Фактор пинга: больше пинг -> больше предсказываемое смещение
+        local pingFactor = math.clamp(ping * 10, 0.5, 1.5)
 
-        -- Итоговое предсказание
-        predictedPos = clientPos + horizontalPrediction + verticalPrediction + gravityAdjustment
+        -- Фактор скорости цели: быстрее цель -> больше предсказываемое смещение
+        local speedFactor = math.clamp(targetSpeed / (isInVehicle and 150 or 50), 0.5, 1.5)
+
+        -- Итоговое время предсказания с учетом всех факторов
+        local predictionTime = timeToTarget * GunSilent.Settings.PredictionStrength.Value * pingFactor * speedFactor * rangeFactor
+
+        -- Предсказание горизонтального и вертикального смещения
+        local horizontalDisplacement = horizontalVelocity * predictionTime
+        local verticalDisplacement = verticalVelocity * predictionTime + gravityAdjustment
+
+        -- Итоговая предсказанная позиция
+        predictedPos = clientPos + horizontalDisplacement + verticalDisplacement
+
+        -- Ограничение на максимальное смещение
+        local maxDisplacement = distance * 0.3
+        local displacement = (predictedPos - clientPos).Magnitude
+        if displacement > maxDisplacement then
+            predictedPos = clientPos + (predictedPos - clientPos).Unit * maxDisplacement
+        end
 
         -- Сглаживание предсказания
         if GunSilent.State.LastPredictionPos then
             predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
         end
         GunSilent.State.LastPredictionPos = predictedPos
-    end
-
-    -- Проверка на выход за пределы разумных значений
-    local maxDisplacement = distance * 0.5
-    if (predictedPos - clientPos).Magnitude > maxDisplacement then
-        predictedPos = clientPos + (predictedPos - clientPos).Unit * maxDisplacement
     end
 
     return {
