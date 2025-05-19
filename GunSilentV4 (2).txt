@@ -22,9 +22,9 @@ local GunSilent = {
         BulletTrailsFadeTime = { Value = 1, Default = 1 },
         BulletTrailsColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitChance = { Value = 100, Default = 100 },
-        PredictionStrength = { Value = 1.5, Default = 1.5 }, -- Увеличено для усиления предикции
+        PredictionStrength = { Value = 1.8, Default = 1.8 }, -- Увеличено для точности
         PingCompensation = { Value = 0.1, Default = 0.1 },
-        SmoothingFactor = { Value = 0.02, Default = 0.02 }, -- Снижено для уменьшения сглаживания
+        SmoothingFactor = { Value = 0.02, Default = 0.02 },
         ResolverEnabled = { Value = true, Default = true },
         ResolverThreshold = { Value = 0.3, Default = 0.3 },
         PositionHistorySize = { Value = 30, Default = 30 },
@@ -463,7 +463,7 @@ local function predictTargetPositionGun(target)
     local equippedTool = getEquippedGunTool()
     if not hitPart or not targetRoot or not equippedTool then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
 
-    -- Текущая позиция цели
+    -- Текущая позиция головы
     local targetPos = hitPart.Position
     local targetId = tostring(target.UserId)
     local isTeleporting = GunSilent.State.LastTargetPosition[targetId] and (targetPos - GunSilent.State.LastTargetPosition[targetId]).Magnitude > 50
@@ -497,6 +497,9 @@ local function predictTargetPositionGun(target)
         local horizontalSpeed = horizontalVelocity.Magnitude
         local horizontalDirection = horizontalSpeed > 0 and horizontalVelocity.Unit or Vector3.new(0, 0, 0)
 
+        -- Учет высоты головы
+        local headOffset = hitPart == targetChar.Head and Vector3.new(0, hitPart.Size.Y / 2, 0) or Vector3.new(0, 0, 0)
+
         -- Учет гравитации
         local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
 
@@ -508,10 +511,10 @@ local function predictTargetPositionGun(target)
 
         -- Корректировка для дрифта
         local driftAdjustment = Vector3.new(0, 0, 0)
-        if directionChange < 0.85 and horizontalSpeed > 20 and isInVehicle then -- Резкий поворот
+        if directionChange < 0.85 and horizontalSpeed > 20 and isInVehicle then
             local perpendicularVector = currentDirection:Cross(Vector3.new(0, 1, 0)).Unit
             local turnAngle = math.acos(directionChange)
-            local turnRadius = horizontalSpeed * timeToTarget / (turnAngle + 0.1) -- Простая аппроксимация радиуса
+            local turnRadius = horizontalSpeed * timeToTarget / (turnAngle + 0.1)
             driftAdjustment = perpendicularVector * turnRadius * 0.5
         end
 
@@ -524,7 +527,7 @@ local function predictTargetPositionGun(target)
         local verticalDisplacement = verticalVelocity * predictionTime + gravityAdjustment
 
         -- Итоговая позиция
-        predictedPos = clientPos + horizontalDisplacement + verticalDisplacement
+        predictedPos = clientPos + horizontalDisplacement + verticalDisplacement + headOffset
 
         -- Ограничение на максимальное смещение
         local maxDisplacement = distance * (isInVehicle and 0.7 or 0.4)
@@ -533,7 +536,10 @@ local function predictTargetPositionGun(target)
             predictedPos = clientPos + (predictedPos - clientPos).Unit * maxDisplacement
         end
 
-        -- Минимальное сглаживание
+        -- Минимальное сглаживание с сбросом ошибки
+        if GunSilent.State.LastPredictionPos and (predictedPos - GunSilent.State.LastPredictionPos).Magnitude > 5 then
+            GunSilent.State.LastPredictionPos = nil -- Сброс, если ошибка слишком велика
+        end
         if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
             predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
         end
@@ -730,7 +736,7 @@ local function updateVisualsGun(target)
             GunSilent.State.PredictVisualPart = predictVisualPart
         end
         if predictVisualPart then
-            predictVisualPart.Position = prediction.position
+            predictVisualPart.Position = predictionPos
             predictVisualPart.Color = Color3.fromRGB(0, 255, 255)
             predictVisualPart.Transparency = 0.3
         end
@@ -1345,6 +1351,7 @@ local function Init(UI, Core, notify)
                 CombatElements.BulletSpeed.callback(CombatElements.BulletSpeed.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
+                VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
                 VisualsElements.UseGradient.callback(VisualsElements.UseGradient.element:GetState())
                 local hitParticlesModeOptions = VisualsElements.HitParticlesMode.element:GetOptions()
@@ -1355,9 +1362,11 @@ local function Init(UI, Core, notify)
                 VisualsElements.HitParticlesCount.callback(VisualsElements.HitParticlesCount.element:GetValue())
                 VisualsElements.HitParticlesLifetime.callback(VisualsElements.HitParticlesLifetime.element:GetValue())
                 VisualsElements.HitParticlesMoveDistance.callback(VisualsElements.HitParticlesMoveDistance.element:GetValue())
+                VisualsElements.HitParticlesColor.callback(VisualsElements.HitParticlesColor.element:GetValue())
                 VisualsElements.HitVisualEnabled.callback(VisualsElements.HitVisualEnabled.element:GetState())
                 VisualsElements.HitVisualFadeTime.callback(VisualsElements.HitVisualFadeTime.element:GetValue())
                 VisualsElements.HitVisualTransparency.callback(VisualsElements.HitVisualTransparency.element:GetValue())
+                VisualsElements.HitVisualColor.callback(VisualsElements.HitVisualColor.element:GetValue())
             end
         }, 'SyncSettings')
     end
