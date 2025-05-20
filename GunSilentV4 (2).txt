@@ -4,7 +4,6 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
@@ -42,7 +41,8 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        SmoothingFactor = { Value = 0.5, Default = 0.5 } -- Добавлено для сглаживания
+        SmoothingFactor = { Value = 0.5, Default = 0.5 },
+        PingCompensation = { Value = 0.05, Default = 0.05 } -- Добавлено для ручной компенсации пинга (в секундах)
     },
     State = {
         LastEventId = 0,
@@ -74,9 +74,6 @@ local GunSilent = {
         LastShotTime = 0,
         PendingHits = {},
         ActiveHitboxes = {},
-        LastPing = 0,
-        PingUpdateTime = 0,
-        LastTargetDirection = {},
     }
 }
 
@@ -407,15 +404,6 @@ local function isInVehicle(targetChar)
     return false
 end
 
-local function getCurrentPing()
-    local currentTime = tick()
-    if currentTime - GunSilent.State.PingUpdateTime >= 1 then
-        GunSilent.State.LastPing = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-        GunSilent.State.PingUpdateTime = currentTime
-    end
-    return GunSilent.State.LastPing
-end
-
 local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
     if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity end
 
@@ -468,12 +456,12 @@ local function predictTargetPositionGun(target)
     local isTeleporting = GunSilent.State.LastTargetPosition[targetId] and (targetPos - GunSilent.State.LastTargetPosition[targetId]).Magnitude > 50
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
-    -- Дистанция, пинг и время до цели
+    -- Дистанция и время до цели с ручной компенсацией пинга
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
-    local ping = getCurrentPing()
+    local pingCompensation = GunSilent.Settings.PingCompensation.Value -- Ручной пинг в секундах
     local totalRange = getGunRange(equippedTool)
-    local timeToTarget = (distance / bulletSpeed) + ping
+    local timeToTarget = (distance / bulletSpeed) + pingCompensation
 
     -- История позиций
     local positionHistory = GunSilent.State.PositionHistory[target] or {}
@@ -516,13 +504,13 @@ local function predictTargetPositionGun(target)
         if directionChange < 0.85 and horizontalSpeed > 20 and isInVehicle then
             local perpendicularVector = currentDirection:Cross(Vector3.new(0, 1, 0)).Unit
             local turnAngle = math.acos(directionChange)
-            local turnRadius = math.min(horizontalSpeed * timeToTarget / (turnAngle + 0.1), distance * 0.5) -- Ограничение дрифта
+            local turnRadius = math.min(horizontalSpeed * timeToTarget / (turnAngle + 0.1), distance * 0.5)
             driftAdjustment = perpendicularVector * turnRadius * 0.5
         end
 
         -- Динамическая корректировка скорости
         local speedBoost = isInVehicle and 1.5 or 1.0
-        local predictionTime = math.min(timeToTarget * GunSilent.Settings.PredictionStrength.Value * speedBoost, distance / bulletSpeed * 2) -- Ограничение предикции
+        local predictionTime = math.min(timeToTarget * GunSilent.Settings.PredictionStrength.Value * speedBoost, distance / bulletSpeed * 2)
 
         -- Предсказание смещения
         local horizontalDisplacement = (horizontalVelocity * predictionTime) + driftAdjustment
@@ -1114,6 +1102,17 @@ local function Init(UI, Core, notify)
                 }, 'SmoothingFactor'),
                 callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
             }
+            CombatElements.PingCompensation = {
+                element = combatSection:Slider({
+                    Name = "Ping Compensation (s)",
+                    Minimum = 0,
+                    Maximum = 0.2,
+                    Default = GunSilent.Settings.PingCompensation.Value,
+                    Precision = 3,
+                    Callback = function(value) GunSilent.Settings.PingCompensation.Value = value end
+                }, 'PingCompensation'),
+                callback = function(value) GunSilent.Settings.PingCompensation.Value = value end
+            }
         end
     end
 
@@ -1337,6 +1336,7 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BulletSpeed.callback(CombatElements.BulletSpeed.element:GetValue())
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
+                CombatElements.PingCompensation.callback(CombatElements.PingCompensation.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
