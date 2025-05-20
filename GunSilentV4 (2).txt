@@ -429,12 +429,6 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     end
 
     local calculatedVelocity = validEntries > 0 and totalVelocity / totalWeight or Vector3.new(0, 0, 0)
-    if isInVehicle(targetChar) and targetChar:FindFirstChild("HumanoidRootPart") then
-        local rootCFrame = targetChar.HumanoidRootPart.CFrame
-        local forwardVector = rootCFrame.LookVector
-        calculatedVelocity = calculatedVelocity + forwardVector * calculatedVelocity.Magnitude * 0.3
-    end
-
     return calculatedVelocity
 end
 
@@ -450,21 +444,19 @@ local function predictTargetPositionGun(target)
     local equippedTool = getEquippedGunTool()
     if not hitPart or not targetRoot or not equippedTool then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
 
-    -- Текущая позиция цели
+    -- Текущая позиция цели (серверное положение)
     local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
-    local isTeleporting = GunSilent.State.LastTargetPosition[targetId] and (targetPos - GunSilent.State.LastTargetPosition[targetId]).Magnitude > 50
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
-    -- Дистанция и время до цели с ручной компенсацией пинга
+    -- Дистанция и время до цели с учётом пинга
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
     local pingCompensation = GunSilent.Settings.PingCompensation.Value
-    local totalRange = getGunRange(equippedTool)
     local timeToTarget = (distance / bulletSpeed) + pingCompensation
 
-    -- История позиций
+    -- История позиций для серверного положения
     local positionHistory = GunSilent.State.PositionHistory[target] or {}
     GunSilent.State.PositionHistory[target] = positionHistory
     local currentTime = tick()
@@ -474,51 +466,16 @@ local function predictTargetPositionGun(target)
     local clientPos = targetPos
     local resolvedVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
 
-    local predictedPos = clientPos
-    if not isTeleporting then
-        local targetSpeed = resolvedVelocity.Magnitude
-        local isInVehicle = isInVehicle(targetChar)
+    -- Линейная предикция: позиция + скорость * время
+    local predictionTime = timeToTarget * GunSilent.Settings.PredictionStrength.Value
+    local displacement = resolvedVelocity * predictionTime
+    local predictedPos = clientPos + displacement
 
-        -- Разделяем скорость на горизонтальную и вертикальную составляющие
-        local horizontalVelocity = Vector3.new(resolvedVelocity.X, 0, resolvedVelocity.Z)
-        local verticalVelocity = Vector3.new(0, resolvedVelocity.Y, 0)
-
-        -- Учет высоты головы для "Head"
-        local headOffset = Vector3.new(0, 0, 0)
-        if GunSilent.Settings.HitPart.Value == "Head" and hitPart and hitPart.Size then
-            headOffset = Vector3.new(0, hitPart.Size.Y / 2, 0)
-        end
-
-        -- Учет гравитации
-        local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
-
-        -- Динамическая корректировка скорости
-        local speedBoost = isInVehicle and 1.5 or 1.0
-        local predictionTime = math.min(timeToTarget * GunSilent.Settings.PredictionStrength.Value * speedBoost, distance / bulletSpeed * 2)
-
-        -- Предсказание смещения
-        local horizontalDisplacement = horizontalVelocity * predictionTime
-        local verticalDisplacement = verticalVelocity * predictionTime + gravityAdjustment
-
-        -- Итоговая позиция
-        predictedPos = clientPos + horizontalDisplacement + verticalDisplacement + headOffset
-
-        -- Ограничение на максимальное смещение
-        local maxDisplacement = distance * (isInVehicle and 0.7 or 0.4)
-        local displacement = (predictedPos - clientPos).Magnitude
-        if displacement > maxDisplacement then
-            predictedPos = clientPos + (predictedPos - clientPos).Unit * maxDisplacement
-        end
-
-        -- Сглаживание с проверкой ошибки
-        if GunSilent.State.LastPredictionPos and (predictedPos - GunSilent.State.LastPredictionPos).Magnitude > 5 then
-            GunSilent.State.LastPredictionPos = nil
-        end
-        if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
-            predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
-        end
-        GunSilent.State.LastPredictionPos = predictedPos
+    -- Сглаживание (опционально)
+    if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
+        predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
     end
+    GunSilent.State.LastPredictionPos = predictedPos
 
     return {
         position = predictedPos,
