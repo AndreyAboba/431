@@ -42,7 +42,7 @@ local GunSilent = {
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
         SmoothingFactor = { Value = 0.5, Default = 0.5 },
-        PingCompensation = { Value = 0.05, Default = 0.05 } -- Добавлено для ручной компенсации пинга (в секундах)
+        PingCompensation = { Value = 0.05, Default = 0.05 }
     },
     State = {
         LastEventId = 0,
@@ -452,14 +452,15 @@ local function predictTargetPositionGun(target)
 
     -- Текущая позиция цели
     local targetPos = hitPart.Position
-    local targetId = tostring(target.UserId)
+    local targetId = target and target.UserId and tostring(target.UserId) or nil
+    if not targetId then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
     local isTeleporting = GunSilent.State.LastTargetPosition[targetId] and (targetPos - GunSilent.State.LastTargetPosition[targetId]).Magnitude > 50
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
     -- Дистанция и время до цели с ручной компенсацией пинга
     local distance = (targetPos - myPos).Magnitude
     local bulletSpeed = GunSilent.Settings.BulletSpeed.Value
-    local pingCompensation = GunSilent.Settings.PingCompensation.Value -- Ручной пинг в секундах
+    local pingCompensation = GunSilent.Settings.PingCompensation.Value
     local totalRange = getGunRange(equippedTool)
     local timeToTarget = (distance / bulletSpeed) + pingCompensation
 
@@ -481,8 +482,6 @@ local function predictTargetPositionGun(target)
         -- Разделяем скорость на горизонтальную и вертикальную составляющие
         local horizontalVelocity = Vector3.new(resolvedVelocity.X, 0, resolvedVelocity.Z)
         local verticalVelocity = Vector3.new(0, resolvedVelocity.Y, 0)
-        local horizontalSpeed = horizontalVelocity.Magnitude
-        local horizontalDirection = horizontalSpeed > 0 and horizontalVelocity.Unit or Vector3.new(0, 0, 0)
 
         -- Учет высоты головы для "Head"
         local headOffset = Vector3.new(0, 0, 0)
@@ -493,27 +492,12 @@ local function predictTargetPositionGun(target)
         -- Учет гравитации
         local gravityAdjustment = Vector3.new(0, -workspace.Gravity * timeToTarget * timeToTarget * 0.5, 0)
 
-        -- Анализ направления для дрифта
-        local currentDirection = horizontalDirection
-        local lastDirection = GunSilent.State.LastTargetDirection[targetId] or currentDirection
-        local directionChange = lastDirection:Dot(currentDirection)
-        GunSilent.State.LastTargetDirection[targetId] = currentDirection
-
-        -- Корректировка для дрифта
-        local driftAdjustment = Vector3.new(0, 0, 0)
-        if directionChange < 0.85 and horizontalSpeed > 20 and isInVehicle then
-            local perpendicularVector = currentDirection:Cross(Vector3.new(0, 1, 0)).Unit
-            local turnAngle = math.acos(directionChange)
-            local turnRadius = math.min(horizontalSpeed * timeToTarget / (turnAngle + 0.1), distance * 0.5)
-            driftAdjustment = perpendicularVector * turnRadius * 0.5
-        end
-
         -- Динамическая корректировка скорости
         local speedBoost = isInVehicle and 1.5 or 1.0
         local predictionTime = math.min(timeToTarget * GunSilent.Settings.PredictionStrength.Value * speedBoost, distance / bulletSpeed * 2)
 
         -- Предсказание смещения
-        local horizontalDisplacement = (horizontalVelocity * predictionTime) + driftAdjustment
+        local horizontalDisplacement = horizontalVelocity * predictionTime
         local verticalDisplacement = verticalVelocity * predictionTime + gravityAdjustment
 
         -- Итоговая позиция
