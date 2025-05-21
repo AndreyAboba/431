@@ -430,7 +430,7 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
         if timeDelta > 0 and timeDelta < 0.2 then
             local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
             if velocity.Magnitude <= maxSpeedLimit * 1.5 then
-                local weight = 1 / (1 + (currentTime - currEntry.time) * 5)
+                local weight = math.max(0.1, 1 - (currentTime - currEntry.time) * 2) -- Больше веса для последних позиций
                 totalVelocity = totalVelocity + velocity * weight
                 totalWeight = totalWeight + weight
                 validEntries = validEntries + 1
@@ -499,11 +499,15 @@ local function predictTargetPositionGun(target)
     print("Ping (seconds):", ping) -- Логирование округлённого пинга в секундах
     local pingCompensation = ping -- Уже в секундах, используем как есть
 
-    -- Предикция с учётом пинга и дистанции
-    local clientPos = targetPos
-    local minVelocity = 10 -- Минимальная скорость (studs/s) для предотвращения огромных значений predictionTime
+    -- Адаптивный коэффициент времени полёта пули
+    local minVelocity = 10 -- Минимальная скорость для предотвращения деления на 0
     local effectiveVelocity = math.max(velocityMagnitude, minVelocity)
-    local predictionTime = pingCompensation + (distance * GunSilent.Settings.DistanceFactor.Value)
+    local bulletSpeed = 100 -- Скорость пули (примерное значение, можно настроить)
+    local leadFactor = distance / bulletSpeed -- Время полёта пули
+    local predictionTime = pingCompensation + leadFactor
+
+    -- Предикция с учётом скорости цели
+    local clientPos = targetPos
     local predictedPos = clientPos + smoothedVelocity * predictionTime * GunSilent.Settings.PredictionBoost.Value
 
     -- Сглаживание позиции (опционально)
@@ -513,7 +517,7 @@ local function predictTargetPositionGun(target)
     GunSilent.State.LastPredictionPos = predictedPos
 
     -- Отладочный вывод
-    print("Prediction Time:", predictionTime, "Velocity Magnitude:", velocityMagnitude, "Distance:", distance)
+    print("Prediction Time:", predictionTime, "Velocity Magnitude:", velocityMagnitude, "Distance:", distance, "Lead Factor:", leadFactor)
 
     return {
         position = predictedPos,
@@ -1063,17 +1067,6 @@ local function Init(UI, Core, notify)
                 }, 'SmoothingFactor'),
                 callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
             }
-            CombatElements.DistanceFactor = {
-                element = combatSection:Slider({
-                    Name = "Distance Factor",
-                    Minimum = 0.00005,
-                    Maximum = 0.0005,
-                    Default = GunSilent.Settings.DistanceFactor.Value,
-                    Precision = 5,
-                    Callback = function(value) GunSilent.Settings.DistanceFactor.Value = value end
-                }, 'DistanceFactor'),
-                callback = function(value) GunSilent.Settings.DistanceFactor.Value = value end
-            }
             CombatElements.MaxSpeed = {
                 element = combatSection:Slider({
                     Name = "Max Speed (studs/s)",
@@ -1095,6 +1088,17 @@ local function Init(UI, Core, notify)
                     Callback = function(value) GunSilent.Settings.PredictionBoost.Value = value end
                 }, 'PredictionBoost'),
                 callback = function(value) GunSilent.Settings.PredictionBoost.Value = value end
+            }
+            CombatElements.BulletSpeed = {
+                element = combatSection:Slider({
+                    Name = "Bullet Speed (studs/s)",
+                    Minimum = 50,
+                    Maximum = 200,
+                    Default = 100,
+                    Precision = 0,
+                    Callback = function(value) GunSilent.Settings.BulletSpeed = value end
+                }, 'BulletSpeed'),
+                callback = function(value) GunSilent.Settings.BulletSpeed = value end
             }
         end
     end
@@ -1317,9 +1321,9 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
-                CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
                 CombatElements.MaxSpeed.callback(CombatElements.MaxSpeed.element:GetValue())
                 CombatElements.PredictionBoost.callback(CombatElements.PredictionBoost.element:GetValue())
+                CombatElements.BulletSpeed.callback(CombatElements.BulletSpeed.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
