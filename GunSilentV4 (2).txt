@@ -27,6 +27,7 @@ local GunSilent = {
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
         TestGenBullet = { Value = false, Default = false },
+        DebugExploitBullet = { Value = false, Default = false }, -- Новый Toggle
         HitParticlesEnabled = { Value = false, Default = false },
         HitParticlesMode = { Value = "Orbs", Default = "Orbs", Options = {"Orbs", "Sparks"} },
         HitParticlesCount = { Value = 30, Default = 30 },
@@ -410,7 +411,7 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     local totalVelocity = Vector3.new(0, 0, 0)
     local totalWeight = 0
     local validEntries = 0
-    local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80 -- Новый порог для быстрых машин
+    local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
 
     for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
         local currEntry = positionHistory[i + 1]
@@ -443,69 +444,78 @@ local function predictTargetPositionGun(target)
     local equippedTool = getEquippedGunTool()
     if not hitPart or not targetRoot or not equippedTool then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
 
-    -- Текущая позиция цели (серверное положение)
     local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } end
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
-    -- Дистанция и время до цели с учётом пинга
     local distance = (targetPos - myPos).Magnitude
     local pingCompensation = GunSilent.Settings.PingCompensation.Value
     local effectivePing = pingCompensation * (1 + distance / 500)
     local baseDistanceFactor = GunSilent.Settings.DistanceFactor.Value
-    -- Динамический DistanceFactor на основе скорости
+
     local positionHistory = GunSilent.State.PositionHistory[target] or {}
     local resolvedVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     local velocityMagnitude = resolvedVelocity.Magnitude
     local dynamicDistanceFactor = baseDistanceFactor * (velocityMagnitude <= 20 and 0.5 or velocityMagnitude <= 50 and 1.0 or 2.0)
     local timeToTarget = effectivePing * (1 + distance * dynamicDistanceFactor)
 
-    -- История позиций для серверного положения
     positionHistory[#positionHistory + 1] = { pos = targetPos, time = tick(), velocity = targetRoot.Velocity }
     while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do table.remove(positionHistory, 1) end
     GunSilent.State.PositionHistory[target] = positionHistory
 
     local clientPos = targetPos
 
-    -- Адаптивный коэффициент предикции на основе скорости и дистанции
+    -- Полностью адаптивный dynamicPredictionFactor
     local basePredictionFactor = 1.0
-    local speedThresholdLow = 20 -- Скорость пешехода или медленной машины
-    local speedThresholdMedium = 50 -- Скорость средней машины (35–50 км/ч)
-    local speedThresholdHigh = 80 -- Скорость быстрой машины (до 80–90 км/ч)
-    local distanceThresholdClose = 50 -- Ближняя дистанция
-    local distanceThresholdFar = 150 -- Дальняя дистанция
+    local speedThresholdLow = 20
+    local speedThresholdMedium = 50
+    local speedThresholdHigh = 80
+    local distanceThresholdClose = 50
+    local distanceThresholdMedium = 150
+    local distanceThresholdFar = 300
 
     local dynamicPredictionFactor = basePredictionFactor
+    local distanceMultiplier = 1.0
+
+    -- Множитель на основе дистанции (усиление для дальних дистанций)
+    if distance <= distanceThresholdClose then
+        distanceMultiplier = 1.0
+    elseif distance <= distanceThresholdMedium then
+        distanceMultiplier = 1.2 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.3
+    elseif distance <= distanceThresholdFar then
+        distanceMultiplier = 1.5 + (distance - distanceThresholdMedium) / (distanceThresholdFar - distanceThresholdMedium) * 0.5
+    else
+        distanceMultiplier = 2.0
+    end
+
     if velocityMagnitude <= speedThresholdLow then
         -- Медленные цели (пешеходы, медленные машины)
-        dynamicPredictionFactor = 0.8
+        dynamicPredictionFactor = 0.8 * distanceMultiplier
     elseif velocityMagnitude <= speedThresholdMedium then
         -- Средние машины (35–50 км/ч)
         if distance <= distanceThresholdClose then
             dynamicPredictionFactor = 1.5
-        elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 1.6 -- Увеличено с 1.5 для лучшей точности
+        elseif distance <= distanceThresholdMedium then
+            dynamicPredictionFactor = (1.9 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.5) * distanceMultiplier
         else
-            dynamicPredictionFactor = 1.9 -- Увеличено с 1.8
+            dynamicPredictionFactor = (2.4 * distanceMultiplier)
         end
     else
         -- Быстрые машины (до 80 studs/s)
         if distance <= distanceThresholdClose then
             dynamicPredictionFactor = 2.0
-        elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 1.9 -- Уменьшено с 1.8 до 1.9 для точности
+        elseif distance <= distanceThresholdMedium then
+            dynamicPredictionFactor = (2.3 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2) * distanceMultiplier
         else
-            dynamicPredictionFactor = 2.3 -- Увеличено с 2.2
+            dynamicPredictionFactor = (2.5 * distanceMultiplier)
         end
     end
 
-    -- Линейная предикция: позиция + скорость * время с учётом динамического коэффициента
     local predictionTime = timeToTarget * dynamicPredictionFactor
     local displacement = resolvedVelocity * predictionTime
     local predictedPos = clientPos + displacement
 
-    -- Сглаживание (опционально)
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
     end
@@ -515,7 +525,9 @@ local function predictTargetPositionGun(target)
         position = predictedPos,
         direction = (predictedPos - myPos).Unit,
         timeToTarget = timeToTarget,
-        clientPosition = clientPos
+        clientPosition = clientPos,
+        dynamicPredictionFactor = dynamicPredictionFactor,
+        resolvedVelocity = resolvedVelocity
     }
 end
 
@@ -539,71 +551,176 @@ local function createHitDataGun(target)
 
     local equippedTool = getEquippedGunTool()
     local isShotgunWeapon = GunSilent.Settings.ShotgunSupport.Value and equippedTool and isShotgun(equippedTool)
-    local useMultiBullets = isShotgunWeapon or GunSilent.Settings.TestGenBullet.Value
+    local useMultiBullets = isShotgunWeapon or GunSilent.Settings.TestGenBullet.Value or GunSilent.Settings.DebugExploitBullet.Value
     local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
-    if useMultiBullets then
-        for i = 1, numBullets do hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = prediction.position}} end
-    else
-        hitData[1] = {{Normal = prediction.direction, Instance = hitPart, Position = prediction.position}}
-    end
+    local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
+    local basePosition = prediction.position
+    local baseDirection = prediction.direction
+    local dynamicPredictionFactor = prediction.dynamicPredictionFactor
+    local resolvedVelocity = prediction.resolvedVelocity
+    local timeToTarget = prediction.timeToTarget
 
-    if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and prediction.position then
-        local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
-        local trail = safeCreateInstance("Beam", {
-            FaceCamera = true,
-            Width0 = 0.1,
-            Width1 = 0.1,
-            Transparency = NumberSequence.new(0),
-            Color = ColorSequence.new(GunSilent.Settings.BulletTrailsColor.Value),
-            Parent = Workspace
-        })
-        if trail then
-            local attachment0 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
-            local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
-            if attachment0 and attachment1 then
-                attachment0.Position = startPos
-                attachment1.Position = prediction.position
-                trail.Attachment0 = attachment0
-                trail.Attachment1 = attachment1
+    if GunSilent.Settings.DebugExploitBullet.Value then
+        -- Эксплоит: 4 пули с разными предикциями
+        for i = 1, numBullets do
+            local adjustedPredictionFactor = dynamicPredictionFactor
+            local offset = Vector3.new(0, 0, 0)
 
-                table.insert(GunSilent.State.BulletTrails, { beam = trail, attachment0 = attachment0, attachment1 = attachment1 })
+            if i == 1 then
+                -- Первая пуля: текущая предикция
+                adjustedPredictionFactor = dynamicPredictionFactor
+            elseif i == 2 then
+                -- Вторая пуля: усиленная предикция (вперёд)
+                adjustedPredictionFactor = dynamicPredictionFactor * 1.2
+            elseif i == 3 then
+                -- Третья пуля: ослабленная предикция (назад)
+                adjustedPredictionFactor = dynamicPredictionFactor * 0.8
+            elseif i == 4 then
+                -- Четвёртая пуля: боковое смещение
+                adjustedPredictionFactor = dynamicPredictionFactor
+                local perpendicular = Vector3.new(-resolvedVelocity.Z, 0, resolvedVelocity.X).Unit * 1.5
+                offset = perpendicular
+            end
 
-                local fadeTime = GunSilent.Settings.BulletTrailsFadeTime.Value
-                local startTime = tick()
-                local fadeConnection
-                fadeConnection = RunService.RenderStepped:Connect(function()
-                    local elapsed = tick() - startTime
-                    local t = math.clamp(elapsed / fadeTime, 0, 1)
-                    if trail and trail.Parent then trail.Transparency = NumberSequence.new(t) end
-                    if t >= 1 then
-                        if trail then trail:Destroy() end
-                        if attachment0 then attachment0:Destroy() end
-                        if attachment1 then attachment1:Destroy() end
-                        if fadeConnection then fadeConnection:Disconnect() end
-                        for i, v in ipairs(GunSilent.State.BulletTrails) do
-                            if v.beam == trail then table.remove(GunSilent.State.BulletTrails, i) break end
-                        end
-                        for i, conn in ipairs(GunSilent.State.TrailFadeConnections) do
-                            if conn == fadeConnection then table.remove(GunSilent.State.TrailFadeConnections, i) break end
+            local predictionTime = timeToTarget * adjustedPredictionFactor
+            local displacement = resolvedVelocity * predictionTime
+            local adjustedPosition = prediction.clientPosition + displacement + offset
+            local adjustedDirection = (adjustedPosition - localRoot.Position).Unit
+
+            hitData[i] = {{Normal = adjustedDirection, Instance = hitPart, Position = adjustedPosition}}
+
+            -- Визуализация траектории для каждой пули
+            if GunSilent.Settings.BulletTrailsEnabled.Value then
+                local trailColor
+                if i == 1 then
+                    trailColor = GunSilent.Settings.BulletTrailsColor.Value
+                elseif i == 2 then
+                    trailColor = Color3.fromRGB(255, 0, 0) -- Красный для усиленной
+                elseif i == 3 then
+                    trailColor = Color3.fromRGB(0, 255, 0) -- Зелёный для ослабленной
+                else
+                    trailColor = Color3.fromRGB(0, 0, 255) -- Синий для бокового смещения
+                end
+
+                local trail = safeCreateInstance("Beam", {
+                    FaceCamera = true,
+                    Width0 = 0.1,
+                    Width1 = 0.1,
+                    Transparency = NumberSequence.new(0),
+                    Color = ColorSequence.new(trailColor),
+                    Parent = Workspace
+                })
+                if trail then
+                    local attachment0 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+                    local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+                    if attachment0 and attachment1 then
+                        attachment0.Position = startPos
+                        attachment1.Position = adjustedPosition
+                        trail.Attachment0 = attachment0
+                        trail.Attachment1 = attachment1
+
+                        table.insert(GunSilent.State.BulletTrails, { beam = trail, attachment0 = attachment0, attachment1 = attachment1 })
+
+                        local fadeTime = GunSilent.Settings.BulletTrailsFadeTime.Value
+                        local startTime = tick()
+                        local fadeConnection
+                        fadeConnection = RunService.RenderStepped:Connect(function()
+                            local elapsed = tick() - startTime
+                            local t = math.clamp(elapsed / fadeTime, 0, 1)
+                            if trail and trail.Parent then trail.Transparency = NumberSequence.new(t) end
+                            if t >= 1 then
+                                if trail then trail:Destroy() end
+                                if attachment0 then attachment0:Destroy() end
+                                if attachment1 then attachment1:Destroy() end
+                                if fadeConnection then fadeConnection:Disconnect() end
+                                for j, v in ipairs(GunSilent.State.BulletTrails) do
+                                    if v.beam == trail then table.remove(GunSilent.State.BulletTrails, j) break end
+                                end
+                                for j, conn in ipairs(GunSilent.State.TrailFadeConnections) do
+                                    if conn == fadeConnection then table.remove(GunSilent.State.TrailFadeConnections, j) break end
+                                end
+                            end
+                        end)
+                        table.insert(GunSilent.State.TrailFadeConnections, fadeConnection)
+
+                        if #GunSilent.State.BulletTrails > 20 then
+                            local oldTrail = table.remove(GunSilent.State.BulletTrails, 1)
+                            if oldTrail.beam then oldTrail.beam:Destroy() end
+                            if oldTrail.attachment0 then oldTrail.attachment0:Destroy() end
+                            if oldTrail.attachment1 then oldTrail.attachment1:Destroy() end
                         end
                     end
-                end)
-                table.insert(GunSilent.State.TrailFadeConnections, fadeConnection)
+                end
+            end
+        end
+    else
+        -- Обычная генерация пуль
+        if useMultiBullets then
+            for i = 1, numBullets do
+                hitData[i] = {{Normal = baseDirection, Instance = hitPart, Position = basePosition}}
+            end
+        else
+            hitData[1] = {{Normal = baseDirection, Instance = hitPart, Position = basePosition}}
+        end
 
-                if #GunSilent.State.BulletTrails > 20 then
-                    local oldTrail = table.remove(GunSilent.State.BulletTrails, 1)
-                    if oldTrail.beam then oldTrail.beam:Destroy() end
-                    if oldTrail.attachment0 then oldTrail.attachment0:Destroy() end
-                    if oldTrail.attachment1 then oldTrail.attachment1:Destroy() end
+        -- Визуализация траектории для обычных пуль
+        if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and basePosition then
+            local trail = safeCreateInstance("Beam", {
+                FaceCamera = true,
+                Width0 = 0.1,
+                Width1 = 0.1,
+                Transparency = NumberSequence.new(0),
+                Color = ColorSequence.new(GunSilent.Settings.BulletTrailsColor.Value),
+                Parent = Workspace
+            })
+            if trail then
+                local attachment0 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+                local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+                if attachment0 and attachment1 then
+                    attachment0.Position = startPos
+                    attachment1.Position = basePosition
+                    trail.Attachment0 = attachment0
+                    trail.Attachment1 = attachment1
+
+                    table.insert(GunSilent.State.BulletTrails, { beam = trail, attachment0 = attachment0, attachment1 = attachment1 })
+
+                    local fadeTime = GunSilent.Settings.BulletTrailsFadeTime.Value
+                    local startTime = tick()
+                    local fadeConnection
+                    fadeConnection = RunService.RenderStepped:Connect(function()
+                        local elapsed = tick() - startTime
+                        local t = math.clamp(elapsed / fadeTime, 0, 1)
+                        if trail and trail.Parent then trail.Transparency = NumberSequence.new(t) end
+                        if t >= 1 then
+                            if trail then trail:Destroy() end
+                            if attachment0 then attachment0:Destroy() end
+                            if attachment1 then attachment1:Destroy() end
+                            if fadeConnection then fadeConnection:Disconnect() end
+                            for i, v in ipairs(GunSilent.State.BulletTrails) do
+                                if v.beam == trail then table.remove(GunSilent.State.BulletTrails, i) break end
+                            end
+                            for i, conn in ipairs(GunSilent.State.TrailFadeConnections) do
+                                if conn == fadeConnection then table.remove(GunSilent.State.TrailFadeConnections, i) break end
+                            end
+                        end
+                    end)
+                    table.insert(GunSilent.State.TrailFadeConnections, fadeConnection)
+
+                    if #GunSilent.State.BulletTrails > 20 then
+                        local oldTrail = table.remove(GunSilent.State.BulletTrails, 1)
+                        if oldTrail.beam then oldTrail.beam:Destroy() end
+                        if oldTrail.attachment0 then oldTrail.attachment0:Destroy() end
+                        if oldTrail.attachment1 then oldTrail.attachment1:Destroy() end
+                    end
                 end
             end
         end
     end
 
     GunSilent.State.LastHitTarget = target
-    GunSilent.State.LastHitPosition = prediction.position
+    GunSilent.State.LastHitPosition = basePosition
     GunSilent.State.LastShotTime = tick()
 
     return hitData
@@ -945,6 +1062,14 @@ local function Init(UI, Core, notify)
                 }, 'TestGenerateBullets'),
                 callback = function(value) GunSilent.Settings.TestGenBullet.Value = value end
             }
+            CombatElements.DebugExploitBullet = {
+                element = combatSection:Toggle({
+                    Name = "Debug Exploit Bullet",
+                    Default = GunSilent.Settings.DebugExploitBullet.Value,
+                    Callback = function(value) GunSilent.Settings.DebugExploitBullet.Value = value end
+                }, 'DebugExploitBullet'),
+                callback = function(value) GunSilent.Settings.DebugExploitBullet.Value = value end
+            }
             CombatElements.SortMethod = {
                 element = combatSection:Dropdown({
                     Name = "Sort Method",
@@ -1281,6 +1406,7 @@ local function Init(UI, Core, notify)
                 CombatElements.ShotgunSupport.callback(CombatElements.ShotgunSupport.element:GetState())
                 CombatElements.GenerateBullets.callback(CombatElements.GenerateBullets.element:GetValue())
                 CombatElements.TestGenerateBullets.callback(CombatElements.TestGenerateBullets.element:GetState())
+                CombatElements.DebugExploitBullet.callback(CombatElements.DebugExploitBullet.element:GetState())
                 local sortMethodOptions = CombatElements.SortMethod.element:GetOptions()
                 for option, selected in pairs(sortMethodOptions) do
                     if selected then CombatElements.SortMethod.callback(option) break end
