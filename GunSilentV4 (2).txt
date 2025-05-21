@@ -39,10 +39,11 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        SmoothingFactor = { Value = 0.1, Default = 0.1 },
+        SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Уменьшено для более резкой предикции
         PingCompensation = { Value = 0.03, Default = 0.03 },
-        DistanceFactor = { Value = 0.0001, Default = 0.0001 }, -- Уменьшено влияние дистанции
-        MaxSpeed = { Value = 80, Default = 80 } -- Новый параметр для масштабирования
+        DistanceFactor = { Value = 0.0001, Default = 0.0001 },
+        MaxSpeed = { Value = 80, Default = 80 },
+        PredictionBoost = { Value = 1.1, Default = 1.1 } -- Новый параметр для усиления предикции
     },
     State = {
         LastEventId = 0,
@@ -56,7 +57,7 @@ local GunSilent = {
         Connection = nil,
         OldFireServer = nil,
         PositionHistory = {},
-        SmoothedVelocity = {}, -- Для хранения сглаженной скорости
+        SmoothedVelocity = {},
         LastVisualUpdateTime = 0,
         LastTargetPosition = {},
         LocalCharacter = nil,
@@ -81,7 +82,7 @@ local GunSilent = {
 -- Функция для экспоненциального сглаживания скорости
 local function smoothVelocity(target, newVelocity, alpha)
     local smoothed = GunSilent.State.SmoothedVelocity[target] or newVelocity
-    smoothed = smoothed:Lerp(newVelocity, alpha) -- alpha = 0.3 для умеренного сглаживания
+    smoothed = smoothed:Lerp(newVelocity, alpha) -- Уменьшено alpha до 0.15 для меньшего сглаживания
     GunSilent.State.SmoothedVelocity[target] = smoothed
     return smoothed
 end
@@ -480,15 +481,15 @@ local function predictTargetPositionGun(target)
     -- Получаем скорость с помощью резолвера
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     
-    -- Сглаживаем скорость с помощью EMA (alpha = 0.3)
-    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.3)
+    -- Сглаживаем скорость с помощью EMA (alpha = 0.15)
+    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
     local velocityMagnitude = smoothedVelocity.Magnitude
 
-    -- Адаптивный расчёт времени до цели
+    -- Улучшенный расчёт времени до цели
     local pingCompensation = GunSilent.Settings.PingCompensation.Value
     local maxSpeed = GunSilent.Settings.MaxSpeed.Value
-    local distanceFactor = 1 + distance * GunSilent.Settings.DistanceFactor.Value -- Минимальное влияние дистанции
-    local timeToTarget = pingCompensation * (velocityMagnitude / maxSpeed) * distanceFactor
+    local distanceFactor = 1 + distance * GunSilent.Settings.DistanceFactor.Value
+    local timeToTarget = pingCompensation * (1 + velocityMagnitude / maxSpeed) * distanceFactor
 
     -- Динамический коэффициент предикции
     local dynamicPredictionFactor = 1.0
@@ -499,28 +500,28 @@ local function predictTargetPositionGun(target)
     local distanceThresholdFar = 150 -- Дальняя дистанция
 
     if velocityMagnitude <= speedThresholdLow then
-        dynamicPredictionFactor = 0.8 -- Медленные цели
+        dynamicPredictionFactor = 1.2 -- Увеличено для пешеходов
     elseif velocityMagnitude <= speedThresholdMedium then
         if distance <= distanceThresholdClose then
-            dynamicPredictionFactor = 1.5
+            dynamicPredictionFactor = 1.8 -- Увеличено с 1.5
         elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 1.6
+            dynamicPredictionFactor = 2.0 -- Увеличено с 1.6
         else
-            dynamicPredictionFactor = 1.9
+            dynamicPredictionFactor = 2.2 -- Увеличено с 1.9
         end
     else
         if distance <= distanceThresholdClose then
-            dynamicPredictionFactor = 2.0
+            dynamicPredictionFactor = 2.2 -- Увеличено с 2.0
         elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 1.9
+            dynamicPredictionFactor = 2.1 -- Увеличено с 1.9
         else
-            dynamicPredictionFactor = 2.3
+            dynamicPredictionFactor = 2.5 -- Увеличено с 2.3
         end
     end
 
-    -- Предсказываем позицию
+    -- Предсказываем позицию с учётом PredictionBoost
     local clientPos = targetPos
-    local predictionTime = timeToTarget * dynamicPredictionFactor
+    local predictionTime = timeToTarget * dynamicPredictionFactor * GunSilent.Settings.PredictionBoost.Value
     local predictedPos = clientPos + smoothedVelocity * predictionTime
 
     -- Сглаживание позиции (опционально)
@@ -833,7 +834,7 @@ local function initializeGunSilent()
         local currentTool = getEquippedGunTool()
         if currentTool ~= GunSilent.State.LastTool then
             GunSilent.State.PositionHistory = {}
-            GunSilent.State.SmoothedVelocity = {} -- Сбрасываем сглаженную скорость
+            GunSilent.State.SmoothedVelocity = {}
             GunSilent.State.LastTool = currentTool
         end
 
@@ -848,7 +849,7 @@ local function initializeGunSilent()
         local nearestPlayer = getNearestPlayerGun(gunRange)
         if nearestPlayer ~= GunSilent.Core.GunSilentTarget.CurrentTarget then
             GunSilent.State.PositionHistory[nearestPlayer] = nil
-            GunSilent.State.SmoothedVelocity[nearestPlayer] = nil -- Сбрасываем сглаженную скорость при смене цели
+            GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
         end
         updateVisualsGun(nearestPlayer)
     end)
@@ -867,7 +868,7 @@ local function Init(UI, Core, notify)
             GunSilent.State.CurrentToolRangeApplied = nil
             GunSilent.State.BaseRangeCache = {}
             GunSilent.State.PositionHistory = {}
-            GunSilent.State.SmoothedVelocity = {} -- Сбрасываем сглаженную скорость
+            GunSilent.State.SmoothedVelocity = {}
             cleanupTrajectoryBeam()
         end)
         if LocalPlayer.Character then
@@ -1110,6 +1111,17 @@ local function Init(UI, Core, notify)
                 }, 'MaxSpeed'),
                 callback = function(value) GunSilent.Settings.MaxSpeed.Value = value end
             }
+            CombatElements.PredictionBoost = {
+                element = combatSection:Slider({
+                    Name = "Prediction Boost",
+                    Minimum = 1.0,
+                    Maximum = 1.5,
+                    Default = GunSilent.Settings.PredictionBoost.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.PredictionBoost.Value = value end
+                }, 'PredictionBoost'),
+                callback = function(value) GunSilent.Settings.PredictionBoost.Value = value end
+            }
         end
     end
 
@@ -1334,6 +1346,7 @@ local function Init(UI, Core, notify)
                 CombatElements.PingCompensation.callback(CombatElements.PingCompensation.element:GetValue())
                 CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
                 CombatElements.MaxSpeed.callback(CombatElements.MaxSpeed.element:GetValue())
+                CombatElements.PredictionBoost.callback(CombatElements.PredictionBoost.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
