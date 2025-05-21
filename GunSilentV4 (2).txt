@@ -25,7 +25,7 @@ local GunSilent = {
         PositionHistorySize = { Value = 30, Default = 30 },
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
-        GenBullet = { Value = 1, Default = 1 },
+        GenBullet = { Value = 4, Default = 4 },
         TestGenBullet = { Value = false, Default = false },
         HitParticlesEnabled = { Value = false, Default = false },
         HitParticlesMode = { Value = "Orbs", Default = "Orbs", Options = {"Orbs", "Sparks"} },
@@ -41,8 +41,8 @@ local GunSilent = {
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
         SmoothingFactor = { Value = 0.1, Default = 0.1 },
         PingCompensation = { Value = 0.03, Default = 0.03 },
-        DistanceFactor = { Value = 0.0001, Default = 0.0001 }, -- Обновили множитель для меньшего влияния дистанции
-        MaxSpeed = { Value = 80, Default = 80 } -- Добавили максимальную скорость для адаптивного предикта
+        DistanceFactor = { Value = 0.0001, Default = 0.0001 }, -- Уменьшено влияние дистанции
+        MaxSpeed = { Value = 80, Default = 80 } -- Новый параметр для масштабирования
     },
     State = {
         LastEventId = 0,
@@ -56,7 +56,7 @@ local GunSilent = {
         Connection = nil,
         OldFireServer = nil,
         PositionHistory = {},
-        KalmanStates = {}, -- Добавляем состояние для Калман-фильтра
+        SmoothedVelocity = {}, -- Для хранения сглаженной скорости
         LastVisualUpdateTime = 0,
         LastTargetPosition = {},
         LocalCharacter = nil,
@@ -78,128 +78,14 @@ local GunSilent = {
     }
 }
 
--- Вспомогательная функция для Калман-фильтра
-local function initializeKalmanState()
-    return {
-        position = Vector3.new(0, 0, 0),
-        velocity = Vector3.new(0, 0, 0),
-        positionError = 1, -- Ошибка для позиции (скаляр для упрощения)
-        velocityError = 1, -- Ошибка для скорости
-        lastUpdateTime = tick()
-    }
+-- Функция для экспоненциального сглаживания скорости
+local function smoothVelocity(target, newVelocity, alpha)
+    local smoothed = GunSilent.State.SmoothedVelocity[target] or newVelocity
+    smoothed = smoothed:Lerp(newVelocity, alpha) -- alpha = 0.3 для умеренного сглаживания
+    GunSilent.State.SmoothedVelocity[target] = smoothed
+    return smoothed
 end
 
-local function updateKalmanState(kalmanState, measuredPosition, dt)
-    -- Параметры фильтра
-    local processNoise = 0.1 -- Шум процесса (для ускорения)
-    local measurementNoise = 0.5 -- Шум измерения (для позиции)
-
-    -- 1. Предсказание (Predict)
-    local predictedPosition = kalmanState.position + kalmanState.velocity * dt
-    local predictedVelocity = kalmanState.velocity -- Предполагаем постоянную скорость
-
-    -- Обновляем ковариацию (упрощённо, как скаляр)
-    kalmanState.positionError = kalmanState.positionError + (kalmanState.velocityError * dt^2) + processNoise
-    kalmanState.velocityError = kalmanState.velocityError + processNoise
-
-    -- 2. Коррекция (Update)
-    local innovation = measuredPosition - predictedPosition -- Разница между измерением и предсказанием
-    local innovationCovariance = kalmanState.positionError + measurementNoise
-    local kalmanGainPosition = kalmanState.positionError / innovationCovariance
-    local kalmanGainVelocity = (kalmanState.velocityError * dt) / innovationCovariance
-
-    -- Обновляем состояние
-    kalmanState.position = predictedPosition + innovation * kalmanGainPosition
-    kalmanState.velocity = predictedVelocity + innovation * kalmanGainVelocity / dt
-
-    -- Обновляем ковариацию
-    kalmanState.positionError = (1 - kalmanGainPosition) * kalmanState.positionError
-    kalmanState.velocityError = (1 - kalmanGainVelocity) * kalmanState.velocityError
-
-    kalmanState.lastUpdateTime = tick()
-    return kalmanState
-end
-
--- Обновлённая функция предикции с Калман-фильтром и адаптивным подходом
-local function predictTargetPositionGun(target)
-    local localRoot = GunSilent.State.LocalRoot
-    if not target or not target.Character or not localRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
-    end
-
-    local targetChar = target.Character
-    local myPos = localRoot.Position
-    local hitPart = targetChar:FindFirstChild(GunSilent.Settings.HitPart.Value)
-    if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    local equippedTool = getEquippedGunTool()
-    if not hitPart or not targetRoot or not equippedTool then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
-    end
-
-    local targetPos = hitPart.Position
-    local targetId = target and target.UserId and tostring(target.UserId) or nil
-    if not targetId then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
-    end
-    GunSilent.State.LastTargetPosition[targetId] = targetPos
-
-    local distance = (targetPos - myPos).Magnitude
-    local positionHistory = GunSilent.State.PositionHistory[target] or {}
-    local currentTime = tick()
-
-    -- Инициализация или обновление Калман-фильтра
-    local kalmanState = GunSilent.State.KalmanStates[target] or initializeKalmanState()
-    local dt = kalmanState.lastUpdateTime and (currentTime - kalmanState.lastUpdateTime) or 0.016 -- Предполагаем 60 FPS, если данных нет
-
-    -- Обновляем Калман-фильтр
-    kalmanState = updateKalmanState(kalmanState, targetPos, dt)
-    GunSilent.State.KalmanStates[target] = kalmanState
-
-    -- Сохраняем историю позиций
-    positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
-    while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do 
-        table.remove(positionHistory, 1) 
-    end
-    GunSilent.State.PositionHistory[target] = positionHistory
-
-    -- Используем сглаженные данные из Калман-фильтра
-    local clientPos = kalmanState.position
-    local resolvedVelocity = kalmanState.velocity
-    local velocityMagnitude = resolvedVelocity.Magnitude
-
-    -- Адаптивный расчёт времени до цели
-    local maxSpeed = GunSilent.Settings.MaxSpeed.Value -- Максимальная скорость (studs/s)
-    local pingCompensation = GunSilent.Settings.PingCompensation.Value
-    local distanceFactor = 1 + distance * GunSilent.Settings.DistanceFactor.Value -- Минимальное влияние дистанции
-    local timeToTarget = pingCompensation * (velocityMagnitude / maxSpeed) * distanceFactor
-
-    -- Предсказываем позицию
-    local predictedPos
-    if #positionHistory >= 5 then
-        -- Используем Калман-фильтр для предсказания
-        predictedPos = clientPos + resolvedVelocity * timeToTarget
-    else
-        -- Резервный линейный предикт
-        predictedPos = clientPos + resolvedVelocity * timeToTarget
-    end
-
-    -- Применяем сглаживание, если требуется
-    if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
-        predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
-    end
-    GunSilent.State.LastPredictionPos = predictedPos
-
-    return {
-        position = predictedPos,
-        direction = (predictedPos - myPos).Unit,
-        timeToTarget = timeToTarget,
-        clientPosition = clientPos,
-        resolvedVelocity = resolvedVelocity
-    }
-end
-
--- Остальные функции остаются без изменений, просто перечислю их для полноты
 local function safeCreateInstance(className, properties)
     local instance = Instance.new(className)
     if properties then
@@ -555,6 +441,103 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     return calculatedVelocity
 end
 
+local function predictTargetPositionGun(target)
+    local localRoot = GunSilent.State.LocalRoot
+    if not target or not target.Character or not localRoot then 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
+    end
+
+    local targetChar = target.Character
+    local myPos = localRoot.Position
+    local hitPart = targetChar:FindFirstChild(GunSilent.Settings.HitPart.Value)
+    if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
+    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+    local equippedTool = getEquippedGunTool()
+    if not hitPart or not targetRoot or not equippedTool then 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
+    end
+
+    -- Текущая позиция цели
+    local targetPos = hitPart.Position
+    local targetId = target and target.UserId and tostring(target.UserId) or nil
+    if not targetId then 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
+    end
+    GunSilent.State.LastTargetPosition[targetId] = targetPos
+
+    -- Дистанция и история позиций
+    local distance = (targetPos - myPos).Magnitude
+    local positionHistory = GunSilent.State.PositionHistory[target] or {}
+    local currentTime = tick()
+
+    -- Сохраняем историю позиций
+    positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
+    while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do 
+        table.remove(positionHistory, 1) 
+    end
+    GunSilent.State.PositionHistory[target] = positionHistory
+
+    -- Получаем скорость с помощью резолвера
+    local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
+    
+    -- Сглаживаем скорость с помощью EMA (alpha = 0.3)
+    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.3)
+    local velocityMagnitude = smoothedVelocity.Magnitude
+
+    -- Адаптивный расчёт времени до цели
+    local pingCompensation = GunSilent.Settings.PingCompensation.Value
+    local maxSpeed = GunSilent.Settings.MaxSpeed.Value
+    local distanceFactor = 1 + distance * GunSilent.Settings.DistanceFactor.Value -- Минимальное влияние дистанции
+    local timeToTarget = pingCompensation * (velocityMagnitude / maxSpeed) * distanceFactor
+
+    -- Динамический коэффициент предикции
+    local dynamicPredictionFactor = 1.0
+    local speedThresholdLow = 20 -- Пешеходы
+    local speedThresholdMedium = 50 -- Средние машины
+    local speedThresholdHigh = 80 -- Быстрые машины
+    local distanceThresholdClose = 50 -- Ближняя дистанция
+    local distanceThresholdFar = 150 -- Дальняя дистанция
+
+    if velocityMagnitude <= speedThresholdLow then
+        dynamicPredictionFactor = 0.8 -- Медленные цели
+    elseif velocityMagnitude <= speedThresholdMedium then
+        if distance <= distanceThresholdClose then
+            dynamicPredictionFactor = 1.5
+        elseif distance >= distanceThresholdFar then
+            dynamicPredictionFactor = 1.6
+        else
+            dynamicPredictionFactor = 1.9
+        end
+    else
+        if distance <= distanceThresholdClose then
+            dynamicPredictionFactor = 2.0
+        elseif distance >= distanceThresholdFar then
+            dynamicPredictionFactor = 1.9
+        else
+            dynamicPredictionFactor = 2.3
+        end
+    end
+
+    -- Предсказываем позицию
+    local clientPos = targetPos
+    local predictionTime = timeToTarget * dynamicPredictionFactor
+    local predictedPos = clientPos + smoothedVelocity * predictionTime
+
+    -- Сглаживание позиции (опционально)
+    if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
+        predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
+    end
+    GunSilent.State.LastPredictionPos = predictedPos
+
+    return {
+        position = predictedPos,
+        direction = (predictedPos - myPos).Unit,
+        timeToTarget = timeToTarget,
+        clientPosition = clientPos,
+        resolvedVelocity = smoothedVelocity
+    }
+end
+
 local function getAimCFrameGun(target)
     local localRoot = GunSilent.State.LocalRoot
     if not target or not target.Character or not localRoot then return nil end
@@ -576,22 +559,17 @@ local function createHitDataGun(target)
     local equippedTool = getEquippedGunTool()
     local isShotgunWeapon = GunSilent.Settings.ShotgunSupport.Value and equippedTool and isShotgun(equippedTool)
     local useMultiBullets = isShotgunWeapon or GunSilent.Settings.TestGenBullet.Value
-    local numBullets = useMultiBullets and GunSilent.Settings.GenBullet.Value or 1
+    local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
-    local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
-    local basePosition = prediction.position
-    local baseDirection = prediction.direction
-
     if useMultiBullets then
-        for i = 1, numBullets do
-            hitData[i] = {{Normal = baseDirection, Instance = hitPart, Position = basePosition}}
-        end
+        for i = 1, numBullets do hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = prediction.position}} end
     else
-        hitData[1] = {{Normal = baseDirection, Instance = hitPart, Position = basePosition}}
+        hitData[1] = {{Normal = prediction.direction, Instance = hitPart, Position = prediction.position}}
     end
 
-    if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and basePosition then
+    if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and prediction.position then
+        local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
         local trail = safeCreateInstance("Beam", {
             FaceCamera = true,
             Width0 = 0.1,
@@ -605,7 +583,7 @@ local function createHitDataGun(target)
             local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
             if attachment0 and attachment1 then
                 attachment0.Position = startPos
-                attachment1.Position = basePosition
+                attachment1.Position = prediction.position
                 trail.Attachment0 = attachment0
                 trail.Attachment1 = attachment1
 
@@ -644,7 +622,7 @@ local function createHitDataGun(target)
     end
 
     GunSilent.State.LastHitTarget = target
-    GunSilent.State.LastHitPosition = basePosition
+    GunSilent.State.LastHitPosition = prediction.position
     GunSilent.State.LastShotTime = tick()
 
     return hitData
@@ -782,7 +760,7 @@ local function initializeGunSilent()
         if args[1] == "hit_confirmed" then
             local headshot = args[2]
             local kill = args[3]
-            local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
+            local pendingHit = GunSilient.State.PendingHits[GunSilent.State.LastEventId] or
                              { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
@@ -846,16 +824,16 @@ local function initializeGunSilent()
         end
 
         local character = GunSilent.State.LocalCharacter
-        if not character or not character:FindFirstChild("HumanoidRootPart") then
-            GunSilent.State.LocalRoot = nil
-        else
+        if character and character:FindFirstChild("HumanoidRootPart") then
             GunSilent.State.LocalRoot = character.HumanoidRootPart
+        else
+            GunSilent.State.LocalRoot = nil
         end
 
         local currentTool = getEquippedGunTool()
         if currentTool ~= GunSilent.State.LastTool then
             GunSilent.State.PositionHistory = {}
-            GunSilent.State.KalmanStates = {} -- Сбрасываем Калман-фильтр при смене инструмента
+            GunSilent.State.SmoothedVelocity = {} -- Сбрасываем сглаженную скорость
             GunSilent.State.LastTool = currentTool
         end
 
@@ -870,7 +848,7 @@ local function initializeGunSilent()
         local nearestPlayer = getNearestPlayerGun(gunRange)
         if nearestPlayer ~= GunSilent.Core.GunSilentTarget.CurrentTarget then
             GunSilent.State.PositionHistory[nearestPlayer] = nil
-            GunSilent.State.KalmanStates[nearestPlayer] = nil -- Сбрасываем Калман-фильтр при смене цели
+            GunSilent.State.SmoothedVelocity[nearestPlayer] = nil -- Сбрасываем сглаженную скорость при смене цели
         end
         updateVisualsGun(nearestPlayer)
     end)
@@ -889,7 +867,7 @@ local function Init(UI, Core, notify)
             GunSilent.State.CurrentToolRangeApplied = nil
             GunSilent.State.BaseRangeCache = {}
             GunSilent.State.PositionHistory = {}
-            GunSilent.State.KalmanStates = {} -- Сбрасываем Калман-фильтр
+            GunSilent.State.SmoothedVelocity = {} -- Сбрасываем сглаженную скорость
             cleanupTrajectoryBeam()
         end)
         if LocalPlayer.Character then
@@ -1355,7 +1333,7 @@ local function Init(UI, Core, notify)
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 CombatElements.PingCompensation.callback(CombatElements.PingCompensation.element:GetValue())
                 CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
-                CombatElements.MaxSpeed.callback(CombatElements.MaxSpeed.element:GetValue()) -- Добавляем синхронизацию MaxSpeed
+                CombatElements.MaxSpeed.callback(CombatElements.MaxSpeed.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
