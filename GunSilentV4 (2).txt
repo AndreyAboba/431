@@ -485,10 +485,12 @@ local function predictTargetPositionGun(target)
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
     local velocityMagnitude = smoothedVelocity.Magnitude
 
-    -- Автоматический расчёт пинга
-    local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() or 0)
+    -- Получаем пинг из атрибута LocalPlayer.ServerPing
+    local localPlayer = Players.LocalPlayer
+    local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05 -- Запасное значение 50 мс
+    local ping = math.floor(rawPing * 1000) -- Преобразуем, например, 0.126 → 126 мс
     print("Ping:", ping) -- Логирование округлённого пинга
-    local pingCompensation = ping / 1000 -- Переводим в секунды (например, 121 мс = 0.121 с)
+    local pingCompensation = ping / 1000 -- Переводим в секунды (например, 126 мс = 0.126 с)
 
     -- Предикция 1:1 с учётом пинга
     local clientPos = targetPos
