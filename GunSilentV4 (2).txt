@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local NetworkClient = game:GetService("NetworkClient")
 
 local GunSilent = {
     Settings = {
@@ -39,11 +40,10 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Уменьшено для более резкой предикции
-        PingCompensation = { Value = 0.03, Default = 0.03 },
+        SmoothingFactor = { Value = 0.05, Default = 0.05 },
         DistanceFactor = { Value = 0.0001, Default = 0.0001 },
         MaxSpeed = { Value = 80, Default = 80 },
-        PredictionBoost = { Value = 1.1, Default = 1.1 } -- Новый параметр для усиления предикции
+        PredictionBoost = { Value = 1.1, Default = 1.1 }
     },
     State = {
         LastEventId = 0,
@@ -82,7 +82,7 @@ local GunSilent = {
 -- Функция для экспоненциального сглаживания скорости
 local function smoothVelocity(target, newVelocity, alpha)
     local smoothed = GunSilent.State.SmoothedVelocity[target] or newVelocity
-    smoothed = smoothed:Lerp(newVelocity, alpha) -- Уменьшено alpha до 0.15 для меньшего сглаживания
+    smoothed = smoothed:Lerp(newVelocity, alpha)
     GunSilent.State.SmoothedVelocity[target] = smoothed
     return smoothed
 end
@@ -481,47 +481,18 @@ local function predictTargetPositionGun(target)
     -- Получаем скорость с помощью резолвера
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     
-    -- Сглаживаем скорость с помощью EMA (alpha = 0.15)
+    -- Сглаживаем скорость
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
     local velocityMagnitude = smoothedVelocity.Magnitude
 
-    -- Улучшенный расчёт времени до цели
-    local pingCompensation = GunSilent.Settings.PingCompensation.Value
-    local maxSpeed = GunSilent.Settings.MaxSpeed.Value
-    local distanceFactor = 1 + distance * GunSilent.Settings.DistanceFactor.Value
-    local timeToTarget = pingCompensation * (1 + velocityMagnitude / maxSpeed) * distanceFactor
+    -- Автоматический расчёт пинга
+    local ping = math.floor(NetworkClient:GetNetworkRoundtripTime(Players.LocalPlayer) or 0)
+    print("Ping:", ping) -- Логирование округлённого пинга
+    local pingCompensation = ping / 1000 -- Переводим в секунды (например, 121 мс = 0.121 с)
 
-    -- Динамический коэффициент предикции
-    local dynamicPredictionFactor = 1.0
-    local speedThresholdLow = 20 -- Пешеходы
-    local speedThresholdMedium = 50 -- Средние машины
-    local speedThresholdHigh = 80 -- Быстрые машины
-    local distanceThresholdClose = 50 -- Ближняя дистанция
-    local distanceThresholdFar = 150 -- Дальняя дистанция
-
-    if velocityMagnitude <= speedThresholdLow then
-        dynamicPredictionFactor = 1.2 -- Увеличено для пешеходов
-    elseif velocityMagnitude <= speedThresholdMedium then
-        if distance <= distanceThresholdClose then
-            dynamicPredictionFactor = 1.8 -- Увеличено с 1.5
-        elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 2.0 -- Увеличено с 1.6
-        else
-            dynamicPredictionFactor = 2.2 -- Увеличено с 1.9
-        end
-    else
-        if distance <= distanceThresholdClose then
-            dynamicPredictionFactor = 2.2 -- Увеличено с 2.0
-        elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 2.1 -- Увеличено с 1.9
-        else
-            dynamicPredictionFactor = 2.5 -- Увеличено с 2.3
-        end
-    end
-
-    -- Предсказываем позицию с учётом PredictionBoost
+    -- Предикция 1:1 с учётом пинга
     local clientPos = targetPos
-    local predictionTime = timeToTarget * dynamicPredictionFactor * GunSilent.Settings.PredictionBoost.Value
+    local predictionTime = pingCompensation + (distance / (velocityMagnitude > 1 and velocityMagnitude or 1)) -- Избегаем деления на 0
     local predictedPos = clientPos + smoothedVelocity * predictionTime
 
     -- Сглаживание позиции (опционально)
@@ -533,7 +504,7 @@ local function predictTargetPositionGun(target)
     return {
         position = predictedPos,
         direction = (predictedPos - myPos).Unit,
-        timeToTarget = timeToTarget,
+        timeToTarget = predictionTime,
         clientPosition = clientPos,
         resolvedVelocity = smoothedVelocity
     }
@@ -1078,17 +1049,6 @@ local function Init(UI, Core, notify)
                 }, 'SmoothingFactor'),
                 callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
             }
-            CombatElements.PingCompensation = {
-                element = combatSection:Slider({
-                    Name = "Ping Compensation (s)",
-                    Minimum = 0,
-                    Maximum = 0.2,
-                    Default = GunSilent.Settings.PingCompensation.Value,
-                    Precision = 3,
-                    Callback = function(value) GunSilent.Settings.PingCompensation.Value = value end
-                }, 'PingCompensation'),
-                callback = function(value) GunSilent.Settings.PingCompensation.Value = value end
-            }
             CombatElements.DistanceFactor = {
                 element = combatSection:Slider({
                     Name = "Distance Factor",
@@ -1343,7 +1303,6 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
-                CombatElements.PingCompensation.callback(CombatElements.PingCompensation.element:GetValue())
                 CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
                 CombatElements.MaxSpeed.callback(CombatElements.MaxSpeed.element:GetValue())
                 CombatElements.PredictionBoost.callback(CombatElements.PredictionBoost.element:GetValue())
