@@ -4,7 +4,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local NetworkClient = game:GetService("NetworkClient")
+local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
@@ -486,7 +486,7 @@ local function predictTargetPositionGun(target)
     local velocityMagnitude = smoothedVelocity.Magnitude
 
     -- Автоматический расчёт пинга
-    local ping = math.floor(NetworkClient:GetNetworkRoundtripTime(Players.LocalPlayer) or 0)
+    local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() or 0)
     print("Ping:", ping) -- Логирование округлённого пинга
     local pingCompensation = ping / 1000 -- Переводим в секунды (например, 121 мс = 0.121 с)
 
