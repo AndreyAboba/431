@@ -410,7 +410,7 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     local totalVelocity = Vector3.new(0, 0, 0)
     local totalWeight = 0
     local validEntries = 0
-    local maxSpeedLimit = isInVehicle(targetChar) and 150 or 50
+    local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80 -- Новый порог для быстрых машин
 
     for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
         local currEntry = positionHistory[i + 1]
@@ -452,26 +452,27 @@ local function predictTargetPositionGun(target)
     -- Дистанция и время до цели с учётом пинга
     local distance = (targetPos - myPos).Magnitude
     local pingCompensation = GunSilent.Settings.PingCompensation.Value
-    -- Динамическая корректировка пинга для дальних дистанций
     local effectivePing = pingCompensation * (1 + distance / 500)
-    local timeToTarget = effectivePing * (1 + distance / 1000)
-
-    -- История позиций для серверного положения
+    local baseDistanceFactor = GunSilent.Settings.DistanceFactor.Value
+    -- Динамический DistanceFactor на основе скорости
     local positionHistory = GunSilent.State.PositionHistory[target] or {}
-    GunSilent.State.PositionHistory[target] = positionHistory
-    local currentTime = tick()
-    positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
-    while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do table.remove(positionHistory, 1) end
-
-    local clientPos = targetPos
     local resolvedVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     local velocityMagnitude = resolvedVelocity.Magnitude
+    local dynamicDistanceFactor = baseDistanceFactor * (velocityMagnitude <= 20 and 0.5 or velocityMagnitude <= 50 and 1.0 or 2.0)
+    local timeToTarget = effectivePing * (1 + distance * dynamicDistanceFactor)
+
+    -- История позиций для серверного положения
+    positionHistory[#positionHistory + 1] = { pos = targetPos, time = tick(), velocity = targetRoot.Velocity }
+    while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do table.remove(positionHistory, 1) end
+    GunSilent.State.PositionHistory[target] = positionHistory
+
+    local clientPos = targetPos
 
     -- Адаптивный коэффициент предикции на основе скорости и дистанции
     local basePredictionFactor = 1.0
     local speedThresholdLow = 20 -- Скорость пешехода или медленной машины
     local speedThresholdMedium = 50 -- Скорость средней машины (35–50 км/ч)
-    local speedThresholdHigh = 100 -- Скорость быстрой машины (до 100 км/ч)
+    local speedThresholdHigh = 80 -- Скорость быстрой машины (до 80–90 км/ч)
     local distanceThresholdClose = 50 -- Ближняя дистанция
     local distanceThresholdFar = 150 -- Дальняя дистанция
 
@@ -482,20 +483,20 @@ local function predictTargetPositionGun(target)
     elseif velocityMagnitude <= speedThresholdMedium then
         -- Средние машины (35–50 км/ч)
         if distance <= distanceThresholdClose then
-            dynamicPredictionFactor = 1.5 -- Усиливаем предикцию на ближних дистанциях
+            dynamicPredictionFactor = 1.5
         elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 1.5 -- Увеличено с 1.1 до 1.5 для дальних дистанций
+            dynamicPredictionFactor = 1.6 -- Увеличено с 1.5 для лучшей точности
         else
-            dynamicPredictionFactor = 1.8 -- Увеличено с 1.3 до 1.8 для средней дистанции
+            dynamicPredictionFactor = 1.9 -- Увеличено с 1.8
         end
     else
-        -- Быстрые машины (до 100 км/ч)
+        -- Быстрые машины (до 80 studs/s)
         if distance <= distanceThresholdClose then
-            dynamicPredictionFactor = 2.0 -- Максимальная предикция на ближних дистанциях
+            dynamicPredictionFactor = 2.0
         elseif distance >= distanceThresholdFar then
-            dynamicPredictionFactor = 1.8 -- Увеличено с 1.4 до 1.8 для дальних дистанций
+            dynamicPredictionFactor = 1.9 -- Уменьшено с 1.8 до 1.9 для точности
         else
-            dynamicPredictionFactor = 2.2 -- Увеличено с 1.7 до 2.2 для средней дистанции
+            dynamicPredictionFactor = 2.3 -- Увеличено с 2.2
         end
     end
 
