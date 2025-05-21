@@ -43,7 +43,7 @@ local GunSilent = {
         SmoothingFactor = { Value = 0.05, Default = 0.05 },
         DistanceFactor = { Value = 0.0001, Default = 0.0001 },
         MaxSpeed = { Value = 80, Default = 80 },
-        PredictionBoost = { Value = 1.1, Default = 1.1 }
+        PredictionBoost = { Value = 1.0, Default = 1.0 }
     },
     State = {
         LastEventId = 0,
@@ -483,7 +483,14 @@ local function predictTargetPositionGun(target)
     
     -- Сглаживаем скорость
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
+    
+    -- Ограничиваем скорость
     local velocityMagnitude = smoothedVelocity.Magnitude
+    local maxSpeed = GunSilent.Settings.MaxSpeed.Value
+    if velocityMagnitude > maxSpeed then
+        smoothedVelocity = smoothedVelocity.Unit * maxSpeed
+        velocityMagnitude = maxSpeed
+    end
 
     -- Получаем и округляем пинг из атрибута LocalPlayer.ServerPing (в секундах)
     local localPlayer = Players.LocalPlayer
@@ -492,9 +499,11 @@ local function predictTargetPositionGun(target)
     print("Ping (seconds):", ping) -- Логирование округлённого пинга в секундах
     local pingCompensation = ping -- Уже в секундах, используем как есть
 
-    -- Предикция 1:1 с учётом пинга
+    -- Предикция с учётом пинга и дистанции
     local clientPos = targetPos
-    local predictionTime = pingCompensation + (distance / (velocityMagnitude > 1 and velocityMagnitude or 1)) -- Избегаем деления на 0
+    local minVelocity = 10 -- Минимальная скорость (studs/s) для предотвращения огромных значений predictionTime
+    local effectiveVelocity = math.max(velocityMagnitude, minVelocity)
+    local predictionTime = pingCompensation + (distance * GunSilent.Settings.DistanceFactor.Value)
     local predictedPos = clientPos + smoothedVelocity * predictionTime * GunSilent.Settings.PredictionBoost.Value
 
     -- Сглаживание позиции (опционально)
@@ -502,6 +511,9 @@ local function predictTargetPositionGun(target)
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
     end
     GunSilent.State.LastPredictionPos = predictedPos
+
+    -- Отладочный вывод
+    print("Prediction Time:", predictionTime, "Velocity Magnitude:", velocityMagnitude, "Distance:", distance)
 
     return {
         position = predictedPos,
@@ -1076,7 +1088,7 @@ local function Init(UI, Core, notify)
             CombatElements.PredictionBoost = {
                 element = combatSection:Slider({
                     Name = "Prediction Boost",
-                    Minimum = 1.0,
+                    Minimum = 0.5,
                     Maximum = 1.5,
                     Default = GunSilent.Settings.PredictionBoost.Value,
                     Precision = 2,
