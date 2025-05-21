@@ -27,7 +27,6 @@ local GunSilent = {
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 1, Default = 1 },
         TestGenBullet = { Value = false, Default = false },
-        DebugExploitBullet = { Value = false, Default = false },
         HitParticlesEnabled = { Value = false, Default = false },
         HitParticlesMode = { Value = "Orbs", Default = "Orbs", Options = {"Orbs", "Sparks"} },
         HitParticlesCount = { Value = 30, Default = 30 },
@@ -504,7 +503,7 @@ local function predictTargetPositionGun(target)
                 end
 
                 local det = n * (sumX2 * sumX4 - sumX3^2) - sumX * (sumX * sumX4 - sumX2 * sumX3) + sumX2 * (sumX * sumX3 - sumX2^2)
-                if det == 0 then return 0, 0 end
+                if det == 0 then return 0, 0, 0 end
 
                 local a = ((sumY * (sumX2 * sumX4 - sumX3^2) - sumX * (sumXY * sumX4 - sumX3 * sumX2Y) + sumX2 * (sumXY * sumX3 - sumX2 * sumX2Y)) / det)
                 local b = ((n * (sumXY * sumX4 - sumX3 * sumX2Y) - sumX * (sumY * sumX4 - sumX2 * sumX2Y) + sumX2 * (sumY * sumX3 - sumX * sumX2Y)) / det)
@@ -517,14 +516,46 @@ local function predictTargetPositionGun(target)
             local ay, by, cy = fitPolynomial(t, y)
             local az, bz, cz = fitPolynomial(t, z)
 
-            local futureT = timeToTarget / 0.1 -- Предсказываем на время полёта пули
-            predictedPos = Vector3.new(
-                ax + bx * futureT + cx * futureT^2,
-                ay + by * futureT + cy * futureT^2,
-                az + bz * futureT + cz * futureT^2
-            )
+            -- Проверка на nil и возврат к линейной предикции, если аппроксимация провалилась
+            if ax and bx and cx and ay and by and cy and az and bz and cz then
+                local futureT = timeToTarget / 0.1 -- Предсказываем на время полёта пули
+                predictedPos = Vector3.new(
+                    ax + bx * futureT + cx * futureT^2,
+                    ay + by * futureT + cy * futureT^2,
+                    az + bz * futureT + cz * futureT^2
+                )
+            else
+                local dynamicPredictionFactor = 1.0
+                local speedThresholdLow = 20
+                local speedThresholdMedium = 50
+                local distanceThresholdClose = 50
+                local distanceThresholdMedium = 150
+
+                if velocityMagnitude <= speedThresholdLow then
+                    dynamicPredictionFactor = 0.6
+                elseif velocityMagnitude <= speedThresholdMedium then
+                    if distance <= distanceThresholdClose then
+                        dynamicPredictionFactor = 0.8
+                    elseif distance <= distanceThresholdMedium then
+                        dynamicPredictionFactor = 0.9 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+                    else
+                        dynamicPredictionFactor = 1.1
+                    end
+                else
+                    if distance <= distanceThresholdClose then
+                        dynamicPredictionFactor = 1.0
+                    elseif distance <= distanceThresholdMedium then
+                        dynamicPredictionFactor = 1.1 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+                    else
+                        dynamicPredictionFactor = 1.3
+                    end
+                end
+
+                local predictionTime = timeToTarget * dynamicPredictionFactor
+                predictedPos = clientPos + resolvedVelocity * predictionTime
+            end
         else
-            -- Если данных мало, используем линейную предикцию с корректировкой
+            -- Минимальная линейная предикция
             local dynamicPredictionFactor = 1.0
             local speedThresholdLow = 20
             local speedThresholdMedium = 50
@@ -1032,14 +1063,6 @@ local function Init(UI, Core, notify)
                 }, 'TestGenerateBullets'),
                 callback = function(value) GunSilent.Settings.TestGenBullet.Value = value end
             }
-            CombatElements.DebugExploitBullet = {
-                element = combatSection:Toggle({
-                    Name = "Debug Exploit Bullet",
-                    Default = GunSilent.Settings.DebugExploitBullet.Value,
-                    Callback = function(value) GunSilent.Settings.DebugExploitBullet.Value = value end
-                }, 'DebugExploitBullet'),
-                callback = function(value) GunSilent.Settings.DebugExploitBullet.Value = value end
-            }
             CombatElements.SortMethod = {
                 element = combatSection:Dropdown({
                     Name = "Sort Method",
@@ -1376,11 +1399,7 @@ local function Init(UI, Core, notify)
                 CombatElements.ShotgunSupport.callback(CombatElements.ShotgunSupport.element:GetState())
                 CombatElements.GenerateBullets.callback(CombatElements.GenerateBullets.element:GetValue())
                 CombatElements.TestGenerateBullets.callback(CombatElements.TestGenerateBullets.element:GetState())
-                CombatElements.DebugExploitBullet.callback(CombatElements.DebugExploitBullet.element:GetState())
-                local sortMethodOptions = CombatElements.SortMethod.element:GetOptions()
-                for option, selected in pairs(sortMethodOptions) do
-                    if selected then CombatElements.SortMethod.callback(option) break end
-                end
+                CombatElements.SortMethod.callback(CombatElements.SortMethod.element:GetOptions())
                 CombatElements.UseFOV.callback(CombatElements.UseFOV.element:GetState())
                 CombatElements.FOV.callback(CombatElements.FOV.element:GetValue())
                 CombatElements.ShowCircle.callback(CombatElements.ShowCircle.element:GetState())
