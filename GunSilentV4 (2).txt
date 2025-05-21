@@ -760,7 +760,7 @@ local function initializeGunSilent()
         if args[1] == "hit_confirmed" then
             local headshot = args[2]
             local kill = args[3]
-            local pendingHit = GunSilient.State.PendingHits[GunSilent.State.LastEventId] or
+            local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
                              { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
