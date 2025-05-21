@@ -40,7 +40,9 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        SmoothingFactor = { Value = 0.05, Default = 0.05 }
+        SmoothingFactor = { Value = 0.05, Default = 0.05 },
+        DistanceFactor = { Value = 0.002, Default = 0.002 }, -- Новый параметр
+        SpeedFactor = { Value = 0.00005, Default = 0.00005 } -- Новый параметр
     },
     State = {
         LastEventId = 0,
@@ -492,12 +494,18 @@ local function predictTargetPositionGun(target)
     local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
     local ping = math.floor(rawPing * 1000 + 0.5) / 1000
 
+    -- Динамический вес дистанции
+    local distanceWeight = 0
+    if velocityMagnitude > 30 then
+        distanceWeight = math.min(1, (velocityMagnitude - 30) / 30)
+    end
+
     -- Адаптивная формула предикта
     local basePrediction = 0.1 -- Базовый предикт 0.1 секунды
-    local distanceFactor = 0.005 -- Влияние скорости
-    local speedFactor = 0.0001 -- Влияние дистанции
-    local predictionTime = basePrediction + ping + (velocityMagnitude * distanceFactor) + (distance * speedFactor)
-    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance)
+    local distanceFactor = GunSilent.Settings.DistanceFactor.Value
+    local speedFactor = GunSilent.Settings.SpeedFactor.Value
+    local predictionTime = basePrediction + ping + (velocityMagnitude * distanceFactor * distanceWeight) + (distance * speedFactor)
+    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "DistanceWeight:", distanceWeight)
 
     -- Предсказанная позиция
     local clientPos = targetPos
@@ -1057,6 +1065,28 @@ local function Init(UI, Core, notify)
                 }, 'SmoothingFactor'),
                 callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
             }
+            CombatElements.DistanceFactor = {
+                element = combatSection:Slider({
+                    Name = "Distance Factor",
+                    Minimum = 0.001,
+                    Maximum = 0.01,
+                    Default = GunSilent.Settings.DistanceFactor.Value,
+                    Precision = 4,
+                    Callback = function(value) GunSilent.Settings.DistanceFactor.Value = value end
+                }, 'DistanceFactor'),
+                callback = function(value) GunSilent.Settings.DistanceFactor.Value = value end
+            }
+            CombatElements.SpeedFactor = {
+                element = combatSection:Slider({
+                    Name = "Speed Factor",
+                    Minimum = 0.00001,
+                    Maximum = 0.0001,
+                    Default = GunSilent.Settings.SpeedFactor.Value,
+                    Precision = 5,
+                    Callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
+                }, 'SpeedFactor'),
+                callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
+            }
         end
     end
 
@@ -1278,6 +1308,8 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
+                CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
+                CombatElements.SpeedFactor.callback(CombatElements.SpeedFactor.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
