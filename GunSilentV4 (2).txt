@@ -474,7 +474,7 @@ local function predictTargetPositionGun(target)
         for i, entry in ipairs(positionHistory) do
             local dt = currentTime - entry.time
             if dt >= 0 and dt <= 0.5 then
-                table.insert(t, 1) -- Время как единица (можно заменить на dt для точности)
+                table.insert(t, 1)
                 table.insert(x, entry.pos.X)
                 table.insert(y, entry.pos.Y)
                 table.insert(z, entry.pos.Z)
@@ -484,6 +484,7 @@ local function predictTargetPositionGun(target)
         if #t >= 3 then
             local function fitPolynomial(t, values)
                 local n = #t
+                if n < 3 then return 0, 0, 0 end
                 local sumX = 0
                 local sumX2 = 0
                 local sumX3 = 0
@@ -516,9 +517,8 @@ local function predictTargetPositionGun(target)
             local ay, by, cy = fitPolynomial(t, y)
             local az, bz, cz = fitPolynomial(t, z)
 
-            -- Проверка на nil и возврат к линейной предикции, если аппроксимация провалилась
             if ax and bx and cx and ay and by and cy and az and bz and cz then
-                local futureT = timeToTarget / 0.1 -- Предсказываем на время полёта пули
+                local futureT = timeToTarget / 0.1
                 predictedPos = Vector3.new(
                     ax + bx * futureT + cx * futureT^2,
                     ay + by * futureT + cy * futureT^2,
@@ -526,93 +526,73 @@ local function predictTargetPositionGun(target)
                 )
             else
                 local dynamicPredictionFactor = 1.0
-                local speedThresholdLow = 20
-                local speedThresholdMedium = 50
-                local distanceThresholdClose = 50
-                local distanceThresholdMedium = 150
-
-                if velocityMagnitude <= speedThresholdLow then
+                if velocityMagnitude <= 20 then
                     dynamicPredictionFactor = 0.6
-                elseif velocityMagnitude <= speedThresholdMedium then
-                    if distance <= distanceThresholdClose then
+                elseif velocityMagnitude <= 50 then
+                    if distance <= 50 then
                         dynamicPredictionFactor = 0.8
-                    elseif distance <= distanceThresholdMedium then
-                        dynamicPredictionFactor = 0.9 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+                    elseif distance <= 150 then
+                        dynamicPredictionFactor = 0.9 + (distance - 50) / 100 * 0.2
                     else
                         dynamicPredictionFactor = 1.1
                     end
                 else
-                    if distance <= distanceThresholdClose then
+                    if distance <= 50 then
                         dynamicPredictionFactor = 1.0
-                    elseif distance <= distanceThresholdMedium then
-                        dynamicPredictionFactor = 1.1 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+                    elseif distance <= 150 then
+                        dynamicPredictionFactor = 1.1 + (distance - 50) / 100 * 0.2
                     else
                         dynamicPredictionFactor = 1.3
                     end
                 end
-
                 local predictionTime = timeToTarget * dynamicPredictionFactor
                 predictedPos = clientPos + resolvedVelocity * predictionTime
             end
         else
-            -- Минимальная линейная предикция
             local dynamicPredictionFactor = 1.0
-            local speedThresholdLow = 20
-            local speedThresholdMedium = 50
-            local distanceThresholdClose = 50
-            local distanceThresholdMedium = 150
-
-            if velocityMagnitude <= speedThresholdLow then
+            if velocityMagnitude <= 20 then
                 dynamicPredictionFactor = 0.6
-            elseif velocityMagnitude <= speedThresholdMedium then
-                if distance <= distanceThresholdClose then
+            elseif velocityMagnitude <= 50 then
+                if distance <= 50 then
                     dynamicPredictionFactor = 0.8
-                elseif distance <= distanceThresholdMedium then
-                    dynamicPredictionFactor = 0.9 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+                elseif distance <= 150 then
+                    dynamicPredictionFactor = 0.9 + (distance - 50) / 100 * 0.2
                 else
                     dynamicPredictionFactor = 1.1
                 end
             else
-                if distance <= distanceThresholdClose then
+                if distance <= 50 then
                     dynamicPredictionFactor = 1.0
-                elseif distance <= distanceThresholdMedium then
-                    dynamicPredictionFactor = 1.1 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+                elseif distance <= 150 then
+                    dynamicPredictionFactor = 1.1 + (distance - 50) / 100 * 0.2
                 else
                     dynamicPredictionFactor = 1.3
                 end
             end
-
             local predictionTime = timeToTarget * dynamicPredictionFactor
             predictedPos = clientPos + resolvedVelocity * predictionTime
         end
     else
-        -- Минимальная линейная предикция
         local dynamicPredictionFactor = 1.0
-        local speedThresholdLow = 20
-        local speedThresholdMedium = 50
-        local distanceThresholdClose = 50
-        local distanceThresholdMedium = 150
-
-        if velocityMagnitude <= speedThresholdLow then
+        if velocityMagnitude <= 20 then
             dynamicPredictionFactor = 0.6
-        elseif velocityMagnitude <= speedThresholdMedium then
-            if distance <= distanceThresholdClose then
+        elseif velocityMagnitude <= 50 then
+            if distance <= 50 then
                 dynamicPredictionFactor = 0.8
-            elseif distance <= distanceThresholdMedium then
-                dynamicPredictionFactor = 0.9 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+            elseif distance <= 150 then
+                dynamicPredictionFactor = 0.9 + (distance - 50) / 100 * 0.2
             else
                 dynamicPredictionFactor = 1.1
             end
         else
-            if distance <= distanceThresholdClose then
+            if distance <= 50 then
                 dynamicPredictionFactor = 1.0
-            elseif distance <= distanceThresholdMedium then
-                dynamicPredictionFactor = 1.1 + (distance - distanceThresholdClose) / (distanceThresholdMedium - distanceThresholdClose) * 0.2
+            elseif distance <= 150 then
+                dynamicPredictionFactor = 1.1 + (distance - 50) / 100 * 0.2
             else
                 dynamicPredictionFactor = 1.3
             end
         end
-
         local predictionTime = timeToTarget * dynamicPredictionFactor
         predictedPos = clientPos + resolvedVelocity * predictionTime
     end
@@ -923,10 +903,10 @@ local function initializeGunSilent()
         end
 
         local character = GunSilent.State.LocalCharacter
-        if character and character:FindFirstChild("HumanoidRootPart") then
-            GunSilent.State.LocalRoot = character.HumanoidRootPart
-        else
+        if not character or not character:FindFirstChild("HumanoidRootPart") then
             GunSilent.State.LocalRoot = nil
+        else
+            GunSilent.State.LocalRoot = character.HumanoidRootPart
         end
 
         local currentTool = getEquippedGunTool()
@@ -1399,7 +1379,10 @@ local function Init(UI, Core, notify)
                 CombatElements.ShotgunSupport.callback(CombatElements.ShotgunSupport.element:GetState())
                 CombatElements.GenerateBullets.callback(CombatElements.GenerateBullets.element:GetValue())
                 CombatElements.TestGenerateBullets.callback(CombatElements.TestGenerateBullets.element:GetState())
-                CombatElements.SortMethod.callback(CombatElements.SortMethod.element:GetOptions())
+                local sortMethodOptions = CombatElements.SortMethod.element:GetOptions()
+                for option, selected in pairs(sortMethodOptions) do
+                    if selected then CombatElements.SortMethod.callback(option) break end
+                end
                 CombatElements.UseFOV.callback(CombatElements.UseFOV.element:GetState())
                 CombatElements.FOV.callback(CombatElements.FOV.element:GetValue())
                 CombatElements.ShowCircle.callback(CombatElements.ShowCircle.element:GetState())
