@@ -37,7 +37,7 @@ local TargetInfo = {
             AlwaysVisible = true,
             DistanceLimit = 0,
             TargetMode = "GunSilent Target",
-            AnalysisMode = "Level 1 (Description)",
+            AnalysisMode = "Level 1 (MeshID)",
             Enabled = false,
             AppearAnim = true,
             FOV = { Value = 100, Default = 100 },
@@ -506,7 +506,7 @@ local TargetInfo = {
             if input.UserInputType == Enum.UserInputType.MouseMovement and hudDragging then
                 local mousePos = UserInputService:GetMouseLocation()
                 local delta = mousePos - hudDragStart
-                hudFrame.Position = UDim2.new(0, hudStartPos.X.Offset + delta.X, 0, hudStartPos.Y.Offset + delta.Y)
+                hudFrame.Position = UDim2.new(0, hudStartPos.X.Offset + delta.X, 0, hudPos.Y.Offset + delta.Y)
             end
         end)
         UserInputService.InputEnded:Connect(function(input)
@@ -536,12 +536,6 @@ local TargetInfo = {
             return IconCache[itemName]
         end
 
-        local function getItemDescription(item)
-            local descObj = item:FindFirstChild("Description") or item:FindFirstChild("description")
-            if descObj and descObj:IsA("StringValue") then return descObj.Value end
-            return item:GetAttribute("Description") or item:GetAttribute("description") or ""
-        end
-
         local function getImageId(item)
             local imageObj = item:FindFirstChild("ImageID") or item:FindFirstChild("imageID")
             if imageObj and imageObj:IsA("StringValue") then return imageObj.Value end
@@ -567,9 +561,10 @@ local TargetInfo = {
                 local folder = ItemCategories[category]
                 if folder then
                     for _, item in pairs(folder:GetChildren()) do
-                        if item:IsA("Tool") and not isLocked(item) then
+                        if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Handle:FindFirstChildOfClass("MeshPart") then
+                            local meshPart = item.Handle:FindFirstChildOfClass("MeshPart")
                             ItemDatabase[item.Name] = {
-                                Description = getItemDescription(item),
+                                MeshID = meshPart.MeshId,
                                 ImageId = getImageId(item)
                             }
                         end
@@ -578,24 +573,10 @@ local TargetInfo = {
             end
         end
 
-        local function getItemNameByDescriptionOrImageId(description, imageId)
-            if not description and not imageId then return nil end
-            local mode = TargetInventorySettings.AnalysisMode
-            local cacheKey = (description or "") .. "|" .. (imageId or "")
-            if mode == "Level 1 (Description)" and description then
-                for itemName, data in pairs(ItemDatabase) do
-                    if data.Description == description then return itemName end
-                end
-            elseif mode == "Level 2 (ImageID)" and imageId then
-                for itemName, data in pairs(ItemDatabase) do
-                    if data.ImageId == imageId then return itemName end
-                end
-            else
-                for itemName, data in pairs(ItemDatabase) do
-                    if (description and data.Description == description) or (imageId and data.ImageId == imageId) then
-                        return itemName
-                    end
-                end
+        local function getItemNameByMeshID(meshId)
+            if not meshId then return nil end
+            for itemName, data in pairs(ItemDatabase) do
+                if data.MeshID == meshId then return itemName end
             end
             return nil
         end
@@ -605,16 +586,16 @@ local TargetInfo = {
             local character = target.Character
             local equippedItem = nil
             for _, item in pairs(character:GetChildren()) do
-                if item:IsA("Tool") and not isLocked(item) then
+                if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Handle:FindFirstChildOfClass("MeshPart") then
                     equippedItem = item
                     break
                 end
             end
             if not equippedItem then return "None", nil, nil end
-            local description = getItemDescription(equippedItem)
-            local imageId = getImageId(equippedItem)
+            local meshPart = equippedItem.Handle:FindFirstChildOfClass("MeshPart")
+            local meshId = meshPart and meshPart.MeshId or ""
             local rarityName = getRarityName(equippedItem)
-            local itemName = (description or imageId) and getItemNameByDescriptionOrImageId(description, imageId) or equippedItem.Name
+            local itemName = meshId and getItemNameByMeshID(meshId) or equippedItem.Name
             return itemName, itemName, rarityName
         end
 
@@ -625,11 +606,11 @@ local TargetInfo = {
             local _, equippedItemName = getTargetEquippedItem(target)
             local items = {}
             for _, item in pairs(backpack:GetChildren()) do
-                if item:IsA("Tool") and not isLocked(item) and item.Name ~= equippedItemName then
-                    local description = getItemDescription(item)
-                    local imageId = getImageId(item)
+                if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Handle:FindFirstChildOfClass("MeshPart") and item.Name ~= equippedItemName then
+                    local meshPart = item.Handle:FindFirstChildOfClass("MeshPart")
+                    local meshId = meshPart and meshPart.MeshId or ""
                     local rarityName = getRarityName(item)
-                    local itemName = (description or imageId) and getItemNameByDescriptionOrImageId(description, imageId) or item.Name
+                    local itemName = meshId and getItemNameByMeshID(meshId) or item.Name
                     if itemName then table.insert(items, { Name = itemName, Icon = getItemIcon(itemName), Rarity = rarityName }) end
                 end
             end
@@ -1120,7 +1101,7 @@ local TargetInfo = {
                 }, 'GTargetMode')
                 UI.Sections.TargetInventory:Dropdown({
                     Name = "Analysis Mode",
-                    Options = {"Level 3 (ImageID + Description)", "Level 1 (Description)", "Level 2 (ImageID)"},
+                    Options = {"Level 1 (MeshID)"},
                     Default = TargetInventorySettings.AnalysisMode,
                     Callback = function(value)
                         TargetInventorySettings.AnalysisMode = value
@@ -1177,8 +1158,6 @@ local TargetInfo = {
 
         -- Обновление позиции круга FOV
         RunService.RenderStepped:Connect(updateFovCirclePosition)
-
-        -- Очистка при выгрузке
     end
 }
 
