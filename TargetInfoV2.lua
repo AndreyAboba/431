@@ -555,6 +555,29 @@ local TargetInfo = {
             return lockedValue == true
         end
 
+        local function getMeshIdFromHandle(handle)
+            if not handle then return nil end
+            -- Проверяем, является ли сам Handle MeshPart
+            if handle:IsA("MeshPart") then
+                print(string.format("[TargetInfo] Handle is MeshPart, MeshId: %s", handle.MeshId))
+                return handle.MeshId
+            end
+            -- Ищем MeshPart внутри Handle
+            local meshPart = handle:FindFirstChildOfClass("MeshPart")
+            if meshPart then
+                print(string.format("[TargetInfo] Found MeshPart in Handle, MeshId: %s", meshPart.MeshId))
+                return meshPart.MeshId
+            end
+            -- Ищем SpecialMesh внутри Handle
+            local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
+            if specialMesh then
+                print(string.format("[TargetInfo] Found SpecialMesh in Handle, MeshId: %s", specialMesh.MeshId))
+                return specialMesh.MeshId
+            end
+            warn("[TargetInfo] No MeshPart or SpecialMesh found in Handle")
+            return nil
+        end
+
         local function initializeItemDatabase()
             if not ItemsCache then 
                 warn("[TargetInfo] ItemsCache is nil, cannot initialize ItemDatabase")
@@ -564,17 +587,19 @@ local TargetInfo = {
                 local folder = ItemCategories[category]
                 if folder then
                     for _, item in pairs(folder:GetChildren()) do
-                        if item:IsA("Tool") and not isLocked(item) then
+                        if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") then
                             local handle = item:FindFirstChild("Handle")
-                            local meshPart = handle and handle:FindFirstChildOfClass("MeshPart")
-                            if meshPart then
+                            local meshId = getMeshIdFromHandle(handle)
+                            if meshId then
                                 ItemDatabase[item.Name] = {
-                                    MeshID = meshPart.MeshId,
+                                    MeshID = meshId,
                                     ImageId = getImageId(item)
                                 }
                             else
-                                warn(string.format("[TargetInfo] No MeshPart found for item %s in category %s", item.Name, category))
+                                warn(string.format("[TargetInfo] No MeshId found for item %s in category %s", item.Name, category))
                             end
+                        else
+                            warn(string.format("[TargetInfo] Item %s in category %s is not a Tool or has no Handle", item.Name, category))
                         end
                     end
                 else
@@ -607,7 +632,7 @@ local TargetInfo = {
             local character = target.Character
             local equippedItem = nil
             for _, item in pairs(character:GetChildren()) do
-                if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Handle:FindFirstChildOfClass("MeshPart") then
+                if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") then
                     equippedItem = item
                     break
                 end
@@ -616,13 +641,12 @@ local TargetInfo = {
                 print(string.format("[TargetInfo] getTargetEquippedItem: No equipped item found for player %s", target.Name))
                 return "None", nil, nil 
             end
-            local meshPart = equippedItem.Handle:FindFirstChildOfClass("MeshPart")
-            local meshId = meshPart and meshPart.MeshId or ""
-            print(string.format("[TargetInfo] getTargetEquippedItem: Player %s, Equipped Item: %s, MeshID: %s", target.Name, equippedItem.Name, meshId))
+            local meshId = getMeshIdFromHandle(equippedItem.Handle)
+            print(string.format("[TargetInfo] getTargetEquippedItem: Player %s, Equipped Item: %s, MeshID: %s", target.Name, equippedItem.Name, meshId or "nil"))
             local rarityName = getRarityName(equippedItem)
             local itemName = meshId and getItemNameByMeshID(meshId) or equippedItem.Name
             if not itemName then
-                warn(string.format("[TargetInfo] getTargetEquippedItem: No match found for MeshID %s of item %s", meshId, equippedItem.Name))
+                warn(string.format("[TargetInfo] getTargetEquippedItem: No match found for MeshID %s of item %s", meshId or "nil", equippedItem.Name))
             end
             return itemName, itemName, rarityName
         end
@@ -640,14 +664,13 @@ local TargetInfo = {
             local _, equippedItemName = getTargetEquippedItem(target)
             local items = {}
             for _, item in pairs(backpack:GetChildren()) do
-                if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Handle:FindFirstChildOfClass("MeshPart") and item.Name ~= equippedItemName then
-                    local meshPart = item.Handle:FindFirstChildOfClass("MeshPart")
-                    local meshId = meshPart and meshPart.MeshId or ""
-                    print(string.format("[TargetInfo] getTargetInventory: Player %s, Inventory Item: %s, MeshID: %s", target.Name, item.Name, meshId))
+                if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Name ~= equippedItemName then
+                    local meshId = getMeshIdFromHandle(item.Handle)
+                    print(string.format("[TargetInfo] getTargetInventory: Player %s, Inventory Item: %s, MeshID: %s", target.Name, item.Name, meshId or "nil"))
                     local rarityName = getRarityName(item)
                     local itemName = meshId and getItemNameByMeshID(meshId) or item.Name
                     if not itemName then
-                        warn(string.format("[TargetInfo] getTargetInventory: No match found for MeshID %s of item %s", meshId, item.Name))
+                        warn(string.format("[TargetInfo] getTargetInventory: No match found for MeshID %s of item %s", meshId or "nil", item.Name))
                     end
                     if itemName then table.insert(items, { Name = itemName, Icon = getItemIcon(itemName), Rarity = rarityName }) end
                 end
