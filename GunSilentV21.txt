@@ -439,35 +439,42 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     return validEntries > 0 and totalVelocity / totalWeight or Vector3.new(0, 0, 0)
 end
 
-local function calculateAcceleration(positionHistory)
-    if #positionHistory < 3 then return Vector3.new(0, 0, 0) end
+local function calculateZigzagPattern(positionHistory)
+    if #positionHistory < 5 then return 0, 0 end
 
-    local totalAcceleration = Vector3.new(0, 0, 0)
-    local validEntries = 0
+    local xValues = {}
+    local zValues = {}
+    local times = {}
+    for i, entry in ipairs(positionHistory) do
+        table.insert(xValues, entry.pos.X)
+        table.insert(zValues, entry.pos.Z)
+        table.insert(times, entry.time)
+    end
 
-    for i = #positionHistory - 1, math.max(1, #positionHistory - 3), -1 do
-        local currEntry = positionHistory[i + 1]
-        local prevEntry = positionHistory[i]
-        local prevPrevEntry = positionHistory[i - 1]
+    local amplitudeX = 0
+    local amplitudeZ = 0
+    local periodX = 0
+    local periodZ = 0
 
-        -- Проверяем, что все записи существуют
-        if not (currEntry and prevEntry and prevPrevEntry) then
-            continue
+    -- Простая оценка амплитуды и периода (примерный синусоидальный паттерн)
+    for i = 2, #xValues - 1 do
+        local deltaX = xValues[i] - xValues[i - 1]
+        local deltaZ = zValues[i] - zValues[i - 1]
+        local timeDelta = times[i] - times[i - 1]
+        if timeDelta > 0 and math.abs(deltaX) > 1 then
+            amplitudeX = math.max(amplitudeX, math.abs(deltaX))
+            periodX = periodX + timeDelta
         end
-
-        local timeDelta1 = currEntry.time - prevEntry.time
-        local timeDelta2 = prevEntry.time - prevPrevEntry.time
-
-        if timeDelta1 > 0 and timeDelta2 > 0 and timeDelta1 < 0.2 and timeDelta2 < 0.2 then
-            local velocity1 = (currEntry.pos - prevEntry.pos) / timeDelta1
-            local velocity2 = (prevEntry.pos - prevPrevEntry.pos) / timeDelta2
-            local acceleration = (velocity1 - velocity2) / ((timeDelta1 + timeDelta2) / 2)
-            totalAcceleration = totalAcceleration + acceleration
-            validEntries = validEntries + 1
+        if timeDelta > 0 and math.abs(deltaZ) > 1 then
+            amplitudeZ = math.max(amplitudeZ, math.abs(deltaZ))
+            periodZ = periodZ + timeDelta
         end
     end
 
-    return validEntries > 0 and totalAcceleration / validEntries or Vector3.new(0, 0, 0)
+    if #xValues > 2 then periodX = periodX / (#xValues - 2) end
+    if #zValues > 2 then periodZ = periodZ / (#zValues - 2) end
+
+    return amplitudeX, amplitudeZ, periodX, periodZ
 end
 
 local function predictTargetPositionGun(target)
@@ -519,42 +526,35 @@ local function predictTargetPositionGun(target)
         velocityMagnitude = maxSpeed
     end
 
-    -- Вычисляем ускорение для учёта поворотов
-    local acceleration = calculateAcceleration(positionHistory)
-    local accelerationMagnitude = acceleration.Magnitude
-
     -- Пинг
     local localPlayer = Players.LocalPlayer
     local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
     local ping = math.floor(rawPing * 1000 + 0.5) / 1000
 
-    -- Динамический вес дистанции
-    local distanceWeight = 0
-    if velocityMagnitude > 30 then
-        distanceWeight = math.min(1, (velocityMagnitude - 30) / 30)
-    end
-
-    -- Адаптивная формула предикта
+    -- Линейная предикция
     local basePrediction = 0.1
-    local distanceFactor = GunSilent.Settings.DistanceFactor.Value
-    local speedFactor = GunSilent.Settings.SpeedFactor.Value
-    local predictionTime = basePrediction + ping + (velocityMagnitude * distanceFactor * distanceWeight) + (distance * speedFactor)
+    local predictionTime = basePrediction + ping + (distance * GunSilent.Settings.DistanceFactor.Value) + (velocityMagnitude * GunSilent.Settings.SpeedFactor.Value)
 
-    -- Нелинейная предикция: учитываем ускорение
-    local clientPos = targetPos
-    local linearPrediction = smoothedVelocity * predictionTime
-    local nonlinearAdjustment = 0.5 * acceleration * (predictionTime * predictionTime)
-    local predictedPos = clientPos + linearPrediction + nonlinearAdjustment
-
-    -- Корректировка прицеливания
-    local inVehicle = isInVehicle(targetChar)
-    local verticalOffset = 0
-    if inVehicle and velocityMagnitude > 30 then
-        verticalOffset = -1 -- Целимся ниже для машин
-    elseif not inVehicle and velocityMagnitude <= 30 then
-        verticalOffset = -0.5 -- Небольшое понижение для пешеходов
+    -- Предикт зигзагообразных движений
+    local amplitudeX, amplitudeZ, periodX, periodZ = calculateZigzagPattern(positionHistory)
+    local zigzagOffset = Vector3.new(0, 0, 0)
+    if amplitudeX > 1 and periodX > 0 then
+        local phase = (currentTime % periodX) / periodX * 2 * math.pi
+        zigzagOffset = zigzagOffset + Vector3.new(math.sin(phase) * amplitudeX, 0, 0)
     end
-    predictedPos = predictedPos + Vector3.new(0, verticalOffset, 0)
+    if amplitudeZ > 1 and periodZ > 0 then
+        local phase = (currentTime % periodZ) / periodZ * 2 * math.pi
+        zigzagOffset = zigzagOffset + Vector3.new(0, 0, math.sin(phase) * amplitudeZ)
+    end
+
+    -- Простая предсказанная позиция
+    local clientPos = targetPos
+    local predictedPos = clientPos + (smoothedVelocity * predictionTime) + zigzagOffset
+
+    -- Корректировка для головы
+    if GunSilent.Settings.HitPart.Value == "Head" then
+        predictedPos = predictedPos + Vector3.new(0, 0.2, 0) -- Чуть выше головы
+    end
 
     -- Сглаживание позиции
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
@@ -562,7 +562,7 @@ local function predictTargetPositionGun(target)
     end
     GunSilent.State.LastPredictionPos = predictedPos
 
-    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "DistanceWeight:", distanceWeight, "Acceleration:", accelerationMagnitude, "VerticalOffset:", verticalOffset)
+    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "Zigzag X:", amplitudeX, "Zigzag Z:", amplitudeZ)
 
     return {
         position = predictedPos,
@@ -588,8 +588,8 @@ local function createHitDataGun(target)
     local prediction = predictTargetPositionGun(target)
     if not prediction.position or not prediction.direction then return nil end
 
-    -- Всегда отправляем серверу, что попадание в "Head"
-    local hitPart = targetChar:FindFirstChild("Head")
+    -- Всегда отправляем серверу выбранный HitPart
+    local hitPart = targetChar:FindFirstChild(GunSilent.Settings.HitPart.Value)
     if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
 
     local equippedTool = getEquippedGunTool()
@@ -597,7 +597,7 @@ local function createHitDataGun(target)
     local numBullets = isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 1
     local hitData = {}
 
-    -- Создаём данные только для одного хитбокса ("Head")
+    -- Создаём данные только для одного хитбокса
     for i = 1, numBullets do
         local bulletData = {}
         table.insert(bulletData, {
