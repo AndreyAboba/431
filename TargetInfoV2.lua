@@ -11,15 +11,15 @@ local TargetInfo = {
         -- Настройки для TargetHud
         local TargetHud = {
             Settings = {
-                Enabled = { Value = false, Default = false },
-                Preview = { Value = false, Default = false },
-                AvatarPulseDuration = { Value = 0.4, Default = 0.4 },
-                DamageAnimationCooldown = { Value = 0.5, Default = 0.5 },
-                OrbsEnabled = { Value = true, Default = true },
-                OrbCount = { Value = 6, Default = 6 },
-                OrbLifetime = { Value = 1.5, Default = 1.5 },
-                OrbFadeDuration = { Value = 0.9, Default = 0.9 },
-                OrbMoveDistance = { Value = 50, Default = 50 }
+                Enabled = {Value = false, Default = false},
+                Preview = {Value = false, Default = false},
+                AvatarPulseDuration = {Value = 0.4, Default = 0.4},
+                DamageAnimationCooldown = {Value = 0.5, Default = 0.5},
+                OrbsEnabled = {Value = true, Default = true},
+                OrbCount = {Value = 6, Default = 6},
+                OrbLifetime = {Value = 1.5, Default = 1.5},
+                OrbFadeDuration = {Value = 0.9, Default = 0.9},
+                OrbMoveDistance = {Value = 50, Default = 50}
             },
             State = {
                 CurrentTarget = nil,
@@ -27,7 +27,7 @@ local TargetInfo = {
                 PreviousHealth = nil,
                 LastDamageAnimationTime = 0,
                 LastUpdateTime = 0,
-                UpdateInterval = 0.25
+                UpdateInterval = 0.5 -- Увеличено для оптимизации
             }
         }
 
@@ -40,13 +40,13 @@ local TargetInfo = {
             AnalysisMode = "Level 1 (MeshID)",
             Enabled = false,
             AppearAnim = true,
-            FOV = { Value = 100, Default = 100 },
-            ShowCircle = { Value = false, Default = false },
-            CircleMethod = { Value = "Middle", Default = "Middle" },
-            CircleGradient = { Value = false, Default = false },
+            FOV = {Value = 100, Default = 100},
+            ShowCircle = {Value = false, Default = false},
+            CircleMethod = {Value = "Middle", Default = "Middle"},
+            CircleGradient = {Value = false, Default = false},
             LastTarget = nil,
             LastUpdateTime = 0,
-            UpdateInterval = 0.5,
+            UpdateInterval = 1, -- Увеличено для оптимизации
             LastFovUpdateTime = 0,
             FovUpdateInterval = 1/30,
             LastMousePosition = nil,
@@ -62,6 +62,7 @@ local TargetInfo = {
             consumable = ItemsCache:WaitForChild("consumable", 5),
             misc = ItemsCache:WaitForChild("misc", 5)
         } or {}
+        local camera = Workspace.CurrentCamera
 
         -- База данных предметов и кэши
         local ItemDatabase = {}
@@ -313,20 +314,13 @@ local TargetInfo = {
 
         -- Функции TargetHud
         local function UpdatePlayerIcon(target)
-            if not target then
-                playerIcon.Image = ""
-                playerIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
-                playerIcon.Size = UDim2.new(0, 40, 0, 40)
-                TargetHud.State.CurrentThumbnail = nil
-                return
-            end
-            if TargetHud.State.CurrentThumbnail and TargetHud.State.CurrentThumbnail.UserId == target.UserId then return end
+            if not target or (TargetHud.State.CurrentThumbnail and TargetHud.State.CurrentThumbnail.UserId == target.UserId) then return end
             local success, thumbnailUrl = pcall(function()
                 return Players:GetUserThumbnailAsync(target.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
             end)
             if success and thumbnailUrl then
                 playerIcon.Image = thumbnailUrl
-                TargetHud.State.CurrentThumbnail = { UserId = target.UserId, Url = thumbnailUrl }
+                TargetHud.State.CurrentThumbnail = {UserId = target.UserId, Url = thumbnailUrl}
             else
                 playerIcon.Image = ""
                 TargetHud.State.CurrentThumbnail = nil
@@ -338,9 +332,8 @@ local TargetInfo = {
             local green = Color3.fromRGB(0, 255, 0)
             local yellow = Color3.fromRGB(255, 255, 0)
             local red = Color3.fromRGB(255, 0, 0)
-            local color = healthPercent > 0.5 and green:Lerp(yellow, 1 - (healthPercent - 0.5) / 0.5)
+            healthBarFill.BackgroundColor3 = healthPercent > 0.5 and green:Lerp(yellow, 1 - (healthPercent - 0.5) / 0.5)
                 or yellow:Lerp(red, 1 - healthPercent / 0.5)
-            healthBarFill.BackgroundColor3 = color
         end
 
         local function CreateOrb()
@@ -370,42 +363,25 @@ local TargetInfo = {
             local moveY = math.sin(angle) * TargetHud.Settings.OrbMoveDistance.Value
             local targetPosition = UDim2.new(0.5, -4 + moveX, 0.5, -4 + moveY)
             local tweenInfo = TweenInfo.new(TargetHud.Settings.OrbLifetime.Value, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            TweenService:Create(orb, tweenInfo, {
-                Size = UDim2.new(0, 0, 0, 0),
-                Position = targetPosition,
-                BackgroundTransparency = 1
-            }):Play()
-            task.delay(TargetHud.Settings.OrbFadeDuration.Value, function()
-                orb:Destroy()
-            end)
+            TweenService:Create(orb, tweenInfo, {Size = UDim2.new(0, 0, 0, 0), Position = targetPosition, BackgroundTransparency = 1}):Play()
+            task.delay(TargetHud.Settings.OrbFadeDuration.Value, function() orb:Destroy() end)
         end
 
         local function PlayDamageAnimation()
-            if not TargetHud.State.CurrentTarget or tick() - TargetHud.State.LastDamageAnimationTime < TargetHud.Settings.DamageAnimationCooldown.Value then
-                return
-            end
+            if not TargetHud.State.CurrentTarget or tick() - TargetHud.State.LastDamageAnimationTime < TargetHud.Settings.DamageAnimationCooldown.Value then return end
             TargetHud.State.LastDamageAnimationTime = tick()
             local redColor = Color3.fromRGB(200, 0, 0)
             local originalColor = Color3.fromRGB(255, 255, 255)
             local originalSize = UDim2.new(0, 40, 0, 40)
             local pulseSize = UDim2.new(0, 44, 0, 44)
-            TweenService:Create(
-                playerIcon,
-                TweenInfo.new(TargetHud.Settings.AvatarPulseDuration.Value, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                { ImageColor3 = redColor, Size = pulseSize }
-            ):Play()
+            TweenService:Create(playerIcon, TweenInfo.new(TargetHud.Settings.AvatarPulseDuration.Value, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {ImageColor3 = redColor, Size = pulseSize}):Play()
             if TargetHud.Settings.OrbsEnabled.Value then
-                local orbCount = math.min(TargetHud.Settings.OrbCount.Value, 10)
-                for i = 1, orbCount do
-                    AnimateOrb(CreateOrb())
-                end
+                for _ = 1, math.min(TargetHud.Settings.OrbCount.Value, 10) do AnimateOrb(CreateOrb()) end
             end
             task.delay(TargetHud.Settings.AvatarPulseDuration.Value, function()
-                TweenService:Create(
-                    playerIcon,
-                    TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-                    { ImageColor3 = originalColor, Size = originalSize }
-                ):Play()
+                TweenService:Create(playerIcon, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                    {ImageColor3 = originalColor, Size = originalSize}):Play()
             end)
         end
 
@@ -421,7 +397,7 @@ local TargetInfo = {
                 healthLabel.Visible = true
                 healthBarBackground.Visible = true
                 healthBarFill.Visible = true
-                local target = TargetHud.State.CurrentTarget
+                local target = TargetHud.State.CurrentTarget or Core.PlayerData.LocalPlayer
                 if target and target.Character and target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.Health > 0 then
                     local humanoid = target.Character.Humanoid
                     nameLabel.Text = target.Name
@@ -452,9 +428,7 @@ local TargetInfo = {
                 return
             end
             local currentTime = tick()
-            if currentTime - TargetHud.State.LastUpdateTime < TargetHud.State.UpdateInterval then
-                return
-            end
+            if currentTime - TargetHud.State.LastUpdateTime < TargetHud.State.UpdateInterval then return end
             TargetHud.State.LastUpdateTime = currentTime
             local target = TargetHud.Settings.Preview.Value and (TargetHud.State.CurrentTarget or Core.PlayerData.LocalPlayer)
                 or Core.GunSilentTarget.CurrentTarget
@@ -478,17 +452,13 @@ local TargetInfo = {
             healthBarFill.Size = UDim2.new(health / maxHealth, 0, 1, 0)
             UpdateHealthBarColor(health, maxHealth)
             UpdatePlayerIcon(target)
-            if TargetHud.State.PreviousHealth and health < TargetHud.State.PreviousHealth then
-                PlayDamageAnimation()
-            end
+            if TargetHud.State.PreviousHealth and health < TargetHud.State.PreviousHealth then PlayDamageAnimation() end
             TargetHud.State.PreviousHealth = health
             TargetHud.State.CurrentTarget = target
         end
 
         -- Перетаскивание для TargetHud
-        local hudDragging = false
-        local hudDragStart = nil
-        local hudStartPos = nil
+        local hudDragging, hudDragStart, hudStartPos = false, nil, nil
         UserInputService.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 and hudFrame.Visible then
                 local mousePos = UserInputService:GetMouseLocation()
@@ -510,15 +480,12 @@ local TargetInfo = {
             end
         end)
         UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                hudDragging = false
-            end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then hudDragging = false end
         end)
 
         -- Функции TargetInventory
         local function getItemIcon(itemName)
-            if not IconCache[itemName] then
-                if not ItemsCache then return "" end
+            if not IconCache[itemName] and ItemsCache then
                 for category, folder in pairs(ItemCategories) do
                     if folder and folder:FindFirstChild(itemName) then
                         IconCache[itemName] = ({
@@ -531,15 +498,14 @@ local TargetInfo = {
                         break
                     end
                 end
-                if not IconCache[itemName] then IconCache[itemName] = "" end
+                IconCache[itemName] = IconCache[itemName] or ""
             end
             return IconCache[itemName]
         end
 
         local function getImageId(item)
             local imageObj = item:FindFirstChild("ImageID") or item:FindFirstChild("imageID")
-            if imageObj and imageObj:IsA("StringValue") then return imageObj.Value end
-            return item:GetAttribute("ImageID") or item:GetAttribute("imageID") or ""
+            return (imageObj and imageObj:IsA("StringValue") and imageObj.Value) or item:GetAttribute("ImageID") or item:GetAttribute("imageID") or ""
         end
 
         local function getRarityName(item)
@@ -551,38 +517,21 @@ local TargetInfo = {
         end
 
         local function isLocked(item)
-            local lockedValue = item:GetAttribute("Locked")
-            return lockedValue == true
+            return item:GetAttribute("Locked") == true
         end
 
         local function getMeshIdFromHandle(handle)
             if not handle then return nil end
-            -- Проверяем, является ли сам Handle MeshPart
-            if handle:IsA("MeshPart") then
-                print(string.format("[TargetInfo] Handle is MeshPart, MeshId: %s", handle.MeshId))
-                return handle.MeshId
-            end
-            -- Ищем MeshPart внутри Handle
+            if handle:IsA("MeshPart") then return handle.MeshId end
             local meshPart = handle:FindFirstChildOfClass("MeshPart")
-            if meshPart then
-                print(string.format("[TargetInfo] Found MeshPart in Handle, MeshId: %s", meshPart.MeshId))
-                return meshPart.MeshId
-            end
-            -- Ищем SpecialMesh внутри Handle
+            if meshPart then return meshPart.MeshId end
             local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
-            if specialMesh then
-                print(string.format("[TargetInfo] Found SpecialMesh in Handle, MeshId: %s", specialMesh.MeshId))
-                return specialMesh.MeshId
-            end
-            warn("[TargetInfo] No MeshPart or SpecialMesh found in Handle")
+            if specialMesh then return specialMesh.MeshId end
             return nil
         end
 
         local function initializeItemDatabase()
-            if not ItemsCache then 
-                warn("[TargetInfo] ItemsCache is nil, cannot initialize ItemDatabase")
-                return 
-            end
+            if not ItemsCache then return end
             for _, category in pairs({"gun", "melee", "throwable", "consumable", "misc"}) do
                 local folder = ItemCategories[category]
                 if folder then
@@ -591,28 +540,11 @@ local TargetInfo = {
                             local handle = item:FindFirstChild("Handle")
                             local meshId = getMeshIdFromHandle(handle)
                             if meshId then
-                                ItemDatabase[item.Name] = {
-                                    MeshID = meshId,
-                                    ImageId = getImageId(item)
-                                }
-                            else
-                                warn(string.format("[TargetInfo] No MeshId found for item %s in category %s", item.Name, category))
+                                ItemDatabase[item.Name] = {MeshID = meshId, ImageId = getImageId(item)}
                             end
-                        else
-                            warn(string.format("[TargetInfo] Item %s in category %s is not a Tool or has no Handle", item.Name, category))
                         end
                     end
-                else
-                    warn(string.format("[TargetInfo] Category %s not found in ItemsCache", category))
                 end
-            end
-            -- Логирование ItemDatabase
-            print("[TargetInfo] ItemDatabase initialized:")
-            for itemName, data in pairs(ItemDatabase) do
-                print(string.format("Item: %s, MeshID: %s, ImageId: %s", itemName, data.MeshID or "nil", data.ImageId or "nil"))
-            end
-            if next(ItemDatabase) == nil then
-                warn("[TargetInfo] ItemDatabase is empty after initialization")
             end
         end
 
@@ -625,10 +557,7 @@ local TargetInfo = {
         end
 
         local function getTargetEquippedItem(target)
-            if not target or not target.Character then 
-                print("[TargetInfo] getTargetEquippedItem: Target or Character is nil")
-                return "None", nil, nil 
-            end
+            if not target or not target.Character then return "None", nil, nil end
             local character = target.Character
             local equippedItem = nil
             for _, item in pairs(character:GetChildren()) do
@@ -637,46 +566,26 @@ local TargetInfo = {
                     break
                 end
             end
-            if not equippedItem then 
-                print(string.format("[TargetInfo] getTargetEquippedItem: No equipped item found for player %s", target.Name))
-                return "None", nil, nil 
-            end
+            if not equippedItem then return "None", nil, nil end
             local meshId = getMeshIdFromHandle(equippedItem.Handle)
-            print(string.format("[TargetInfo] getTargetEquippedItem: Player %s, Equipped Item: %s, MeshID: %s", target.Name, equippedItem.Name, meshId or "nil"))
             local rarityName = getRarityName(equippedItem)
             local itemName = meshId and getItemNameByMeshID(meshId) or equippedItem.Name
-            if not itemName then
-                warn(string.format("[TargetInfo] getTargetEquippedItem: No match found for MeshID %s of item %s", meshId or "nil", equippedItem.Name))
-            end
             return itemName, itemName, rarityName
         end
 
         local function getTargetInventory(target)
-            if not target then 
-                print("[TargetInfo] getTargetInventory: Target is nil")
-                return {} 
-            end
+            if not target then return {} end
             local backpack = target:FindFirstChild("Backpack")
-            if not backpack then 
-                print(string.format("[TargetInfo] getTargetInventory: No Backpack for player %s", target.Name))
-                return {} 
-            end
+            if not backpack then return {} end
             local _, equippedItemName = getTargetEquippedItem(target)
             local items = {}
             for _, item in pairs(backpack:GetChildren()) do
                 if item:IsA("Tool") and not isLocked(item) and item:FindFirstChild("Handle") and item.Name ~= equippedItemName then
                     local meshId = getMeshIdFromHandle(item.Handle)
-                    print(string.format("[TargetInfo] getTargetInventory: Player %s, Inventory Item: %s, MeshID: %s", target.Name, item.Name, meshId or "nil"))
                     local rarityName = getRarityName(item)
                     local itemName = meshId and getItemNameByMeshID(meshId) or item.Name
-                    if not itemName then
-                        warn(string.format("[TargetInfo] getTargetInventory: No match found for MeshID %s of item %s", meshId or "nil", item.Name))
-                    end
-                    if itemName then table.insert(items, { Name = itemName, Icon = getItemIcon(itemName), Rarity = rarityName }) end
+                    if itemName then table.insert(items, {Name = itemName, Icon = getItemIcon(itemName), Rarity = rarityName}) end
                 end
-            end
-            if #items == 0 then
-                print(string.format("[TargetInfo] getTargetInventory: No matching items found in inventory for player %s", target.Name))
             end
             return items
         end
@@ -691,18 +600,6 @@ local TargetInfo = {
             end
         end
 
-        -- Инициализация кэша и обработка событий игроков
-        updateValidPlayersCache()
-        Players.PlayerAdded:Connect(function(player)
-            local localPlayer = Core.PlayerData.LocalPlayer
-            if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                ValidPlayersCache[player] = true
-            end
-        end)
-        Players.PlayerRemoving:Connect(function(player)
-            ValidPlayersCache[player] = nil
-        end)
-
         local function getNearestPlayerToMouse()
             local localPlayer = Core.PlayerData.LocalPlayer
             local localCharacter = localPlayer.Character
@@ -711,10 +608,8 @@ local TargetInfo = {
             local currentMousePos = TargetInventorySettings.LastMousePosition or UserInputService:GetMouseLocation()
             TargetInventorySettings.LastMousePosition = currentMousePos
             local referencePos = TargetInventorySettings.CircleMethod.Value == "Middle" and
-                Vector2.new(Workspace.CurrentCamera.ViewportSize.X / 2, Workspace.CurrentCamera.ViewportSize.Y / 2) or
-                currentMousePos
+                Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2) or currentMousePos
             local nearestPlayer, minDist = nil, TargetInventorySettings.FOV.Value * TargetInventorySettings.FOV.Value
-            local camera = Workspace.CurrentCamera
             for player in pairs(ValidPlayersCache) do
                 if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     local targetPos = player.Character.HumanoidRootPart.Position
@@ -734,9 +629,7 @@ local TargetInfo = {
             local character = Core.PlayerData.LocalPlayer.Character
             if not character then return false end
             for _, child in pairs(character:GetChildren()) do
-                if child:IsA("Tool") and ItemsCache and ItemCategories.gun and ItemCategories.gun:FindFirstChild(child.Name) then
-                    return true
-                end
+                if child:IsA("Tool") and ItemCategories.gun and ItemCategories.gun:FindFirstChild(child.Name) then return true end
             end
             return false
         end
@@ -746,31 +639,28 @@ local TargetInfo = {
                 invFrame.Size = UDim2.new(0, 220, 0, 160)
                 invFrame.BackgroundTransparency = 0.3
                 for _, child in pairs(invFrame:GetDescendants()) do
-                    if child:IsA("TextLabel") or child:IsA("ImageLabel") or child:IsA("Frame") then
-                        if child.Name ~= "headerFrame" and child.Name ~= "iconLabel" and child.Name ~= "titleLabel" then
-                            child.Visible = true
-                        end
+                    if (child:IsA("TextLabel") or child:IsA("ImageLabel") or child:IsA("Frame")) and
+                       child.Name ~= "headerFrame" and child.Name ~= "iconLabel" and child.Name ~= "titleLabel" then
+                        child.Visible = true
                     end
                 end
                 return
             end
             for _, child in pairs(invFrame:GetDescendants()) do
-                if child:IsA("TextLabel") or child:IsA("ImageLabel") or child:IsA("Frame") then
-                    if child.Name ~= "headerFrame" and child.Name ~= "iconLabel" and child.Name ~= "titleLabel" then
-                        child.Visible = false
-                    end
+                if (child:IsA("TextLabel") or child:IsA("ImageLabel") or child:IsA("Frame")) and
+                   child.Name ~= "headerFrame" and child.Name ~= "iconLabel" and child.Name ~= "titleLabel" then
+                    child.Visible = false
                 end
             end
             invFrame.Size = UDim2.new(0, 220 * 0.5, 0, 160 * 0.5)
             invFrame.BackgroundTransparency = 1
             local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            TweenService:Create(invFrame, tweenInfo, { Size = UDim2.new(0, 220, 0, 160), BackgroundTransparency = 0.3 }):Play()
+            TweenService:Create(invFrame, tweenInfo, {Size = UDim2.new(0, 220, 0, 160), BackgroundTransparency = 0.3}):Play()
             task.delay(0.5, function()
                 for _, child in pairs(invFrame:GetDescendants()) do
-                    if child:IsA("TextLabel") or child:IsA("ImageLabel") or child:IsA("Frame") then
-                        if child.Name ~= "headerFrame" and child.Name ~= "iconLabel" and child.Name ~= "titleLabel" then
-                            child.Visible = true
-                        end
+                    if (child:IsA("TextLabel") or child:IsA("ImageLabel") or child:IsA("Frame")) and
+                       child.Name ~= "headerFrame" and child.Name ~= "iconLabel" and child.Name ~= "titleLabel" then
+                        child.Visible = true
                     end
                 end
             end)
@@ -783,9 +673,7 @@ local TargetInfo = {
                 return
             end
             local currentTime = tick()
-            if currentTime - TargetInventorySettings.LastFovUpdateTime < TargetInventorySettings.FovUpdateInterval then
-                return
-            end
+            if currentTime - TargetInventorySettings.LastFovUpdateTime < TargetInventorySettings.FovUpdateInterval then return end
             TargetInventorySettings.LastFovUpdateTime = currentTime
             local mousePos = TargetInventorySettings.LastMousePosition or UserInputService:GetMouseLocation()
             fovCircle.Visible = true
@@ -793,12 +681,9 @@ local TargetInfo = {
             fovCircle.Position = TargetInventorySettings.CircleMethod.Value == "Middle" and
                 UDim2.new(0.5, -TargetInventorySettings.FOV.Value / 2, 0.5, -TargetInventorySettings.FOV.Value / 2) or
                 UDim2.new(0, mousePos.X - TargetInventorySettings.FOV.Value / 2, 0, mousePos.Y - TargetInventorySettings.FOV.Value / 2)
-            if TargetInventorySettings.CircleGradient.Value then
-                local t = (math.sin(currentTime * 2) + 1) / 2
-                fovCircleBorder.Color = Color3.fromRGB(255, 0, 0):Lerp(Color3.fromRGB(0, 0, 255), t)
-            else
-                fovCircleBorder.Color = Color3.fromRGB(255, 255, 255)
-            end
+            fovCircleBorder.Color = TargetInventorySettings.CircleGradient.Value and
+                Color3.fromRGB(255, 0, 0):Lerp(Color3.fromRGB(0, 0, 255), (math.sin(currentTime * 2) + 1) / 2) or
+                Color3.fromRGB(255, 255, 255)
         end
 
         local function updateTargetInventoryView()
@@ -807,22 +692,13 @@ local TargetInfo = {
                 return
             end
             local currentTime = tick()
-            if currentTime - TargetInventorySettings.LastUpdateTime < TargetInventorySettings.UpdateInterval then
-                return
-            end
+            if currentTime - TargetInventorySettings.LastUpdateTime < TargetInventorySettings.UpdateInterval then return end
             TargetInventorySettings.LastUpdateTime = currentTime
-            updateValidPlayersCache() -- Обновление кэша валидных игроков
-            local target = nil
-            if TargetInventorySettings.TargetMode == "GunSilent Target" or TargetInventorySettings.TargetMode == "All" then
-                target = Core.GunSilentTarget.CurrentTarget
-            end
-            if TargetInventorySettings.TargetMode == "Mouse" or (TargetInventorySettings.TargetMode == "All" and not target) then
-                target = getNearestPlayerToMouse()
-            end
-            if target and (not target.Character or not target.Character:FindFirstChild("Humanoid") or target.Character.Humanoid.Health <= 0) then
-                target = nil
-            end
-            local shouldBeVisible = TargetInventorySettings.AlwaysVisible or (target ~= nil)
+            updateValidPlayersCache()
+            local target = TargetInventorySettings.TargetMode == "GunSilent Target" or TargetInventorySettings.TargetMode == "All" and Core.GunSilentTarget.CurrentTarget or
+                TargetInventorySettings.TargetMode == "Mouse" or (TargetInventorySettings.TargetMode == "All" and not Core.GunSilentTarget.CurrentTarget) and getNearestPlayerToMouse()
+            if target and (not target.Character or not target.Character:FindFirstChild("Humanoid") or target.Character.Humanoid.Health <= 0) then target = nil end
+            local shouldBeVisible = TargetInventorySettings.AlwaysVisible or target ~= nil
             if shouldBeVisible and not invFrame.Visible then
                 invFrame.Visible = true
                 playAppearAnimation()
@@ -844,9 +720,7 @@ local TargetInfo = {
                 equippedIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 equippedLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
                 equippedLabel.Position = UDim2.new(0, 30, 0, 2.5)
-                for _, child in pairs(inventoryFrame:GetChildren()) do
-                    if child:IsA("Frame") then child:Destroy() end
-                end
+                for _, child in pairs(inventoryFrame:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
                 local emptyLabel = Instance.new("Frame")
                 emptyLabel.Size = UDim2.new(1, 0, 0, 25)
                 emptyLabel.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
@@ -854,11 +728,9 @@ local TargetInfo = {
                 emptyLabel.BorderSizePixel = 0
                 emptyLabel.Visible = true
                 emptyLabel.Parent = inventoryFrame
-
                 local emptyCorner = Instance.new("UICorner")
                 emptyCorner.CornerRadius = UDim.new(0, 5)
                 emptyCorner.Parent = emptyLabel
-
                 local emptyIcon = Instance.new("ImageLabel")
                 emptyIcon.Size = UDim2.new(0, 20, 0, 20)
                 emptyIcon.Position = UDim2.new(0, 5, 0, 2.5)
@@ -866,7 +738,6 @@ local TargetInfo = {
                 emptyIcon.Image = "rbxassetid://18821914323"
                 emptyIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 emptyIcon.Parent = emptyLabel
-
                 local emptyText = Instance.new("TextLabel")
                 emptyText.Size = UDim2.new(0, 170, 0, 20)
                 emptyText.Position = UDim2.new(0, 30, 0, 2.5)
@@ -893,9 +764,7 @@ local TargetInfo = {
                 equippedLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
                 equippedLabel.Position = UDim2.new(0, 30, 0, 2.5)
             end
-            for _, child in pairs(inventoryFrame:GetChildren()) do
-                if child:IsA("Frame") then child:Destroy() end
-            end
+            for _, child in pairs(inventoryFrame:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
             local inventory = getTargetInventory(target)
             if #inventory > 0 then
                 for i, item in ipairs(inventory) do
@@ -907,11 +776,9 @@ local TargetInfo = {
                     itemContainer.LayoutOrder = i
                     itemContainer.Visible = true
                     itemContainer.Parent = inventoryFrame
-
                     local itemCorner = Instance.new("UICorner")
                     itemCorner.CornerRadius = UDim.new(0, 5)
                     itemCorner.Parent = itemContainer
-
                     local itemIcon = Instance.new("ImageLabel")
                     itemIcon.Size = UDim2.new(0, 20, 0, 20)
                     itemIcon.Position = UDim2.new(0, 5, 0, 2.5)
@@ -919,7 +786,6 @@ local TargetInfo = {
                     itemIcon.Image = item.Icon
                     itemIcon.ImageColor3 = getRarityColor(item.Rarity)
                     itemIcon.Parent = itemContainer
-
                     local itemLabel = Instance.new("TextLabel")
                     itemLabel.Size = UDim2.new(0, 155, 0, 20)
                     itemLabel.Position = UDim2.new(0, 30, 0, 2.5)
@@ -940,11 +806,9 @@ local TargetInfo = {
                 emptyLabel.BorderSizePixel = 0
                 emptyLabel.Visible = true
                 emptyLabel.Parent = inventoryFrame
-
                 local emptyCorner = Instance.new("UICorner")
                 emptyCorner.CornerRadius = UDim.new(0, 5)
                 emptyCorner.Parent = emptyLabel
-
                 local emptyIcon = Instance.new("ImageLabel")
                 emptyIcon.Size = UDim2.new(0, 20, 0, 20)
                 emptyIcon.Position = UDim2.new(0, 5, 0, 2.5)
@@ -952,7 +816,6 @@ local TargetInfo = {
                 emptyIcon.Image = "rbxassetid://18821914323"
                 emptyIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 emptyIcon.Parent = emptyLabel
-
                 local emptyText = Instance.new("TextLabel")
                 emptyText.Size = UDim2.new(0, 170, 0, 20)
                 emptyText.Position = UDim2.new(0, 30, 0, 2.5)
@@ -968,9 +831,7 @@ local TargetInfo = {
         end
 
         -- Перетаскивание для TargetInventory
-        local invDragging = false
-        local invDragStart = nil
-        local invStartPos = nil
+        local invDragging, invDragStart, invStartPos = false, nil, nil
         UserInputService.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 and invFrame.Visible then
                 local mousePos = UserInputService:GetMouseLocation()
@@ -995,16 +856,14 @@ local TargetInfo = {
             end
         end)
         UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                invDragging = false
-            end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then invDragging = false end
         end)
 
         -- UI для TargetHud
         if UI.Tabs.Visuals then
-            UI.Sections.TargetHud = UI.Tabs.Visuals:Section({ Name = "Target HUD", Side = "Left" })
+            UI.Sections.TargetHud = UI.Tabs.Visuals:Section({Name = "Target HUD", Side = "Left"})
             if UI.Sections.TargetHud then
-                UI.Sections.TargetHud:Header({ Name = "Target HUD Settings" })
+                UI.Sections.TargetHud:Header({Name = "Target HUD Settings"})
                 UI.Sections.TargetHud:Toggle({
                     Name = "Enabled",
                     Default = TargetHud.Settings.Enabled.Default,
@@ -1100,9 +959,9 @@ local TargetInfo = {
             end
 
             -- UI для TargetInventory
-            UI.Sections.TargetInventory = UI.Tabs.Visuals:Section({ Name = "Target Inventory", Side = "Left" })
+            UI.Sections.TargetInventory = UI.Tabs.Visuals:Section({Name = "Target Inventory", Side = "Left"})
             if UI.Sections.TargetInventory then
-                UI.Sections.TargetInventory:Header({ Name = "Target Inventory Settings" })
+                UI.Sections.TargetInventory:Header({Name = "Target Inventory Settings"})
                 UI.Sections.TargetInventory:Toggle({
                     Name = "Enabled",
                     Default = false,
@@ -1137,9 +996,7 @@ local TargetInfo = {
                     Default = true,
                     Callback = function(value)
                         TargetInventorySettings.AlwaysVisible = value
-                        if TargetInventorySettings.Enabled then
-                            invFrame.Visible = value
-                        end
+                        if TargetInventorySettings.Enabled then invFrame.Visible = value end
                         notify("Target Inventory", "Always Visible " .. (value and "Enabled" or "Disabled"), true)
                     end
                 }, 'AlwaysVisible')
