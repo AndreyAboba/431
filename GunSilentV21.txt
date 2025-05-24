@@ -40,8 +40,8 @@ local GunSilent = {
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
         SmoothingFactor = { Value = 0.05, Default = 0.05 },
-        DistanceFactor = { Value = 0.002, Default = 0.002 },
-        SpeedFactor = { Value = 0.00005, Default = 0.00005 }
+        DistanceFactor = { Value = 0.001, Default = 0.001 }, -- Уменьшено для меньшей агрессии
+        SpeedFactor = { Value = 0.00003, Default = 0.00003 } -- Уменьшено для меньшей агрессии
     },
     State = {
         LastEventId = 0,
@@ -63,7 +63,7 @@ local GunSilent = {
         LastTargetPos = nil,
         LastPredictionPos = nil,
         LastTargetUpdate = 0,
-        TargetUpdateInterval = 0.1, -- Сократили интервал для кэширования
+        TargetUpdateInterval = 0.1,
         LastFriendsList = nil,
         BulletTrails = {},
         TrailFadeConnections = {},
@@ -415,7 +415,7 @@ local function isInVehicle(targetChar)
 end
 
 local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity end
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 3 then return clientVelocity end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
@@ -423,13 +423,12 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     local validEntries = 0
     local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
 
-    -- Фильтрация низкой скорости для оптимизации
     local minSpeedThreshold = 5
     if clientVelocity.Magnitude < minSpeedThreshold then
         return Vector3.new(0, 0, 0)
     end
 
-    for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
+    for i = #positionHistory - 1, math.max(1, #positionHistory - 3), -1 do
         local currEntry = positionHistory[i + 1]
         local prevEntry = positionHistory[i]
         local timeDelta = currEntry.time - prevEntry.time
@@ -486,7 +485,7 @@ local function predictTargetPositionGun(target)
     -- Получаем скорость с помощью резолвера
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     
-    -- Сглаживаем скорость с фиксированным альфа
+    -- Сглаживаем скорость
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.1)
     
     -- Ограничиваем скорость
@@ -502,7 +501,7 @@ local function predictTargetPositionGun(target)
     local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
     local ping = math.floor(rawPing * 1000 + 0.5) / 1000
     local basePrediction = 0.1
-    local dynamicFactor = math.clamp(velocityMagnitude / 50, 0.5, 1.5) -- Адаптация под скорость
+    local dynamicFactor = math.clamp(velocityMagnitude / 50, 0.7, 1.2) -- Ограничен диапазон для меньшей агрессии
     local predictionTime = basePrediction + ping + (distance * GunSilent.Settings.DistanceFactor.Value) * dynamicFactor + (velocityMagnitude * GunSilent.Settings.SpeedFactor.Value)
 
     -- Линейная часть: v * t
@@ -516,14 +515,14 @@ local function predictTargetPositionGun(target)
     if GunSilent.Settings.HitPart.Value == "Head" then
         local pedestrianSpeed = 20 -- Скорость пешехода (studs/s)
         if velocityMagnitude > pedestrianSpeed then
-            predictedPos = predictedPos + Vector3.new(0, 0, 0) -- Без смещения (0)
+            predictedPos = predictedPos + Vector3.new(0, 0.1, 0) -- Смещение 0.1 для быстрых целей
         else
-            predictedPos = predictedPos + Vector3.new(0, 0.2, 0) -- Смещение вверх на 0.2, если медленнее или равен
+            predictedPos = predictedPos + Vector3.new(0, 0.2, 0) -- Смещение 0.2 для пешеходов
         end
     end
 
-    -- Сглаживание позиции
-    if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
+    -- Сглаживание позиции только при значительном изменении
+    if GunSilent.State.LastPredictionPos and (predictedPos - GunSilent.State.LastPredictionPos).Magnitude > 0.5 and GunSilent.Settings.SmoothingFactor.Value > 0 then
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
     end
     GunSilent.State.LastPredictionPos = predictedPos
@@ -683,7 +682,7 @@ end
 
 local function updateVisualsGun(target)
     local currentTime = tick()
-    if currentTime - GunSilent.State.LastVisualUpdateTime < 1/15 then return end -- Ограничение до 15 fps
+    if currentTime - GunSilent.State.LastVisualUpdateTime < 0.1 then return end -- Ограничение до 10 fps
     GunSilent.State.LastVisualUpdateTime = currentTime
 
     local localRoot = GunSilent.State.LocalRoot
