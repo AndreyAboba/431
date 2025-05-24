@@ -419,7 +419,7 @@ local TargetInfo = {
             end
         end
 
-        local UpdateTargetHud = LPH_NO_VIRTUALIZE(function()
+        local function UpdateTargetHud()
             if not TargetHud.Settings.Enabled.Value then
                 UpdateHudPreview()
                 return
@@ -452,7 +452,7 @@ local TargetInfo = {
             if TargetHud.State.PreviousHealth and health < TargetHud.State.PreviousHealth then PlayDamageAnimation() end
             TargetHud.State.PreviousHealth = health
             TargetHud.State.CurrentTarget = target
-        end)
+        end
 
         -- Перетаскивание для TargetHud
         local hudDragging, hudDragStart, hudStartPos = false, nil, nil
@@ -663,7 +663,7 @@ local TargetInfo = {
             end)
         end
 
-        local updateFovCirclePosition = LPH_NO_VIRTUALIZE(function()
+        local function updateFovCirclePosition()
             if not TargetInventorySettings.Enabled or not TargetInventorySettings.ShowCircle.Value or
                not (TargetInventorySettings.TargetMode == "Mouse" or TargetInventorySettings.TargetMode == "All") then
                 fovCircle.Visible = false
@@ -681,9 +681,9 @@ local TargetInfo = {
             fovCircleBorder.Color = TargetInventorySettings.CircleGradient.Value and
                 Color3.fromRGB(255, 0, 0):Lerp(Color3.fromRGB(0, 0, 255), (math.sin(currentTime * 2) + 1) / 2) or
                 Color3.fromRGB(255, 255, 255)
-        end)
+        end
 
-        local updateTargetInventoryView = LPH_NO_VIRTUALIZE(function()
+        local function updateTargetInventoryView()
             if not TargetInventorySettings.Enabled then
                 invFrame.Visible = false
                 return
@@ -826,7 +826,7 @@ local TargetInfo = {
                 emptyText.Parent = emptyLabel
                 inventoryFrame.CanvasSize = UDim2.new(0, 0, 0, 25)
             end
-        end)
+        end
 
         -- Перетаскивание для TargetInventory
         local invDragging, invDragStart, invStartPos = false, nil, nil
@@ -1070,15 +1070,15 @@ local TargetInfo = {
         initializeItemDatabase()
 
         -- Обновление TargetInventory и TargetHud
-        RunService.Stepped:Connect(LPH_NO_VIRTUALIZE(function()
+        RunService.Stepped:Connect(function()
             if TargetHud.Settings.Enabled.Value then UpdateTargetHud() end
             if TargetInventorySettings.Enabled then updateTargetInventoryView() end
-        end))
+        end)
 
         -- Обновление позиции круга FOV
-        RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+        RunService.RenderStepped:Connect(function()
             updateFovCirclePosition()
-        end))
+        end)
     end
 }
 
