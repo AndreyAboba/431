@@ -508,7 +508,7 @@ local function predictTargetPositionGun(target)
     if GunSilent.Settings.HitPart.Value == "Head" then
         local pedestrianSpeed = 20 -- Скорость пешехода (studs/s)
         if velocityMagnitude > pedestrianSpeed then
-            predictedPos = predictedPos + Vector3.new(0, -0.2, 0) -- Смещение вниз на 0.2, если быстрее пешехода
+            predictedPos = predictedPos + Vector3.new(0, 0, 0) -- Без смещения (0)
         else
             predictedPos = predictedPos + Vector3.new(0, 0.2, 0) -- Смещение вверх на 0.2, если медленнее или равен
         end
