@@ -56,6 +56,7 @@ local GunSilent = {
         OldFireServer = nil,
         PositionHistory = {},
         SmoothedVelocity = {},
+        SmoothedAcceleration = {},
         LastVisualUpdateTime = 0,
         LastTargetPosition = {},
         LocalCharacter = nil,
@@ -82,6 +83,14 @@ local function smoothVelocity(target, newVelocity, alpha)
     local smoothed = GunSilent.State.SmoothedVelocity[target] or newVelocity
     smoothed = smoothed:Lerp(newVelocity, alpha)
     GunSilent.State.SmoothedVelocity[target] = smoothed
+    return smoothed
+end
+
+-- Сглаживание ускорения
+local function smoothAcceleration(target, newAcceleration, alpha)
+    local smoothed = GunSilent.State.SmoothedAcceleration[target] or newAcceleration
+    smoothed = smoothed:Lerp(newAcceleration, alpha)
+    GunSilent.State.SmoothedAcceleration[target] = smoothed
     return smoothed
 end
 
@@ -439,42 +448,28 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     return validEntries > 0 and totalVelocity / totalWeight or Vector3.new(0, 0, 0)
 end
 
-local function calculateZigzagPattern(positionHistory)
-    if #positionHistory < 5 then return 0, 0 end
+local function calculateAcceleration(positionHistory)
+    if #positionHistory < 3 then return Vector3.new(0, 0, 0) end
 
-    local xValues = {}
-    local zValues = {}
-    local times = {}
-    for i, entry in ipairs(positionHistory) do
-        table.insert(xValues, entry.pos.X)
-        table.insert(zValues, entry.pos.Z)
-        table.insert(times, entry.time)
-    end
+    local acceleration = Vector3.new(0, 0, 0)
+    local validEntries = 0
 
-    local amplitudeX = 0
-    local amplitudeZ = 0
-    local periodX = 0
-    local periodZ = 0
-
-    -- Простая оценка амплитуды и периода (примерный синусоидальный паттерн)
-    for i = 2, #xValues - 1 do
-        local deltaX = xValues[i] - xValues[i - 1]
-        local deltaZ = zValues[i] - zValues[i - 1]
-        local timeDelta = times[i] - times[i - 1]
-        if timeDelta > 0 and math.abs(deltaX) > 1 then
-            amplitudeX = math.max(amplitudeX, math.abs(deltaX))
-            periodX = periodX + timeDelta
-        end
-        if timeDelta > 0 and math.abs(deltaZ) > 1 then
-            amplitudeZ = math.max(amplitudeZ, math.abs(deltaZ))
-            periodZ = periodZ + timeDelta
+    for i = #positionHistory - 1, math.max(1, #positionHistory - 3), -1 do
+        local currEntry = positionHistory[i + 1]
+        local prevEntry = positionHistory[i]
+        local timeDelta = currEntry.time - prevEntry.time
+        if timeDelta > 0 and timeDelta < 0.2 then
+            local currVelocity = currEntry.velocity
+            local prevVelocity = prevEntry.velocity
+            local accel = (currVelocity - prevVelocity) / timeDelta
+            if accel.Magnitude <= 200 then -- Ограничение на ускорение
+                acceleration = acceleration + accel
+                validEntries = validEntries + 1
+            end
         end
     end
 
-    if #xValues > 2 then periodX = periodX / (#xValues - 2) end
-    if #zValues > 2 then periodZ = periodZ / (#zValues - 2) end
-
-    return amplitudeX, amplitudeZ, periodX, periodZ
+    return validEntries > 0 and acceleration / validEntries or Vector3.new(0, 0, 0)
 end
 
 local function predictTargetPositionGun(target)
@@ -526,30 +521,33 @@ local function predictTargetPositionGun(target)
         velocityMagnitude = maxSpeed
     end
 
+    -- Вычисляем ускорение и сглаживаем его
+    local rawAcceleration = calculateAcceleration(positionHistory)
+    local smoothedAcceleration = smoothAcceleration(target, rawAcceleration, 0.1)
+    
+    -- Ограничиваем ускорение
+    local maxAcceleration = 50 -- Ограничение на ускорение для плавности
+    if smoothedAcceleration.Magnitude > maxAcceleration then
+        smoothedAcceleration = smoothedAcceleration.Unit * maxAcceleration
+    end
+
     -- Пинг
     local localPlayer = Players.LocalPlayer
     local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
     local ping = math.floor(rawPing * 1000 + 0.5) / 1000
 
-    -- Линейная предикция
+    -- Нелинейная предикция с учётом ускорения
     local basePrediction = 0.1
     local predictionTime = basePrediction + ping + (distance * GunSilent.Settings.DistanceFactor.Value) + (velocityMagnitude * GunSilent.Settings.SpeedFactor.Value)
 
-    -- Предикт зигзагообразных движений
-    local amplitudeX, amplitudeZ, periodX, periodZ = calculateZigzagPattern(positionHistory)
-    local zigzagOffset = Vector3.new(0, 0, 0)
-    if amplitudeX > 1 and periodX > 0 then
-        local phase = (currentTime % periodX) / periodX * 2 * math.pi
-        zigzagOffset = zigzagOffset + Vector3.new(math.sin(phase) * amplitudeX, 0, 0)
-    end
-    if amplitudeZ > 1 and periodZ > 0 then
-        local phase = (currentTime % periodZ) / periodZ * 2 * math.pi
-        zigzagOffset = zigzagOffset + Vector3.new(0, 0, math.sin(phase) * amplitudeZ)
-    end
+    -- Линейная часть: v * t
+    local linearDisplacement = smoothedVelocity * predictionTime
+    -- Нелинейная часть: (1/2) * a * t^2
+    local nonlinearDisplacement = 0.5 * smoothedAcceleration * predictionTime * predictionTime
 
-    -- Простая предсказанная позиция
+    -- Итоговая позиция
     local clientPos = targetPos
-    local predictedPos = clientPos + (smoothedVelocity * predictionTime) + zigzagOffset
+    local predictedPos = clientPos + linearDisplacement + nonlinearDisplacement
 
     -- Корректировка для головы
     if GunSilent.Settings.HitPart.Value == "Head" then
@@ -562,7 +560,7 @@ local function predictTargetPositionGun(target)
     end
     GunSilent.State.LastPredictionPos = predictedPos
 
-    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "Zigzag X:", amplitudeX, "Zigzag Z:", amplitudeZ)
+    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "Acceleration:", smoothedAcceleration.Magnitude)
 
     return {
         position = predictedPos,
@@ -874,6 +872,7 @@ local function initializeGunSilent()
         if currentTool ~= GunSilent.State.LastTool then
             GunSilent.State.PositionHistory = {}
             GunSilent.State.SmoothedVelocity = {}
+            GunSilent.State.SmoothedAcceleration = {}
             GunSilent.State.LastTool = currentTool
         end
 
@@ -889,6 +888,7 @@ local function initializeGunSilent()
         if nearestPlayer ~= GunSilent.Core.GunSilentTarget.CurrentTarget then
             GunSilent.State.PositionHistory[nearestPlayer] = nil
             GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
+            GunSilent.State.SmoothedAcceleration[nearestPlayer] = nil
         end
         updateVisualsGun(nearestPlayer)
     end)
@@ -908,6 +908,7 @@ local function Init(UI, Core, notify)
             GunSilent.State.BaseRangeCache = {}
             GunSilent.State.PositionHistory = {}
             GunSilent.State.SmoothedVelocity = {}
+            GunSilent.State.SmoothedAcceleration = {}
             cleanupTrajectoryBeam()
         end)
         if LocalPlayer.Character then
