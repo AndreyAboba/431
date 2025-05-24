@@ -23,7 +23,7 @@ local GunSilent = {
         HitChance = { Value = 100, Default = 100 },
         ResolverEnabled = { Value = true, Default = true },
         ResolverThreshold = { Value = 0.3, Default = 0.3 },
-        PositionHistorySize = { Value = 30, Default = 30 },
+        PositionHistorySize = { Value = 20, Default = 20 },
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
@@ -63,7 +63,7 @@ local GunSilent = {
         LastTargetPos = nil,
         LastPredictionPos = nil,
         LastTargetUpdate = 0,
-        TargetUpdateInterval = 0.2,
+        TargetUpdateInterval = 0.1, -- Сократили интервал для кэширования
         LastFriendsList = nil,
         BulletTrails = {},
         TrailFadeConnections = {},
@@ -74,6 +74,8 @@ local GunSilent = {
         LastShotTime = 0,
         PendingHits = {},
         ActiveHitboxes = {},
+        CachedNearestPlayer = nil,
+        LastCacheTime = 0
     }
 }
 
@@ -347,11 +349,10 @@ end
 
 local function getNearestPlayerGun(gunRange)
     local currentTime = tick()
-    if currentTime - GunSilent.State.LastTargetUpdate < GunSilent.State.TargetUpdateInterval then
-        local target = GunSilent.Core.GunSilentTarget.CurrentTarget
-        if target and target.Character and target.Character.Humanoid and target.Character.Humanoid.Health > 0 then return target end
+    if currentTime - GunSilent.State.LastCacheTime < GunSilent.State.TargetUpdateInterval then
+        return GunSilent.State.CachedNearestPlayer
     end
-    GunSilent.State.LastTargetUpdate = currentTime
+    GunSilent.State.LastCacheTime = currentTime
 
     local friendsList = GunSilent.Core.Services.FriendsList or {}
     local friendsHash = {}
@@ -403,6 +404,7 @@ local function getNearestPlayerGun(gunRange)
 
     GunSilent.Core.GunSilentTarget.CurrentTarget = nearestPlayer
     GunSilent.State.LastFriendsList = friendsList
+    GunSilent.State.CachedNearestPlayer = nearestPlayer
     return nearestPlayer
 end
 
@@ -421,13 +423,20 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     local validEntries = 0
     local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
 
+    -- Фильтрация низкой скорости для оптимизации
+    local minSpeedThreshold = 5
+    if clientVelocity.Magnitude < minSpeedThreshold then
+        return Vector3.new(0, 0, 0)
+    end
+
     for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
         local currEntry = positionHistory[i + 1]
         local prevEntry = positionHistory[i]
         local timeDelta = currEntry.time - prevEntry.time
         if timeDelta > 0 and timeDelta < 0.2 then
             local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
-            if velocity.Magnitude <= maxSpeedLimit * 1.5 then
+            local speed = velocity.Magnitude
+            if speed <= maxSpeedLimit * 1.5 and speed >= minSpeedThreshold then
                 local weight = math.max(0.1, 1 - (currentTime - currEntry.time) * 2)
                 totalVelocity = totalVelocity + velocity * weight
                 totalWeight = totalWeight + weight
@@ -477,8 +486,8 @@ local function predictTargetPositionGun(target)
     -- Получаем скорость с помощью резолвера
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     
-    -- Сглаживаем скорость
-    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
+    -- Сглаживаем скорость с фиксированным альфа
+    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.1)
     
     -- Ограничиваем скорость
     local velocityMagnitude = smoothedVelocity.Magnitude
@@ -488,14 +497,13 @@ local function predictTargetPositionGun(target)
         velocityMagnitude = maxSpeed
     end
 
-    -- Пинг
+    -- Адаптивное время предсказания
     local localPlayer = Players.LocalPlayer
     local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
     local ping = math.floor(rawPing * 1000 + 0.5) / 1000
-
-    -- Линейная предикция
     local basePrediction = 0.1
-    local predictionTime = basePrediction + ping + (distance * GunSilent.Settings.DistanceFactor.Value) + (velocityMagnitude * GunSilent.Settings.SpeedFactor.Value)
+    local dynamicFactor = math.clamp(velocityMagnitude / 50, 0.5, 1.5) -- Адаптация под скорость
+    local predictionTime = basePrediction + ping + (distance * GunSilent.Settings.DistanceFactor.Value) * dynamicFactor + (velocityMagnitude * GunSilent.Settings.SpeedFactor.Value)
 
     -- Линейная часть: v * t
     local linearDisplacement = smoothedVelocity * predictionTime
@@ -675,7 +683,7 @@ end
 
 local function updateVisualsGun(target)
     local currentTime = tick()
-    if currentTime - GunSilent.State.LastVisualUpdateTime < 0.0345 then return end
+    if currentTime - GunSilent.State.LastVisualUpdateTime < 1/15 then return end -- Ограничение до 15 fps
     GunSilent.State.LastVisualUpdateTime = currentTime
 
     local localRoot = GunSilent.State.LocalRoot
