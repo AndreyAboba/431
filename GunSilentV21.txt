@@ -449,6 +449,12 @@ local function calculateAcceleration(positionHistory)
         local currEntry = positionHistory[i + 1]
         local prevEntry = positionHistory[i]
         local prevPrevEntry = positionHistory[i - 1]
+
+        -- Проверяем, что все записи существуют
+        if not (currEntry and prevEntry and prevPrevEntry) then
+            continue
+        end
+
         local timeDelta1 = currEntry.time - prevEntry.time
         local timeDelta2 = prevEntry.time - prevPrevEntry.time
 
@@ -546,7 +552,7 @@ local function predictTargetPositionGun(target)
     if inVehicle and velocityMagnitude > 30 then
         verticalOffset = -1 -- Целимся ниже для машин
     elseif not inVehicle and velocityMagnitude <= 30 then
-        verticalOffset = 0.5 -- Целимся выше для пешеходов
+        verticalOffset = -0.5 -- Небольшое понижение для пешеходов
     end
     predictedPos = predictedPos + Vector3.new(0, verticalOffset, 0)
 
@@ -582,36 +588,23 @@ local function createHitDataGun(target)
     local prediction = predictTargetPositionGun(target)
     if not prediction.position or not prediction.direction then return nil end
 
-    local inVehicle = isInVehicle(targetChar)
-    local primaryHitPartName = inVehicle and "UpperTorso" or GunSilent.Settings.HitPart.Value
-    local primaryHitPart = targetChar:FindFirstChild(primaryHitPartName)
-    if not primaryHitPart then primaryHitPart = targetChar:FindFirstChild("HumanoidRootPart") end
-
-    local secondaryHitPartName = primaryHitPartName == "Head" and "UpperTorso" or "Head"
-    local secondaryHitPart = targetChar:FindFirstChild(secondaryHitPartName)
+    -- Всегда отправляем серверу, что попадание в "Head"
+    local hitPart = targetChar:FindFirstChild("Head")
+    if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
 
     local equippedTool = getEquippedGunTool()
     local isShotgunWeapon = GunSilent.Settings.ShotgunSupport.Value and equippedTool and isShotgun(equippedTool)
     local numBullets = isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 1
     local hitData = {}
 
-    -- Мультихитбоксинг: для каждой пули добавляем основной и дополнительный хитбокс
+    -- Создаём данные только для одного хитбокса ("Head")
     for i = 1, numBullets do
         local bulletData = {}
-        -- Основной хитбокс
         table.insert(bulletData, {
             Normal = prediction.direction,
-            Instance = primaryHitPart,
+            Instance = hitPart,
             Position = prediction.position
         })
-        -- Дополнительный хитбокс (если есть)
-        if secondaryHitPart then
-            table.insert(bulletData, {
-                Normal = prediction.direction,
-                Instance = secondaryHitPart,
-                Position = prediction.position
-            })
-        end
         hitData[i] = bulletData
     end
 
