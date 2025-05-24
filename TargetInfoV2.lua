@@ -27,7 +27,7 @@ local TargetInfo = {
                 PreviousHealth = nil,
                 LastDamageAnimationTime = 0,
                 LastUpdateTime = 0,
-                UpdateInterval = 0.5 -- Увеличено для оптимизации
+                UpdateInterval = 0.5
             }
         }
 
@@ -46,7 +46,7 @@ local TargetInfo = {
             CircleGradient = {Value = false, Default = false},
             LastTarget = nil,
             LastUpdateTime = 0,
-            UpdateInterval = 1, -- Увеличено для оптимизации
+            UpdateInterval = 0.5,
             LastFovUpdateTime = 0,
             FovUpdateInterval = 1/30,
             LastMousePosition = nil,
@@ -696,7 +696,8 @@ local TargetInfo = {
             TargetInventorySettings.LastUpdateTime = currentTime
             updateValidPlayersCache()
             local target = TargetInventorySettings.TargetMode == "GunSilent Target" or TargetInventorySettings.TargetMode == "All" and Core.GunSilentTarget.CurrentTarget or
-                TargetInventorySettings.TargetMode == "Mouse" or (TargetInventorySettings.TargetMode == "All" and not Core.GunSilentTarget.CurrentTarget) and getNearestPlayerToMouse()
+                (TargetInventorySettings.TargetMode == "Mouse" or (TargetInventorySettings.TargetMode == "All" and not Core.GunSilentTarget.CurrentTarget)) and getNearestPlayerToMouse()
+            if target and type(target) ~= "userdata" then target = nil end
             if target and (not target.Character or not target.Character:FindFirstChild("Humanoid") or target.Character.Humanoid.Health <= 0) then target = nil end
             local shouldBeVisible = TargetInventorySettings.AlwaysVisible or target ~= nil
             if shouldBeVisible and not invFrame.Visible then
