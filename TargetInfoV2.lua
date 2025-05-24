@@ -7,7 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local TargetInfo = {
-    Init = function(UI, Core, notify)
+    Init = LPH_NO_VIRTUALIZE(function(UI, Core, notify)
         -- Настройки для TargetHud
         local TargetHud = {
             Settings = {
@@ -74,7 +74,7 @@ local TargetInfo = {
             Epic = Color3.fromRGB(186, 85, 211),
             Legendary = Color3.fromRGB(255, 215, 0)
         }
-        local ValidPlayersCache = {} -- Кэш валидных игроков
+        local ValidPlayersCache = {}
 
         -- Создание ScreenGui для TargetHud
         local hudScreenGui = Instance.new("ScreenGui")
@@ -183,7 +183,6 @@ local TargetInfo = {
         invCorner.CornerRadius = UDim.new(0, 10)
         invCorner.Parent = invFrame
 
-        -- Верхняя полоска для стиля New
         local headerFrame = Instance.new("Frame")
         headerFrame.Size = UDim2.new(1, 0, 0, 30)
         headerFrame.Position = UDim2.new(0, 0, 0, 0)
@@ -224,7 +223,6 @@ local TargetInfo = {
         placeholderFrame.Visible = false
         placeholderFrame.Parent = headerFrame
 
-        -- Текст "Target Inventory" для стиля Default
         local defaultTitleLabel = Instance.new("TextLabel")
         defaultTitleLabel.Size = UDim2.new(1, 0, 0, 20)
         defaultTitleLabel.Position = UDim2.new(0, 0, 0, 5)
@@ -294,7 +292,6 @@ local TargetInfo = {
         nickLabel.TextXAlignment = Enum.TextXAlignment.Center
         nickLabel.Parent = invFrame
 
-        -- Круг FOV для TargetInventory
         local fovCircle = Instance.new("Frame")
         fovCircle.Size = UDim2.new(0, TargetInventorySettings.FOV.Value, 0, TargetInventorySettings.FOV.Value)
         fovCircle.Position = UDim2.new(0.5, -TargetInventorySettings.FOV.Value / 2, 0.5, -TargetInventorySettings.FOV.Value / 2)
@@ -313,7 +310,7 @@ local TargetInfo = {
         fovCircleCorner.Parent = fovCircle
 
         -- Функции TargetHud
-        local function UpdatePlayerIcon(target)
+        local UpdatePlayerIcon = LPH_NO_VIRTUALIZE(function(target)
             if not target or (TargetHud.State.CurrentThumbnail and TargetHud.State.CurrentThumbnail.UserId == target.UserId) then return end
             local success, thumbnailUrl = pcall(function()
                 return Players:GetUserThumbnailAsync(target.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
@@ -325,18 +322,18 @@ local TargetInfo = {
                 playerIcon.Image = ""
                 TargetHud.State.CurrentThumbnail = nil
             end
-        end
+        end)
 
-        local function UpdateHealthBarColor(health, maxHealth)
+        local UpdateHealthBarColor = LPH_NO_VIRTUALIZE(function(health, maxHealth)
             local healthPercent = health / maxHealth
             local green = Color3.fromRGB(0, 255, 0)
             local yellow = Color3.fromRGB(255, 255, 0)
             local red = Color3.fromRGB(255, 0, 0)
             healthBarFill.BackgroundColor3 = healthPercent > 0.5 and green:Lerp(yellow, 1 - (healthPercent - 0.5) / 0.5)
                 or yellow:Lerp(red, 1 - healthPercent / 0.5)
-        end
+        end)
 
-        local function CreateOrb()
+        local CreateOrb = LPH_NO_VIRTUALIZE(function()
             local orb = Instance.new("ImageLabel")
             orb.Size = UDim2.new(0, 8, 0, 8)
             orb.BackgroundTransparency = 0
@@ -355,9 +352,9 @@ local TargetInfo = {
             orbGradient.Rotation = 45
             orbGradient.Parent = orb
             return orb
-        end
+        end)
 
-        local function AnimateOrb(orb)
+        local AnimateOrb = LPH_NO_VIRTUALIZE(function(orb)
             local angle = math.random() * 2 * math.pi
             local moveX = math.cos(angle) * TargetHud.Settings.OrbMoveDistance.Value
             local moveY = math.sin(angle) * TargetHud.Settings.OrbMoveDistance.Value
@@ -365,9 +362,9 @@ local TargetInfo = {
             local tweenInfo = TweenInfo.new(TargetHud.Settings.OrbLifetime.Value, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
             TweenService:Create(orb, tweenInfo, {Size = UDim2.new(0, 0, 0, 0), Position = targetPosition, BackgroundTransparency = 1}):Play()
             task.delay(TargetHud.Settings.OrbFadeDuration.Value, function() orb:Destroy() end)
-        end
+        end)
 
-        local function PlayDamageAnimation()
+        local PlayDamageAnimation = LPH_NO_VIRTUALIZE(function()
             if not TargetHud.State.CurrentTarget or tick() - TargetHud.State.LastDamageAnimationTime < TargetHud.Settings.DamageAnimationCooldown.Value then return end
             TargetHud.State.LastDamageAnimationTime = tick()
             local redColor = Color3.fromRGB(200, 0, 0)
@@ -383,9 +380,9 @@ local TargetInfo = {
                 TweenService:Create(playerIcon, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
                     {ImageColor3 = originalColor, Size = originalSize}):Play()
             end)
-        end
+        end)
 
-        local function UpdateHudPreview()
+        local UpdateHudPreview = LPH_NO_VIRTUALIZE(function()
             if not TargetHud.Settings.Enabled.Value then
                 hudFrame.Visible = false
                 return
@@ -420,9 +417,9 @@ local TargetInfo = {
                 healthBarBackground.Visible = false
                 healthBarFill.Visible = false
             end
-        end
+        end)
 
-        local function UpdateTargetHud()
+        local UpdateTargetHud = LPH_NO_VIRTUALIZE(function()
             if not TargetHud.Settings.Enabled.Value then
                 UpdateHudPreview()
                 return
@@ -455,11 +452,11 @@ local TargetInfo = {
             if TargetHud.State.PreviousHealth and health < TargetHud.State.PreviousHealth then PlayDamageAnimation() end
             TargetHud.State.PreviousHealth = health
             TargetHud.State.CurrentTarget = target
-        end
+        end)
 
         -- Перетаскивание для TargetHud
         local hudDragging, hudDragStart, hudStartPos = false, nil, nil
-        UserInputService.InputBegan:Connect(function(input)
+        UserInputService.InputBegan:Connect(LPH_NO_VIRTUALIZE(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 and hudFrame.Visible then
                 local mousePos = UserInputService:GetMouseLocation()
                 local hudPos = hudFrame.Position
@@ -471,20 +468,20 @@ local TargetInfo = {
                     hudStartPos = hudPos
                 end
             end
-        end)
-        UserInputService.InputChanged:Connect(function(input)
+        end))
+        UserInputService.InputChanged:Connect(LPH_NO_VIRTUALIZE(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement and hudDragging then
                 local mousePos = UserInputService:GetMouseLocation()
                 local delta = mousePos - hudDragStart
                 hudFrame.Position = UDim2.new(0, hudStartPos.X.Offset + delta.X, 0, hudStartPos.Y.Offset + delta.Y)
             end
-        end)
-        UserInputService.InputEnded:Connect(function(input)
+        end))
+        UserInputService.InputEnded:Connect(LPH_NO_VIRTUALIZE(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then hudDragging = false end
-        end)
+        end))
 
         -- Функции TargetInventory
-        local function getItemIcon(itemName)
+        local getItemIcon = LPH_NO_VIRTUALIZE(function(itemName)
             if not IconCache[itemName] and ItemsCache then
                 for category, folder in pairs(ItemCategories) do
                     if folder and folder:FindFirstChild(itemName) then
@@ -501,26 +498,26 @@ local TargetInfo = {
                 IconCache[itemName] = IconCache[itemName] or ""
             end
             return IconCache[itemName]
-        end
+        end)
 
-        local function getImageId(item)
+        local getImageId = LPH_NO_VIRTUALIZE(function(item)
             local imageObj = item:FindFirstChild("ImageID") or item:FindFirstChild("imageID")
             return (imageObj and imageObj:IsA("StringValue") and imageObj.Value) or item:GetAttribute("ImageID") or item:GetAttribute("imageID") or ""
-        end
+        end)
 
-        local function getRarityName(item)
+        local getRarityName = LPH_NO_VIRTUALIZE(function(item)
             return item:GetAttribute("RarityName") or "Common"
-        end
+        end)
 
-        local function getRarityColor(rarityName)
+        local getRarityColor = LPH_NO_VIRTUALIZE(function(rarityName)
             return RarityColors[rarityName] or RarityColors.Common
-        end
+        end)
 
-        local function isLocked(item)
+        local isLocked = LPH_NO_VIRTUALIZE(function(item)
             return item:GetAttribute("Locked") == true
-        end
+        end)
 
-        local function getMeshIdFromHandle(handle)
+        local getMeshIdFromHandle = LPH_NO_VIRTUALIZE(function(handle)
             if not handle then return nil end
             if handle:IsA("MeshPart") then return handle.MeshId end
             local meshPart = handle:FindFirstChildOfClass("MeshPart")
@@ -528,9 +525,9 @@ local TargetInfo = {
             local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
             if specialMesh then return specialMesh.MeshId end
             return nil
-        end
+        end)
 
-        local function initializeItemDatabase()
+        local initializeItemDatabase = LPH_NO_VIRTUALIZE(function()
             if not ItemsCache then return end
             for _, category in pairs({"gun", "melee", "throwable", "consumable", "misc"}) do
                 local folder = ItemCategories[category]
@@ -546,17 +543,17 @@ local TargetInfo = {
                     end
                 end
             end
-        end
+        end)
 
-        local function getItemNameByMeshID(meshId)
+        local getItemNameByMeshID = LPH_NO_VIRTUALIZE(function(meshId)
             if not meshId then return nil end
             for itemName, data in pairs(ItemDatabase) do
                 if data.MeshID == meshId then return itemName end
             end
             return nil
-        end
+        end)
 
-        local function getTargetEquippedItem(target)
+        local getTargetEquippedItem = LPH_NO_VIRTUALIZE(function(target)
             if not target or not target.Character then return "None", nil, nil end
             local character = target.Character
             local equippedItem = nil
@@ -571,9 +568,9 @@ local TargetInfo = {
             local rarityName = getRarityName(equippedItem)
             local itemName = meshId and getItemNameByMeshID(meshId) or equippedItem.Name
             return itemName, itemName, rarityName
-        end
+        end)
 
-        local function getTargetInventory(target)
+        local getTargetInventory = LPH_NO_VIRTUALIZE(function(target)
             if not target then return {} end
             local backpack = target:FindFirstChild("Backpack")
             if not backpack then return {} end
@@ -588,9 +585,9 @@ local TargetInfo = {
                 end
             end
             return items
-        end
+        end)
 
-        local function updateValidPlayersCache()
+        local updateValidPlayersCache = LPH_NO_VIRTUALIZE(function()
             ValidPlayersCache = {}
             local localPlayer = Core.PlayerData.LocalPlayer
             for _, player in pairs(Players:GetPlayers()) do
@@ -598,9 +595,9 @@ local TargetInfo = {
                     ValidPlayersCache[player] = true
                 end
             end
-        end
+        end)
 
-        local function getNearestPlayerToMouse()
+        local getNearestPlayerToMouse = LPH_NO_VIRTUALIZE(function()
             local localPlayer = Core.PlayerData.LocalPlayer
             local localCharacter = localPlayer.Character
             if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return nil end
@@ -623,18 +620,18 @@ local TargetInfo = {
                 end
             end
             return nearestPlayer
-        end
+        end)
 
-        local function isGunEquipped()
+        local isGunEquipped = LPH_NO_VIRTUALIZE(function()
             local character = Core.PlayerData.LocalPlayer.Character
             if not character then return false end
             for _, child in pairs(character:GetChildren()) do
                 if child:IsA("Tool") and ItemCategories.gun and ItemCategories.gun:FindFirstChild(child.Name) then return true end
             end
             return false
-        end
+        end)
 
-        local function playAppearAnimation()
+        local playAppearAnimation = LPH_NO_VIRTUALIZE(function()
             if not TargetInventorySettings.AppearAnim then
                 invFrame.Size = UDim2.new(0, 220, 0, 160)
                 invFrame.BackgroundTransparency = 0.3
@@ -664,9 +661,9 @@ local TargetInfo = {
                     end
                 end
             end)
-        end
+        end)
 
-        local function updateFovCirclePosition()
+        local updateFovCirclePosition = LPH_NO_VIRTUALIZE(function()
             if not TargetInventorySettings.Enabled or not TargetInventorySettings.ShowCircle.Value or
                not (TargetInventorySettings.TargetMode == "Mouse" or TargetInventorySettings.TargetMode == "All") then
                 fovCircle.Visible = false
@@ -684,9 +681,9 @@ local TargetInfo = {
             fovCircleBorder.Color = TargetInventorySettings.CircleGradient.Value and
                 Color3.fromRGB(255, 0, 0):Lerp(Color3.fromRGB(0, 0, 255), (math.sin(currentTime * 2) + 1) / 2) or
                 Color3.fromRGB(255, 255, 255)
-        end
+        end)
 
-        local function updateTargetInventoryView()
+        local updateTargetInventoryView = LPH_NO_VIRTUALIZE(function()
             if not TargetInventorySettings.Enabled then
                 invFrame.Visible = false
                 return
@@ -829,11 +826,11 @@ local TargetInfo = {
                 emptyText.Parent = emptyLabel
                 inventoryFrame.CanvasSize = UDim2.new(0, 0, 0, 25)
             end
-        end
+        end)
 
         -- Перетаскивание для TargetInventory
         local invDragging, invDragStart, invStartPos = false, nil, nil
-        UserInputService.InputBegan:Connect(function(input)
+        UserInputService.InputBegan:Connect(LPH_NO_VIRTUALIZE(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 and invFrame.Visible then
                 local mousePos = UserInputService:GetMouseLocation()
                 local invPos = invFrame.Position
@@ -845,8 +842,8 @@ local TargetInfo = {
                     invStartPos = invPos
                 end
             end
-        end)
-        UserInputService.InputChanged:Connect(function(input)
+        end))
+        UserInputService.InputChanged:Connect(LPH_NO_VIRTUALIZE(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement then
                 TargetInventorySettings.LastMousePosition = UserInputService:GetMouseLocation()
                 if invDragging then
@@ -855,10 +852,10 @@ local TargetInfo = {
                     invFrame.Position = UDim2.new(0, invStartPos.X.Offset + delta.X, 0, invStartPos.Y.Offset + delta.Y)
                 end
             end
-        end)
-        UserInputService.InputEnded:Connect(function(input)
+        end))
+        UserInputService.InputEnded:Connect(LPH_NO_VIRTUALIZE(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then invDragging = false end
-        end)
+        end))
 
         -- UI для TargetHud
         if UI.Tabs.Visuals then
@@ -868,20 +865,20 @@ local TargetInfo = {
                 UI.Sections.TargetHud:Toggle({
                     Name = "Enabled",
                     Default = TargetHud.Settings.Enabled.Default,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.Enabled.Value = value
                         notify("Target HUD", "Target HUD " .. (value and "Enabled" or "Disabled"), true)
                         UpdateHudPreview()
-                    end
+                    end)
                 }, 'TGEnabled')
                 UI.Sections.TargetHud:Toggle({
                     Name = "Preview",
                     Default = TargetHud.Settings.Preview.Default,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.Preview.Value = value
                         notify("Target HUD", "Preview " .. (value and "Enabled" or "Disabled"), true)
                         UpdateHudPreview()
-                    end
+                    end)
                 }, 'TPreview')
                 UI.Sections.TargetHud:Slider({
                     Name = "Avatar Pulse CD",
@@ -889,10 +886,10 @@ local TargetInfo = {
                     Maximum = 2,
                     Default = TargetHud.Settings.AvatarPulseDuration.Default,
                     Precision = 1,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.AvatarPulseDuration.Value = value
                         notify("Target HUD", "Avatar Pulse Duration set to: " .. value)
-                    end
+                    end)
                 }, 'TAvatarPulseCD')
                 UI.Sections.TargetHud:Slider({
                     Name = "DamageAnim Cd",
@@ -900,18 +897,18 @@ local TargetInfo = {
                     Maximum = 2,
                     Default = TargetHud.Settings.DamageAnimationCooldown.Default,
                     Precision = 1,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.DamageAnimationCooldown.Value = value
                         notify("Target HUD", "Damage Animation Cooldown set to: " .. value)
-                    end
+                    end)
                 }, 'TDamageAnimCD')
                 UI.Sections.TargetHud:Toggle({
                     Name = "Orbs Enabled",
                     Default = TargetHud.Settings.OrbsEnabled.Default,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.OrbsEnabled.Value = value
                         notify("Target HUD", "Orbs " .. (value and "Enabled" or "Disabled"), true)
-                    end
+                    end)
                 }, 'TOrbsEnabled')
                 UI.Sections.TargetHud:Slider({
                     Name = "Orb Count",
@@ -919,10 +916,10 @@ local TargetInfo = {
                     Maximum = 10,
                     Default = TargetHud.Settings.OrbCount.Default,
                     Precision = 0,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.OrbCount.Value = value
                         notify("Target HUD", "Orb Count set to: " .. value)
-                    end
+                    end)
                 }, 'TORBCount')
                 UI.Sections.TargetHud:Slider({
                     Name = "Orb Lifetime",
@@ -930,10 +927,10 @@ local TargetInfo = {
                     Maximum = 2,
                     Default = TargetHud.Settings.OrbLifetime.Default,
                     Precision = 1,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.OrbLifetime.Value = value
                         notify("Target HUD", "Orb Lifetime set to: " .. value)
-                    end
+                    end)
                 }, 'TOrbLifetime')
                 UI.Sections.TargetHud:Slider({
                     Name = "OrbFade Duration",
@@ -941,10 +938,10 @@ local TargetInfo = {
                     Maximum = 1,
                     Default = TargetHud.Settings.OrbFadeDuration.Default,
                     Precision = 1,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.OrbFadeDuration.Value = value
                         notify("Target HUD", "Orb Fade Duration set to: " .. value)
-                    end
+                    end)
                 }, 'TOrbFadeDuration')
                 UI.Sections.TargetHud:Slider({
                     Name = "Orb Move Distance",
@@ -952,10 +949,10 @@ local TargetInfo = {
                     Maximum = 120,
                     Default = TargetHud.Settings.OrbMoveDistance.Default,
                     Precision = 0,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetHud.Settings.OrbMoveDistance.Value = value
                         notify("Target HUD", "Orb Move Distance set to: " .. value)
-                    end
+                    end)
                 }, 'TOrbMoveDistance')
             end
 
@@ -966,40 +963,40 @@ local TargetInfo = {
                 UI.Sections.TargetInventory:Toggle({
                     Name = "Enabled",
                     Default = false,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.Enabled = value
                         invFrame.Visible = value and TargetInventorySettings.AlwaysVisible
                         notify("Target Inventory", "Target Inventory " .. (value and "Enabled" or "Disabled"), true)
-                    end
+                    end)
                 }, 'TEnabled')
                 UI.Sections.TargetInventory:Dropdown({
                     Name = "UI Style",
                     Options = {"Default", "New"},
                     Default = TargetInventorySettings.UIStyle,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.UIStyle = value
                         notify("Target Inventory", "UI Style set to " .. value, true)
                         headerFrame.Visible = value == "New"
                         defaultTitleLabel.Visible = value == "Default"
                         updateTargetInventoryView()
-                    end
+                    end)
                 }, 'UIStyle')
                 UI.Sections.TargetInventory:Toggle({
                     Name = "Show Nick",
                     Default = false,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.ShowNick = value
                         notify("Target Inventory", "Show Nick " .. (value and "Enabled" or "Disabled"), true)
-                    end
+                    end)
                 }, 'ShowNickT')
                 UI.Sections.TargetInventory:Toggle({
                     Name = "Always Visible",
                     Default = true,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.AlwaysVisible = value
                         if TargetInventorySettings.Enabled then invFrame.Visible = value end
                         notify("Target Inventory", "Always Visible " .. (value and "Enabled" or "Disabled"), true)
-                    end
+                    end)
                 }, 'AlwaysVisible')
                 UI.Sections.TargetInventory:Slider({
                     Name = "Distance Limit",
@@ -1007,28 +1004,28 @@ local TargetInfo = {
                     Maximum = 100,
                     Default = 0,
                     Precision = 0,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.DistanceLimit = value
                         notify("Target Inventory", "Distance Limit set to " .. value)
-                    end
+                    end)
                 }, 'TDistanceLimit')
                 UI.Sections.TargetInventory:Dropdown({
                     Name = "Target Mode",
                     Options = {"GunSilent Target", "Mouse", "All"},
                     Default = "GunSilent Target",
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.TargetMode = value
                         notify("Target Inventory", "Target Mode set to " .. value, true)
-                    end
+                    end)
                 }, 'GTargetMode')
                 UI.Sections.TargetInventory:Dropdown({
                     Name = "Analysis Mode",
                     Options = {"Level 1 (MeshID)"},
                     Default = TargetInventorySettings.AnalysisMode,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.AnalysisMode = value
                         notify("Target Inventory", "Analysis Mode set to " .. value, true)
-                    end
+                    end)
                 }, 'AnalysisMode')
                 UI.Sections.TargetInventory:Slider({
                     Name = "FOV",
@@ -1036,35 +1033,35 @@ local TargetInfo = {
                     Maximum = 500,
                     Default = TargetInventorySettings.FOV.Default,
                     Precision = 0,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.FOV.Value = value
                         notify("Target Inventory", "FOV set to: " .. value)
-                    end
+                    end)
                 }, 'TFOV')
                 UI.Sections.TargetInventory:Toggle({
                     Name = "Show FOV Circle",
                     Default = TargetInventorySettings.ShowCircle.Default,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.ShowCircle.Value = value
                         notify("Target Inventory", "FOV Circle " .. (value and "Enabled" or "Disabled"), true)
-                    end
+                    end)
                 }, 'TShowFOVCircle')
                 UI.Sections.TargetInventory:Toggle({
                     Name = "Circle Gradient",
                     Default = TargetInventorySettings.CircleGradient.Default,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.CircleGradient.Value = value
                         notify("Target Inventory", "Circle Gradient " .. (value and "Enabled" or "Disabled"), true)
-                    end
+                    end)
                 }, 'CircleTGradient')
                 UI.Sections.TargetInventory:Dropdown({
                     Name = "Circle Method",
                     Options = {"Middle", "Cursor"},
                     Default = TargetInventorySettings.CircleMethod.Default,
-                    Callback = function(value)
+                    Callback = LPH_NO_VIRTUALIZE(function(value)
                         TargetInventorySettings.CircleMethod.Value = value
                         notify("Target Inventory", "Circle Method set to: " .. value, true)
-                    end
+                    end)
                 }, 'CircleMethod')
             end
         end
@@ -1073,14 +1070,16 @@ local TargetInfo = {
         initializeItemDatabase()
 
         -- Обновление TargetInventory и TargetHud
-        RunService.Stepped:Connect(function()
+        RunService.Stepped:Connect(LPH_NO_VIRTUALIZE(function()
             if TargetHud.Settings.Enabled.Value then UpdateTargetHud() end
             if TargetInventorySettings.Enabled then updateTargetInventoryView() end
-        end)
+        end))
 
         -- Обновление позиции круга FOV
-        RunService.RenderStepped:Connect(updateFovCirclePosition)
-    end
+        RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+            updateFovCirclePosition()
+        end))
+    end)
 }
 
 return TargetInfo
