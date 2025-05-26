@@ -69,7 +69,7 @@ function Visuals.Init(UI, Core, notify)
     buttonIcon.Size = UDim2.new(0, 30, 0, 30)
     buttonIcon.Position = UDim2.new(0.5, -15, 0.5, -15)
     buttonIcon.BackgroundTransparency = 1
-    buttonIcon.Image = "rbxassetid://18821914323"
+    buttonIcon.Image = "rbxassetid://73279554401260"
     buttonIcon.Parent = buttonFrame
 
     local function emulateRightControl()
