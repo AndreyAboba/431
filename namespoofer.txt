@@ -96,7 +96,7 @@ local NameSpoofer = {
 
         -- Создание секции в UI на правой стороне
         if UI.Tabs.Visuals then
-            UI.Sections.NameSpoofer = UI.Tabs.Visuals:Section({Name = "NameSpoofer", Side = "Right"})
+            UI.Sections.NameSpoofer = UI.Tabs.Visuals:Section({Name = "Name Spoofer", Side = "Right"})
             if UI.Sections.NameSpoofer then
                 UI.Sections.NameSpoofer:Header({Name = "Name Spoofer"})
                 
