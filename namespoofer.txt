@@ -37,6 +37,7 @@ local NameSpoofer = {
                 warn("NameSpoofer: PlayerName not found in CharacterBillboardGui")
                 return
             end
+            -- Исправлено: LevelImage находится на одном уровне с PlayerName, а не внутри него
             local levelImage = billboardGui:FindFirstChild("LevelImage")
             if levelImage then
                 levelTextLabel = levelImage:FindFirstChild("LevelText")
@@ -75,6 +76,8 @@ local NameSpoofer = {
             playerNameLabel.Text = newPlayerName
             if levelTextLabel then
                 levelTextLabel.Text = newLevelName
+            else
+                warn("NameSpoofer: Cannot update LevelText, label not found")
             end
             print("NameSpoofer: Updated to PlayerName:", newPlayerName, "LevelText:", newLevelName)
         end
@@ -82,7 +85,7 @@ local NameSpoofer = {
         -- Проверка персонажа при респавне
         localPlayer.CharacterAdded:Connect(function(newCharacter)
             character = newCharacter
-            task.wait(0.5) -- Увеличил задержку для надёжности
+            task.wait(0.5) -- Задержка для надёжности
             initializeBillboardGui()
             updateBillboardGui()
         end)
