@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 
 local NameSpoofer = {
     Init = function(UI, Core, notify)
@@ -7,6 +8,7 @@ local NameSpoofer = {
         local NameSpooferSettings = {
             Enabled = false,
             UseCustom = false,
+            Animate = false,
             CustomPlayerName = "Syllinse",
             CustomLevelName = ".gg/syllinse",
             DefaultPlayerName = "Syllinse",
@@ -37,15 +39,15 @@ local NameSpoofer = {
                 warn("NameSpoofer: PlayerName not found in CharacterBillboardGui")
                 return
             end
-            -- Исправлено: LevelImage находится на одном уровне с PlayerName, а не внутри него
-            local levelImage = billboardGui:FindFirstChild("LevelImage")
+            -- Уточнённый путь: LevelImage внутри PlayerName
+            local levelImage = playerNameLabel:FindFirstChild("LevelImage")
             if levelImage then
                 levelTextLabel = levelImage:FindFirstChild("LevelText")
                 if not levelTextLabel then
                     warn("NameSpoofer: LevelText not found in LevelImage")
                 end
             else
-                warn("NameSpoofer: LevelImage not found in CharacterBillboardGui")
+                warn("NameSpoofer: LevelImage not found in PlayerName")
             end
             -- Сохранение оригинальных значений
             if playerNameLabel and not NameSpooferSettings.OriginalPlayerName then
@@ -60,7 +62,6 @@ local NameSpoofer = {
         -- Обновление текста в BillboardGui
         local function updateBillboardGui()
             if not NameSpooferSettings.Enabled or not billboardGui or not playerNameLabel then
-                -- Восстановление оригинальных значений, если функционал выключен
                 if playerNameLabel and NameSpooferSettings.OriginalPlayerName then
                     playerNameLabel.Text = NameSpooferSettings.OriginalPlayerName
                 end
@@ -70,7 +71,6 @@ local NameSpoofer = {
                 return
             end
 
-            -- Установка новых значений
             local newPlayerName = NameSpooferSettings.UseCustom and NameSpooferSettings.CustomPlayerName or NameSpooferSettings.DefaultPlayerName
             local newLevelName = NameSpooferSettings.UseCustom and NameSpooferSettings.CustomLevelName or NameSpooferSettings.DefaultLevelName
             playerNameLabel.Text = newPlayerName
@@ -82,21 +82,56 @@ local NameSpoofer = {
             print("NameSpoofer: Updated to PlayerName:", newPlayerName, "LevelText:", newLevelName)
         end
 
+        -- Анимация текста
+        local function animateText(label, originalText)
+            if not label or not NameSpooferSettings.Animate then return end
+            local steps = {}
+            for i = #originalText, 1, -1 do
+                table.insert(steps, originalText:sub(1, i))
+            end
+            for i = 2, #originalText do
+                table.insert(steps, originalText:sub(1, i))
+            end
+            local index = 1
+            while NameSpooferSettings.Animate and NameSpooferSettings.Enabled and label do
+                label.Text = steps[index]
+                index = index % #steps + 1
+                task.wait(0.2) -- Скорость анимации
+            end
+            if label then
+                label.Text = originalText
+            end
+        end
+
+        -- Запуск анимации
+        local function startAnimation()
+            if NameSpooferSettings.Animate and NameSpooferSettings.Enabled then
+                if playerNameLabel then
+                    spawn(function() animateText(playerNameLabel, playerNameLabel.Text) end)
+                end
+                if levelTextLabel then
+                    spawn(function() animateText(levelTextLabel, levelTextLabel.Text) end)
+                end
+            end
+        end
+
         -- Проверка персонажа при респавне
         localPlayer.CharacterAdded:Connect(function(newCharacter)
             character = newCharacter
-            task.wait(0.5) -- Задержка для надёжности
+            task.wait(0.5)
             initializeBillboardGui()
             updateBillboardGui()
+            startAnimation()
         end)
 
         -- Инициализация при запуске
         initializeBillboardGui()
         updateBillboardGui()
+        startAnimation()
 
         -- Создание секции в UI на правой стороне
         if UI.Tabs.Visuals then
-            UI.Sections.NameSpoofer = UI.Tabs.Visuals:Section({Name = "Name Spoofer", Side = "Right"})
+            UI.Sections.NameSpoofer = UI.Tabs.Visuals:Section({Name = "NameSpoofer", Side = "Right"})
             if UI.Sections.NameSpoofer then
                 UI.Sections.NameSpoofer:Header({Name = "Name Spoofer"})
                 
@@ -106,8 +141,9 @@ local NameSpoofer = {
                     Default = false,
                     Callback = function(value)
                         NameSpooferSettings.Enabled = value
-                        notify("NameSpoofer", "NameSpoofer " .. (value and "Enabled" or "Disabled"), true)
+                        notify("Name Spoofer", "Name Spoofer " .. (value and "Enabled" or "Disabled"), true)
                         updateBillboardGui()
+                        startAnimation()
                     end
                 }, 'NSEnabled')
 
@@ -117,8 +153,9 @@ local NameSpoofer = {
                     Default = false,
                     Callback = function(value)
                         NameSpooferSettings.UseCustom = value
-                        notify("NameSpoofer", "Custom Names " .. (value and "Enabled" or "Disabled"), true)
+                        notify("Name Spoofer", "Custom Names " .. (value and "Enabled" or "Disabled"), true)
                         updateBillboardGui()
+                        startAnimation()
                     end
                 }, 'NSCustom')
 
@@ -129,8 +166,9 @@ local NameSpoofer = {
                     Placeholder = "Enter Player Name",
                     Callback = function(value)
                         NameSpooferSettings.CustomPlayerName = value
-                        notify("NameSpoofer", "Custom Player Name set to: " .. value)
+                        notify("Name Spoofer", "Custom Player Name set to: " .. value)
                         updateBillboardGui()
+                        startAnimation()
                     end
                 }, 'NSPlayerName')
 
@@ -141,10 +179,22 @@ local NameSpoofer = {
                     Placeholder = "Enter Level Name",
                     Callback = function(value)
                         NameSpooferSettings.CustomLevelName = value
-                        notify("NameSpoofer", "Custom Level Name set to: " .. value)
+                        notify("Name Spoofer", "Custom Level Name set to: " .. value)
                         updateBillboardGui()
+                        startAnimation()
                     end
                 }, 'NSLevelName')
+
+                -- Тоггл для анимации
+                UI.Sections.NameSpoofer:Toggle({
+                    Name = "Animate",
+                    Default = false,
+                    Callback = function(value)
+                        NameSpooferSettings.Animate = value
+                        notify("Name Spoofer", "Animation " .. (value and "Enabled" or "Disabled"), true)
+                        startAnimation()
+                    end
+                }, 'NSAnimate')
             end
         end
     end
