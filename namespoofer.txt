@@ -82,24 +82,35 @@ local NameSpoofer = {
             print("NameSpoofer: Updated to PlayerName:", newPlayerName, "LevelText:", newLevelName)
         end
 
-        -- Анимация текста
-        local function animateText(label, originalText)
+        -- Анимация текста с поддержкой кастомного текста
+        local function animateText(label, getCurrentTextFunc)
             if not label or not NameSpooferSettings.Animate then return end
-            local steps = {}
-            for i = #originalText, 1, -1 do
-                table.insert(steps, originalText:sub(1, i))
-            end
-            for i = 2, #originalText do
-                table.insert(steps, originalText:sub(1, i))
-            end
-            local index = 1
             while NameSpooferSettings.Animate and NameSpooferSettings.Enabled and label do
-                label.Text = steps[index]
-                index = index % #steps + 1
-                task.wait(0.2) -- Скорость анимации
+                local originalText = getCurrentTextFunc() -- Получаем текущий текст
+                if not originalText or originalText == "" then break end
+                local steps = {}
+                -- Укорачивание текста
+                for i = #originalText, 1, -1 do
+                    table.insert(steps, originalText:sub(1, i))
+                end
+                -- Удлинение текста
+                for i = 2, #originalText do
+                    table.insert(steps, originalText:sub(1, i))
+                end
+                -- Применяем шаги анимации
+                for _, stepText in ipairs(steps) do
+                    if not NameSpooferSettings.Animate or not NameSpooferSettings.Enabled then break end
+                    label.Text = stepText
+                    task.wait(0.2) -- Скорость анимации
+                end
+                -- Задержка 2 секунды после полного цикла
+                if NameSpooferSettings.Animate and NameSpooferSettings.Enabled then
+                    label.Text = originalText
+                    task.wait(2)
+                end
             end
             if label then
-                label.Text = originalText
+                label.Text = getCurrentTextFunc()
             end
         end
 
@@ -107,10 +118,18 @@ local NameSpoofer = {
         local function startAnimation()
             if NameSpooferSettings.Animate and NameSpooferSettings.Enabled then
                 if playerNameLabel then
-                    spawn(function() animateText(playerNameLabel, playerNameLabel.Text) end)
+                    spawn(function()
+                        animateText(playerNameLabel, function()
+                            return NameSpooferSettings.UseCustom and NameSpooferSettings.CustomPlayerName or NameSpooferSettings.DefaultPlayerName
+                        end)
+                    end)
                 end
                 if levelTextLabel then
-                    spawn(function() animateText(levelTextLabel, levelTextLabel.Text) end)
+                    spawn(function()
+                        animateText(levelTextLabel, function()
+                            return NameSpooferSettings.UseCustom and NameSpooferSettings.CustomLevelName or NameSpooferSettings.DefaultLevelName
+                        end)
+                    end)
                 end
             end
         end
