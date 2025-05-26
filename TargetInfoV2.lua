@@ -252,7 +252,7 @@ local TargetInfo = {
         equippedIcon.Size = UDim2.new(0, 20, 0, 20)
         equippedIcon.Position = UDim2.new(0, 5, 0, 2.5)
         equippedIcon.BackgroundTransparency = 1
-        equippedIcon.Image = "rbxassetid://18821914323"
+        equippedIcon.Image = "rbxassetid://73279554401260"
         equippedIcon.Parent = equippedContainer
 
         local equippedLabel = Instance.new("TextLabel")
@@ -714,7 +714,7 @@ local TargetInfo = {
             end
             if not target then
                 equippedLabel.Text = " | Equipped: None"
-                equippedIcon.Image = "rbxassetid://18821914323"
+                equippedIcon.Image = "rbxassetid://73279554401260"
                 equippedIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 equippedLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
                 equippedLabel.Position = UDim2.new(0, 30, 0, 2.5)
@@ -733,7 +733,7 @@ local TargetInfo = {
                 emptyIcon.Size = UDim2.new(0, 20, 0, 20)
                 emptyIcon.Position = UDim2.new(0, 5, 0, 2.5)
                 emptyIcon.BackgroundTransparency = 1
-                emptyIcon.Image = "rbxassetid://18821914323"
+                emptyIcon.Image = "rbxassetid://73279554401260"
                 emptyIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 emptyIcon.Parent = emptyLabel
                 local emptyText = Instance.new("TextLabel")
@@ -757,7 +757,7 @@ local TargetInfo = {
                 equippedLabel.TextColor3 = getRarityColor(rarityName)
                 equippedLabel.Position = UDim2.new(0, 30, 0, 2.5)
             else
-                equippedIcon.Image = "rbxassetid://18821914323"
+                equippedIcon.Image = "rbxassetid://73279554401260"
                 equippedIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 equippedLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
                 equippedLabel.Position = UDim2.new(0, 30, 0, 2.5)
@@ -811,7 +811,7 @@ local TargetInfo = {
                 emptyIcon.Size = UDim2.new(0, 20, 0, 20)
                 emptyIcon.Position = UDim2.new(0, 5, 0, 2.5)
                 emptyIcon.BackgroundTransparency = 1
-                emptyIcon.Image = "rbxassetid://18821914323"
+                emptyIcon.Image = "rbxassetid://73279554401260"
                 emptyIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 emptyIcon.Parent = emptyLabel
                 local emptyText = Instance.new("TextLabel")
