@@ -1,0 +1,134 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local NameSpoofer = {
+    Init = function(UI, Core, notify)
+        -- Настройки NameSpoofer
+        local NameSpooferSettings = {
+            Enabled = false,
+            UseCustom = false,
+            CustomPlayerName = "Syllinse",
+            CustomLevelName = ".gg/syllinse",
+            DefaultPlayerName = "Syllinse",
+            DefaultLevelName = ".gg/syllinse",
+            OriginalPlayerName = nil,
+            OriginalLevelName = nil
+        }
+
+        -- Получение локального игрока
+        local localPlayer = Core.PlayerData.LocalPlayer
+        local character = Workspace:FindFirstChild(localPlayer.Name)
+        local billboardGui, playerNameLabel, levelTextLabel
+
+        -- Проверка и кэширование BillboardGui
+        local function initializeBillboardGui()
+            if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+            local hrp = character.HumanoidRootPart
+            billboardGui = hrp:FindFirstChild("CharacterBillboardGui")
+            if billboardGui then
+                playerNameLabel = billboardGui:FindFirstChild("PlayerName")
+                local levelImage = billboardGui:FindFirstChild("LevelImage")
+                if levelImage then
+                    levelTextLabel = levelImage:FindFirstChild("LevelText")
+                end
+                -- Сохранение оригинальных значений
+                if playerNameLabel and not NameSpooferSettings.OriginalPlayerName then
+                    NameSpooferSettings.OriginalPlayerName = playerNameLabel.Text
+                end
+                if levelTextLabel and not NameSpooferSettings.OriginalLevelName then
+                    NameSpooferSettings.OriginalLevelName = levelTextLabel.Text
+                end
+            end
+        end
+
+        -- Обновление текста в BillboardGui
+        local function updateBillboardGui()
+            if not NameSpooferSettings.Enabled or not billboardGui or not playerNameLabel or not levelTextLabel then
+                -- Восстановление оригинальных значений, если функционал выключен
+                if playerNameLabel and NameSpooferSettings.OriginalPlayerName then
+                    playerNameLabel.Text = NameSpooferSettings.OriginalPlayerName
+                end
+                if levelTextLabel and NameSpooferSettings.OriginalLevelName then
+                    levelTextLabel.Text = NameSpooferSettings.OriginalLevelName
+                end
+                return
+            end
+
+            -- Установка новых значений
+            if NameSpooferSettings.UseCustom then
+                playerNameLabel.Text = NameSpooferSettings.CustomPlayerName
+                levelTextLabel.Text = NameSpooferSettings.CustomLevelName
+            else
+                playerNameLabel.Text = NameSpooferSettings.DefaultPlayerName
+                levelTextLabel.Text = NameSpooferSettings.DefaultLevelName
+            end
+        end
+
+        -- Проверка персонажа при респавне
+        localPlayer.CharacterAdded:Connect(function(newCharacter)
+            character = newCharacter
+            task.wait(0.1) -- Даём время на загрузку HumanoidRootPart
+            initializeBillboardGui()
+            updateBillboardGui()
+        end)
+
+        -- Инициализация при запуске
+        initializeBillboardGui()
+
+        -- Создание секции в UI
+        if UI.Tabs.Visuals then
+            UI.Sections.NameSpoofer = UI.Tabs.Visuals:Section({Name = "NameSpoofer", Side = "Left"})
+            if UI.Sections.NameSpoofer then
+                UI.Sections.NameSpoofer:Header({Name = "NameSpoofer Settings"})
+                
+                -- Тоггл для включения/выключения
+                UI.Sections.NameSpoofer:Toggle({
+                    Name = "Enabled",
+                    Default = false,
+                    Callback = function(value)
+                        NameSpooferSettings.Enabled = value
+                        notify("NameSpoofer", "NameSpoofer " .. (value and "Enabled" or "Disabled"), true)
+                        updateBillboardGui()
+                    end
+                }, 'NSEnabled')
+
+                -- Тоггл для использования пользовательских значений
+                UI.Sections.NameSpoofer:Toggle({
+                    Name = "Custom",
+                    Default = false,
+                    Callback = function(value)
+                        NameSpooferSettings.UseCustom = value
+                        notify("NameSpoofer", "Custom Names " .. (value and "Enabled" or "Disabled"), true)
+                        updateBillboardGui()
+                    end
+                }, 'NSCustom')
+
+                -- Поле ввода для имени игрока
+                UI.Sections.NameSpoofer:Input({
+                    Name = "PlayerName",
+                    Default = NameSpooferSettings.CustomPlayerName,
+                    Placeholder = "Enter Player Name",
+                    Callback = function(value)
+                        NameSpooferSettings.CustomPlayerName = value
+                        notify("NameSpoofer", "Custom Player Name set to: " .. value)
+                        updateBillboardGui()
+                    end
+                }, 'NSPlayerName')
+
+                -- Поле ввода для уровня
+                UI.Sections.NameSpoofer:Input({
+                    Name = "LevelName",
+                    Default = NameSpooferSettings.CustomLevelName,
+                    Placeholder = "Enter Level Name",
+                    Callback = function(value)
+                        NameSpooferSettings.CustomLevelName = value
+                        notify("NameSpoofer", "Custom Level Name set to: " .. value)
+                        updateBillboardGui()
+                    end
+                }, 'NSLevelName')
+            end
+        end
+    end
+}
+
+return NameSpoofer
