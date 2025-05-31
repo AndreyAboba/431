@@ -437,6 +437,35 @@ local function isCharacterVisible(targetChar)
     return allPartsVisible
 end
 
+-- Функция для проверки, перевёрнута ли модель (скриптовая невидимость)
+local function isCharacterUpsideDown(targetChar)
+    if not targetChar then return false end
+
+    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return false end
+
+    -- Проверяем ориентацию: если Y-компонента LookVector отрицательна, модель перевёрнута
+    local lookVector = humanoidRootPart.CFrame.LookVector
+    return lookVector.Y < -0.5
+end
+
+-- Функция для проверки баганной модели (баг игры)
+local function isCharacterBugged(targetChar, positionHistory)
+    if not targetChar or not positionHistory or #positionHistory < 2 then return false end
+
+    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return false end
+
+    local currentPos = humanoidRootPart.Position
+    local lastPos = positionHistory[#positionHistory].pos
+    local timeDelta = tick() - positionHistory[#positionHistory].time
+
+    -- Если дистанция между текущей и последней позицией слишком велика для нормального движения
+    local maxDistance = 80 * timeDelta -- Максимальная скорость 80 studs/sec
+    local distance = (currentPos - lastPos).Magnitude
+    return distance > maxDistance * 1.5
+end
+
 -- Функция для проверки и корректировки позиции хитбокса
 local function correctHitboxPosition(targetChar, positionHistory)
     if not targetChar then return nil end
@@ -446,25 +475,58 @@ local function correctHitboxPosition(targetChar, positionHistory)
 
     local currentPos = humanoidRootPart.Position
     local lastKnownPos = positionHistory and #positionHistory > 0 and positionHistory[#positionHistory].pos or currentPos
-    local lastKnownTime = positionHistory and #positionHistory > 0 and positionHistory[#positionHistory].time or tick()
 
-    -- Проверяем, не находится ли хитбокс под землёй
-    local rayOrigin = currentPos + Vector3.new(0, 5, 0) -- Начинаем чуть выше позиции
-    local rayDirection = Vector3.new(0, -10, 0) -- Проверяем вниз
+    -- Проверяем, перевёрнута ли модель (скриптовая невидимость)
+    local isUpsideDown = isCharacterUpsideDown(targetChar)
+    -- Проверяем, баганная ли модель (баг игры)
+    local isBugged = isCharacterBugged(targetChar, positionHistory)
+    -- Проверяем видимость
+    local isVisible = isCharacterVisible(targetChar)
+
+    -- Если модель нормальная и видимая, корректировка не нужна
+    if isVisible and not isUpsideDown and not isBugged then
+        return currentPos
+    end
+
+    -- Определяем высоту земли
+    local rayOrigin = currentPos + Vector3.new(0, 5, 0)
+    local rayDirection = Vector3.new(0, -15, 0)
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {targetChar, GunSilent.State.LocalCharacter}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 
     local groundY = raycastResult and raycastResult.Position.Y or currentPos.Y
-    local isUnderGround = currentPos.Y < groundY - 2 -- Если Y ниже земли больше чем на 2 единицы
 
-    if isUnderGround or not isCharacterVisible(targetChar) then
-        -- Корректируем позицию на основе последней известной
-        local correctedY = groundY + 3 -- Предполагаемая высота HumanoidRootPart над землёй
+    -- Если модель перевёрнута (скриптовая невидимость)
+    if isUpsideDown then
+        -- Разворачиваем модель обратно и поднимаем над землёй
+        local correctedY = groundY + 4 -- Высота HumanoidRootPart над землёй (чуть выше, чтобы учесть голову)
         local correctedPos = Vector3.new(lastKnownPos.X, correctedY, lastKnownPos.Z)
 
-        -- Проверяем, нет ли препятствий между локальным игроком и скорректированной позицией
+        -- Проверяем, нет ли препятствий
+        local localRoot = GunSilent.State.LocalRoot
+        if localRoot then
+            local rayOrigin = localRoot.Position
+            local rayDirection = (correctedPos - rayOrigin).Unit * (correctedPos - rayOrigin).Magnitude
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {GunSilent.State.LocalCharacter}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+
+            if not raycastResult then
+                return correctedPos
+            end
+        end
+        return correctedPos
+    end
+
+    -- Если модель баганная или невидима (баг игры)
+    if isBugged or not isVisible then
+        -- Используем последнюю известную позицию и поднимаем над землёй
+        local correctedY = groundY + 4
+        local correctedPos = Vector3.new(lastKnownPos.X, correctedY, lastKnownPos.Z)
+
         local localRoot = GunSilent.State.LocalRoot
         if localRoot then
             local rayOrigin = localRoot.Position
@@ -490,7 +552,11 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     end
 
     local isVisible = isCharacterVisible(targetChar)
-    if not isVisible then
+    local isUpsideDown = isCharacterUpsideDown(targetChar)
+    local isBugged = isCharacterBugged(targetChar, positionHistory)
+
+    -- Если игрок невидим, перевёрнут или баганный, используем последнюю известную скорость
+    if not isVisible or isUpsideDown or isBugged then
         if #positionHistory > 0 then
             local lastKnownPos = positionHistory[#positionHistory].pos
             local lastKnownTime = positionHistory[#positionHistory].time
@@ -506,6 +572,10 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
                 local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 
                 if not raycastResult then
+                    -- Если игрок перевёрнут, инвертируем вертикальную скорость
+                    if isUpsideDown then
+                        return Vector3.new(lastKnownVelocity.X, -lastKnownVelocity.Y, lastKnownVelocity.Z)
+                    end
                     return lastKnownVelocity
                 end
             end
@@ -572,17 +642,7 @@ local function predictTargetPositionGun(target)
     local currentTime = tick()
 
     -- Сохраняем историю позиций
-    if isCharacterVisible(targetChar) then
-        positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
-    else
-        if #positionHistory > 0 then
-            positionHistory[#positionHistory + 1] = { 
-                pos = targetPos, 
-                time = currentTime, 
-                velocity = positionHistory[#positionHistory].velocity or Vector3.new(0, 0, 0) 
-            }
-        end
-    end
+    positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
     while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do 
         table.remove(positionHistory, 1) 
     end
