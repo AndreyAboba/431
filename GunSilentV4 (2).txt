@@ -47,9 +47,13 @@ local GunSilent = {
         DistanceFactor = { Value = 0.0015, Default = 0.0015 },
         SpeedFactor = { Value = 0.00003, Default = 0.00003 },
         HitVisualAnimate = { Value = false, Default = false },
-        FakeShotOriginEnabled = { Value = false, Default = false }, -- Новое: Включение FakeShotOrigin
-        FakeShotOriginOffset = { Value = 0.5, Default = 0.5 }, -- Новое: Смещение точки выстрела
-        AdvancedPredictionFactor = { Value = 0.5, Default = 0.5 } -- Новое: Учёт ускорения в предикции
+        FakeShotOriginEnabled = { Value = false, Default = false },
+        FakeShotOriginOffset = { Value = 0.5, Default = 0.5 },
+        AdvancedPredictionFactor = { Value = 0.5, Default = 0.5 },
+        FakeHitTimestampEnabled = { Value = false, Default = false }, -- Новое: Включение FakeHitTimestamp
+        FakeHitTimestampOffset = { Value = 0, Default = 0 }, -- Новое: Смещение времени выстрела
+        FakeVelocityInjectionEnabled = { Value = false, Default = false }, -- Новое: Включение FakeVelocityInjection
+        FakeVelocityInjectionFactor = { Value = 1, Default = 1 } -- Новое: Множитель искусственного ускорения
     },
     State = {
         LastEventId = 0,
@@ -223,14 +227,6 @@ local function createHitboxPart(part, color, animate)
     local smoothTween = TweenService:Create(hitbox, tweenInfo, { CFrame = part.CFrame })
     smoothTween:Play()
 
-    if animate and GunSilent.Settings.HitVisualAnimate.Value then
-        local liftHeight = 50 -- Увеличено: поднимается выше (было 25)
-        local liftDuration = 1.5 -- Ускорено: длительность анимации (было 2)
-        local liftTweenInfo = TweenInfo.new(liftDuration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
-        local liftTween = TweenService:Create(hitbox, liftTweenInfo, { Position = hitbox.Position + Vector3.new(0, liftHeight, 0) })
-        liftTween:Play()
-    end
-
     local fadeTweenInfo = TweenInfo.new(GunSilent.Settings.HitVisualFadeTime.Value, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
     local fadeTween = TweenService:Create(hitbox, fadeTweenInfo, { Transparency = 1 })
     fadeTween:Play()
@@ -266,7 +262,7 @@ local function spawnHitVisual(target, hitPosition)
 
     for _, partName in ipairs(parts) do
         local part = character:FindFirstChild(partName)
-        if part then createHitboxPart(part, GunSilent.Settings.HitVisualColor.Value, true) end
+        if part then createHitboxPart(part, GunSilent.Settings.HitVisualColor.Value, false) end
     end
 end
 
@@ -468,7 +464,7 @@ local function calculateAcceleration(positionHistory)
             local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
             local prevVelocity = i > 1 and (prevEntry.pos - positionHistory[i - 1].pos) / (prevEntry.time - positionHistory[i - 1].time) or velocity
             local acceleration = (velocity - prevVelocity) / timeDelta
-            if acceleration.Magnitude <= 200 then -- Ограничение на ускорение
+            if acceleration.Magnitude <= 200 then
                 totalAcceleration = totalAcceleration + acceleration
                 validEntries = validEntries + 1
             end
@@ -481,7 +477,7 @@ end
 local function predictTargetPositionGun(target)
     local localRoot = GunSilent.State.LocalRoot
     if not target or not target.Character or not localRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
     end
 
     local targetChar = target.Character
@@ -490,13 +486,13 @@ local function predictTargetPositionGun(target)
     if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
     local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
     if not hitPart or not targetRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
     end
 
     local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
     end
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
@@ -513,12 +509,20 @@ local function predictTargetPositionGun(target)
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     local smoothedVelocity = smoothVelocity(target, rawVelocity, GunSilent.Settings.SmoothingFactor.Value)
 
-    -- Новое: Учёт ускорения цели
+    -- Новое: FakeVelocityInjection - подделка скорости цели
+    local finalVelocity = smoothedVelocity
+    if GunSilent.Settings.FakeVelocityInjectionEnabled.Value then
+        local directionToTarget = (targetPos - myPos).Unit
+        local fakeVelocity = directionToTarget * (smoothedVelocity.Magnitude * GunSilent.Settings.FakeVelocityInjectionFactor.Value)
+        finalVelocity = smoothedVelocity + fakeVelocity
+        print("[GunSilent] FakeVelocityInjection Applied: Original Velocity = " .. tostring(smoothedVelocity) .. ", Modified Velocity = " .. tostring(finalVelocity))
+    end
+
     local acceleration = calculateAcceleration(positionHistory)
-    local velocityMagnitude = smoothedVelocity.Magnitude
+    local velocityMagnitude = finalVelocity.Magnitude
     local maxSpeed = 80
     if velocityMagnitude > maxSpeed then
-        smoothedVelocity = smoothedVelocity.Unit * maxSpeed
+        finalVelocity = finalVelocity.Unit * maxSpeed
         velocityMagnitude = maxSpeed
     end
 
@@ -542,7 +546,7 @@ local function predictTargetPositionGun(target)
     local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution
 
     local clientPos = targetPos
-    local predictedPos = clientPos + smoothedVelocity * predictionTime + (0.5 * acceleration * predictionTime * predictionTime * advancedPredictionFactor)
+    local predictedPos = clientPos + finalVelocity * predictionTime + (0.5 * acceleration * predictionTime * predictionTime * advancedPredictionFactor)
 
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
@@ -554,7 +558,7 @@ local function predictTargetPositionGun(target)
         direction = (predictedPos - myPos).Unit,
         timeToTarget = predictionTime,
         clientPosition = clientPos,
-        resolvedVelocity = smoothedVelocity
+        resolvedVelocity = finalVelocity
     }
 end
 
@@ -579,11 +583,11 @@ local function createHitDataGun(target)
     local finalPosition = prediction.position
     local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
 
-    -- Новое: FakeShotOrigin - подделка точки выстрела
+    -- FakeShotOrigin - подделка точки выстрела
     if GunSilent.Settings.FakeShotOriginEnabled.Value then
         local offsetFactor = GunSilent.Settings.FakeShotOriginOffset.Value
-        -- Смещаем точку выстрела ближе к цели
         startPos = startPos:Lerp(finalPosition, offsetFactor)
+        print("[GunSilent] FakeShotOrigin Applied: Original StartPos = " .. tostring(localRoot.Position + Vector3.new(0, 1.5, 0)) .. ", Modified StartPos = " .. tostring(startPos))
     end
 
     local equippedTool = getEquippedGunTool()
@@ -592,8 +596,16 @@ local function createHitDataGun(target)
     local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
+    -- FakeHitTimestamp - подделка временной метки
+    local timestamp = tick()
+    if GunSilent.Settings.FakeHitTimestampEnabled.Value then
+        local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
+        timestamp = timestamp + timeOffset
+        print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(tick()) .. ", Modified Timestamp = " .. tostring(timestamp))
+    end
+
     for i = 1, numBullets do
-        hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos}}
+        hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos, Timestamp = timestamp}}
     end
 
     if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and finalPosition then
@@ -1093,6 +1105,46 @@ local function Init(UI, Core, notify)
                 }, 'FakeShotOriginOffset'),
                 callback = function(value) GunSilent.Settings.FakeShotOriginOffset.Value = value end
             }
+            combatSection:Header({ Name = "FakeHitTimestamp Exploit" })
+            CombatElements.FakeHitTimestampEnabled = {
+                element = combatSection:Toggle({
+                    Name = "FakeHitTimestamp Enabled",
+                    Default = GunSilent.Settings.FakeHitTimestampEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.FakeHitTimestampEnabled.Value = value end
+                }, 'FakeHitTimestampEnabled'),
+                callback = function(value) GunSilent.Settings.FakeHitTimestampEnabled.Value = value end
+            }
+            CombatElements.FakeHitTimestampOffset = {
+                element = combatSection:Slider({
+                    Name = "FakeHitTimestamp Offset",
+                    Default = GunSilent.Settings.FakeHitTimestampOffset.Value,
+                    Minimum = -0.1,
+                    Maximum = 0.1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
+                }, 'FakeHitTimestampOffset'),
+                callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
+            }
+            combatSection:Header({ Name = "FakeVelocityInjection Exploit" })
+            CombatElements.FakeVelocityInjectionEnabled = {
+                element = combatSection:Toggle({
+                    Name = "FakeVelocityInjection Enabled",
+                    Default = GunSilent.Settings.FakeVelocityInjectionEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.FakeVelocityInjectionEnabled.Value = value end
+                }, 'FakeVelocityInjectionEnabled'),
+                callback = function(value) GunSilent.Settings.FakeVelocityInjectionEnabled.Value = value end
+            }
+            CombatElements.FakeVelocityInjectionFactor = {
+                element = combatSection:Slider({
+                    Name = "FakeVelocityInjection Factor",
+                    Default = GunSilent.Settings.FakeVelocityInjectionFactor.Value,
+                    Minimum = 0,
+                    Maximum = 2,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.FakeVelocityInjectionFactor.Value = value end
+                }, 'FakeVelocityInjectionFactor'),
+                callback = function(value) GunSilent.Settings.FakeVelocityInjectionFactor.Value = value end
+            }
             combatSection:Header({ Name = "Prediction Settings" })
             CombatElements.ResolverEnabled = {
                 element = combatSection:Toggle({
@@ -1418,6 +1470,10 @@ local function Init(UI, Core, notify)
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
                 CombatElements.FakeShotOriginEnabled.callback(CombatElements.FakeShotOriginEnabled.element:GetState())
                 CombatElements.FakeShotOriginOffset.callback(CombatElements.FakeShotOriginOffset.element:GetValue())
+                CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
+                CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
+                CombatElements.FakeVelocityInjectionEnabled.callback(CombatElements.FakeVelocityInjectionEnabled.element:GetState())
+                CombatElements.FakeVelocityInjectionFactor.callback(CombatElements.FakeVelocityInjectionFactor.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
