@@ -418,25 +418,6 @@ local function isInVehicle(targetChar)
     return false
 end
 
--- Функция для проверки видимости модели игрока
-local function isCharacterVisible(targetChar)
-    if not targetChar then return false end
-    
-    local head = targetChar:FindFirstChild("Head")
-    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
-    if not head or not humanoidRootPart then return false end
-
-    local allPartsVisible = true
-    for _, part in pairs(targetChar:GetChildren()) do
-        if part:IsA("BasePart") and part.Transparency >= 0.99 then
-            allPartsVisible = false
-            break
-        end
-    end
-
-    return allPartsVisible
-end
-
 -- Функция для проверки, перевёрнута ли модель (скриптовая невидимость)
 local function isCharacterUpsideDown(targetChar)
     if not targetChar then return false end
@@ -466,12 +447,13 @@ local function isCharacterBugged(targetChar, positionHistory)
     return distance > maxDistance * 1.5
 end
 
--- Функция для проверки и корректировки позиции хитбокса
-local function correctHitboxPosition(targetChar, positionHistory)
-    if not targetChar then return nil end
+-- Новая функция для восстановления модели игрока
+local function restorePlayerModel(player, positionHistory)
+    if not player or not player.Character then return end
 
+    local targetChar = player.Character
     local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return nil end
+    if not humanoidRootPart then return end
 
     local currentPos = humanoidRootPart.Position
     local lastKnownPos = positionHistory and #positionHistory > 0 and positionHistory[#positionHistory].pos or currentPos
@@ -480,13 +462,9 @@ local function correctHitboxPosition(targetChar, positionHistory)
     local isUpsideDown = isCharacterUpsideDown(targetChar)
     -- Проверяем, баганная ли модель (баг игры)
     local isBugged = isCharacterBugged(targetChar, positionHistory)
-    -- Проверяем видимость
-    local isVisible = isCharacterVisible(targetChar)
 
-    -- Если модель нормальная и видимая, корректировка не нужна
-    if isVisible and not isUpsideDown and not isBugged then
-        return currentPos
-    end
+    -- Если модель нормальная, ничего не делаем
+    if not isUpsideDown and not isBugged then return end
 
     -- Определяем высоту земли
     local rayOrigin = currentPos + Vector3.new(0, 5, 0)
@@ -500,94 +478,71 @@ local function correctHitboxPosition(targetChar, positionHistory)
 
     -- Если модель перевёрнута (скриптовая невидимость)
     if isUpsideDown then
-        -- Разворачиваем модель обратно и поднимаем над землёй
+        -- Разворачиваем модель обратно
+        local currentCFrame = humanoidRootPart.CFrame
+        local position = currentCFrame.Position
+        local lookVector = currentCFrame.LookVector
+        local upVector = currentCFrame.UpVector
+
+        -- Создаём новый CFrame с правильной ориентацией
+        local correctedCFrame = CFrame.new(position) * CFrame.Angles(0, math.atan2(lookVector.X, lookVector.Z), 0)
+
+        -- Поднимаем модель над землёй
         local correctedY = groundY + 4 -- Высота HumanoidRootPart над землёй (чуть выше, чтобы учесть голову)
-        local correctedPos = Vector3.new(lastKnownPos.X, correctedY, lastKnownPos.Z)
+        local correctedPos = Vector3.new(position.X, correctedY, position.Z)
+        correctedCFrame = CFrame.new(correctedPos) * (correctedCFrame - correctedCFrame.Position)
 
-        -- Проверяем, нет ли препятствий
-        local localRoot = GunSilent.State.LocalRoot
-        if localRoot then
-            local rayOrigin = localRoot.Position
-            local rayDirection = (correctedPos - rayOrigin).Unit * (correctedPos - rayOrigin).Magnitude
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {GunSilent.State.LocalCharacter}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+        -- Применяем корректировку с плавным переходом
+        local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear)
+        local tween = TweenService:Create(humanoidRootPart, tweenInfo, { CFrame = correctedCFrame })
+        tween:Play()
 
-            if not raycastResult then
-                return correctedPos
+        -- Корректируем все части тела
+        for _, part in pairs(targetChar:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= humanoidRootPart then
+                local offset = humanoidRootPart.CFrame:ToObjectSpace(part.CFrame)
+                local newCFrame = correctedCFrame:ToWorldSpace(offset)
+                local partTween = TweenService:Create(part, tweenInfo, { CFrame = newCFrame })
+                partTween:Play()
             end
         end
-        return correctedPos
     end
 
-    -- Если модель баганная или невидима (баг игры)
-    if isBugged or not isVisible then
+    -- Если модель баганная (баг игры)
+    if isBugged then
         -- Используем последнюю известную позицию и поднимаем над землёй
         local correctedY = groundY + 4
         local correctedPos = Vector3.new(lastKnownPos.X, correctedY, lastKnownPos.Z)
+        local currentCFrame = humanoidRootPart.CFrame
+        local correctedCFrame = CFrame.new(correctedPos) * (currentCFrame - currentCFrame.Position)
 
-        local localRoot = GunSilent.State.LocalRoot
-        if localRoot then
-            local rayOrigin = localRoot.Position
-            local rayDirection = (correctedPos - rayOrigin).Unit * (correctedPos - rayOrigin).Magnitude
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {GunSilent.State.LocalCharacter}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+        -- Применяем корректировку с плавным переходом
+        local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear)
+        local tween = TweenService:Create(humanoidRootPart, tweenInfo, { CFrame = correctedCFrame })
+        tween:Play()
 
-            if not raycastResult then
-                return correctedPos
+        -- Корректируем все части тела
+        for _, part in pairs(targetChar:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= humanoidRootPart then
+                local offset = humanoidRootPart.CFrame:ToObjectSpace(part.CFrame)
+                local newCFrame = correctedCFrame:ToWorldSpace(offset)
+                local partTween = TweenService:Create(part, tweenInfo, { CFrame = newCFrame })
+                partTween:Play()
             end
         end
-        return correctedPos
     end
-
-    return currentPos
 end
 
-local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
+local function resolveVelocity(target, positionHistory, clientVelocity)
     if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then 
         return clientVelocity 
-    end
-
-    local isVisible = isCharacterVisible(targetChar)
-    local isUpsideDown = isCharacterUpsideDown(targetChar)
-    local isBugged = isCharacterBugged(targetChar, positionHistory)
-
-    -- Если игрок невидим, перевёрнут или баганный, используем последнюю известную скорость
-    if not isVisible or isUpsideDown or isBugged then
-        if #positionHistory > 0 then
-            local lastKnownPos = positionHistory[#positionHistory].pos
-            local lastKnownTime = positionHistory[#positionHistory].time
-            local lastKnownVelocity = positionHistory[#positionHistory].velocity or Vector3.new(0, 0, 0)
-
-            local localRoot = GunSilent.State.LocalRoot
-            if localRoot then
-                local rayOrigin = localRoot.Position
-                local rayDirection = (lastKnownPos - rayOrigin).Unit * (lastKnownPos - rayOrigin).Magnitude
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterDescendantsInstances = {GunSilent.State.LocalCharacter}
-                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-                local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-
-                if not raycastResult then
-                    -- Если игрок перевёрнут, инвертируем вертикальную скорость
-                    if isUpsideDown then
-                        return Vector3.new(lastKnownVelocity.X, -lastKnownVelocity.Y, lastKnownVelocity.Z)
-                    end
-                    return lastKnownVelocity
-                end
-            end
-        end
-        return clientVelocity
     end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
     local totalWeight = 0
     local validEntries = 0
-    local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
+    local maxSpeedLimit = isInVehicle(target.Character) and 150 or 80
 
     for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
         local currEntry = positionHistory[i + 1]
@@ -622,15 +577,7 @@ local function predictTargetPositionGun(target)
         return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
     end
 
-    -- Корректируем позицию хитбокса
-    local positionHistory = GunSilent.State.PositionHistory[target] or {}
-    local correctedPos = correctHitboxPosition(targetChar, positionHistory)
-    if not correctedPos then
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil }
-    end
-
-    -- Используем скорректированную позицию как текущую
-    local targetPos = correctedPos
+    local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then 
         return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
@@ -639,6 +586,7 @@ local function predictTargetPositionGun(target)
 
     -- Дистанция и история позиций
     local distance = (targetPos - myPos).Magnitude
+    local positionHistory = GunSilent.State.PositionHistory[target] or {}
     local currentTime = tick()
 
     -- Сохраняем историю позиций
@@ -649,7 +597,7 @@ local function predictTargetPositionGun(target)
     GunSilent.State.PositionHistory[target] = positionHistory
 
     -- Получаем скорость с помощью резолвера
-    local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
+    local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity)
     
     -- Сглаживаем скорость
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
@@ -1018,6 +966,15 @@ local function initializeGunSilent()
             GunSilent.State.PositionHistory[nearestPlayer] = nil
             GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
         end
+
+        -- Применяем восстановление модели ко всем игрокам
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= Players.LocalPlayer and player.Character then
+                local positionHistory = GunSilent.State.PositionHistory[player] or {}
+                restorePlayerModel(player, positionHistory)
+            end
+        end
+
         updateVisualsGun(nearestPlayer)
     end)
 end
