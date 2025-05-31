@@ -8,10 +8,10 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
-        -- Параметры предикции
-        BasePrediction = { Value = 0.15, Default = 0.15 }, -- Базовый предикт (секунды)
-        VelocityPredictionWeight = { Value = 0.65, Default = 0.65 }, -- Вес предсказания скорости (0-1)
-        PingCompensationFactor = { Value = 1.2, Default = 1.2 }, -- Компенсация пинга (множитель)
+        -- Новые параметры для предикции
+        BasePrediction = { Value = 0.11, Default = 0.11 }, -- Базовый предикт (секунды)
+        VelocityPredictionWeight = { Value = 0.7, Default = 0.7 }, -- Вес предсказания скорости (0-1)
+        PingCompensationFactor = { Value = 1.15, Default = 1.15 }, -- Компенсация пинга (множитель)
         SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Фактор сглаживания
 
         Enabled = { Value = false, Default = false },
@@ -46,8 +46,8 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        DistanceFactor = { Value = 0.002, Default = 0.002 },
-        SpeedFactor = { Value = 0.00005, Default = 0.00005 }
+        DistanceFactor = { Value = 0.002, Default = 0.002 }, -- Вернул обратно
+        SpeedFactor = { Value = 0.00005, Default = 0.00005 } -- Вернул обратно
     },
     State = {
         LastEventId = 0,
@@ -418,131 +418,14 @@ local function isInVehicle(targetChar)
     return false
 end
 
--- Функция для проверки, перевёрнута ли модель (скриптовая невидимость)
-local function isCharacterUpsideDown(targetChar)
-    if not targetChar then return false end
-
-    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return false end
-
-    -- Проверяем ориентацию: если Y-компонента LookVector отрицательна, модель перевёрнута
-    local lookVector = humanoidRootPart.CFrame.LookVector
-    return lookVector.Y < -0.5
-end
-
--- Функция для проверки баганной модели (баг игры)
-local function isCharacterBugged(targetChar, positionHistory)
-    if not targetChar or not positionHistory or #positionHistory < 2 then return false end
-
-    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return false end
-
-    local currentPos = humanoidRootPart.Position
-    local lastPos = positionHistory[#positionHistory].pos
-    local timeDelta = tick() - positionHistory[#positionHistory].time
-
-    -- Если дистанция между текущей и последней позицией слишком велика для нормального движения
-    local maxDistance = 80 * timeDelta -- Максимальная скорость 80 studs/sec
-    local distance = (currentPos - lastPos).Magnitude
-    return distance > maxDistance * 1.5
-end
-
--- Новая функция для восстановления модели игрока
-local function restorePlayerModel(player, positionHistory)
-    if not player or not player.Character then return end
-
-    local targetChar = player.Character
-    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return end
-
-    local currentPos = humanoidRootPart.Position
-    local lastKnownPos = positionHistory and #positionHistory > 0 and positionHistory[#positionHistory].pos or currentPos
-
-    -- Проверяем, перевёрнута ли модель (скриптовая невидимость)
-    local isUpsideDown = isCharacterUpsideDown(targetChar)
-    -- Проверяем, баганная ли модель (баг игры)
-    local isBugged = isCharacterBugged(targetChar, positionHistory)
-
-    -- Если модель нормальная, ничего не делаем
-    if not isUpsideDown and not isBugged then return end
-
-    -- Определяем высоту земли
-    local rayOrigin = currentPos + Vector3.new(0, 5, 0)
-    local rayDirection = Vector3.new(0, -15, 0)
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {targetChar, GunSilent.State.LocalCharacter}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-
-    local groundY = raycastResult and raycastResult.Position.Y or currentPos.Y
-
-    -- Если модель перевёрнута (скриптовая невидимость)
-    if isUpsideDown then
-        -- Разворачиваем модель обратно
-        local currentCFrame = humanoidRootPart.CFrame
-        local position = currentCFrame.Position
-        local lookVector = currentCFrame.LookVector
-        local upVector = currentCFrame.UpVector
-
-        -- Создаём новый CFrame с правильной ориентацией
-        local correctedCFrame = CFrame.new(position) * CFrame.Angles(0, math.atan2(lookVector.X, lookVector.Z), 0)
-
-        -- Поднимаем модель над землёй
-        local correctedY = groundY + 4 -- Высота HumanoidRootPart над землёй (чуть выше, чтобы учесть голову)
-        local correctedPos = Vector3.new(position.X, correctedY, position.Z)
-        correctedCFrame = CFrame.new(correctedPos) * (correctedCFrame - correctedCFrame.Position)
-
-        -- Применяем корректировку с плавным переходом
-        local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear)
-        local tween = TweenService:Create(humanoidRootPart, tweenInfo, { CFrame = correctedCFrame })
-        tween:Play()
-
-        -- Корректируем все части тела
-        for _, part in pairs(targetChar:GetDescendants()) do
-            if part:IsA("BasePart") and part ~= humanoidRootPart then
-                local offset = humanoidRootPart.CFrame:ToObjectSpace(part.CFrame)
-                local newCFrame = correctedCFrame:ToWorldSpace(offset)
-                local partTween = TweenService:Create(part, tweenInfo, { CFrame = newCFrame })
-                partTween:Play()
-            end
-        end
-    end
-
-    -- Если модель баганная (баг игры)
-    if isBugged then
-        -- Используем последнюю известную позицию и поднимаем над землёй
-        local correctedY = groundY + 4
-        local correctedPos = Vector3.new(lastKnownPos.X, correctedY, lastKnownPos.Z)
-        local currentCFrame = humanoidRootPart.CFrame
-        local correctedCFrame = CFrame.new(correctedPos) * (currentCFrame - currentCFrame.Position)
-
-        -- Применяем корректировку с плавным переходом
-        local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear)
-        local tween = TweenService:Create(humanoidRootPart, tweenInfo, { CFrame = correctedCFrame })
-        tween:Play()
-
-        -- Корректируем все части тела
-        for _, part in pairs(targetChar:GetDescendants()) do
-            if part:IsA("BasePart") and part ~= humanoidRootPart then
-                local offset = humanoidRootPart.CFrame:ToObjectSpace(part.CFrame)
-                local newCFrame = correctedCFrame:ToWorldSpace(offset)
-                local partTween = TweenService:Create(part, tweenInfo, { CFrame = newCFrame })
-                partTween:Play()
-            end
-        end
-    end
-end
-
-local function resolveVelocity(target, positionHistory, clientVelocity)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then 
-        return clientVelocity 
-    end
+local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
     local totalWeight = 0
     local validEntries = 0
-    local maxSpeedLimit = isInVehicle(target.Character) and 150 or 80
+    local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
 
     for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
         local currEntry = positionHistory[i + 1]
@@ -577,6 +460,7 @@ local function predictTargetPositionGun(target)
         return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
     end
 
+    -- Текущая позиция цели
     local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then 
@@ -597,7 +481,7 @@ local function predictTargetPositionGun(target)
     GunSilent.State.PositionHistory[target] = positionHistory
 
     -- Получаем скорость с помощью резолвера
-    local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity)
+    local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     
     -- Сглаживаем скорость
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
@@ -621,13 +505,14 @@ local function predictTargetPositionGun(target)
         distanceWeight = math.min(1, (velocityMagnitude - 30) / 30)
     end
 
-    -- Адаптивная формула предикта
+    -- Адаптивная формула предикта с новыми параметрами
     local basePrediction = GunSilent.Settings.BasePrediction.Value
     local distanceFactor = GunSilent.Settings.DistanceFactor.Value
     local speedFactor = GunSilent.Settings.SpeedFactor.Value
     local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
     local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
 
+    -- Учитываем вес скорости в предсказании
     local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
     local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
     local pingContribution = ping * pingCompensationFactor
@@ -966,15 +851,6 @@ local function initializeGunSilent()
             GunSilent.State.PositionHistory[nearestPlayer] = nil
             GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
         end
-
-        -- Применяем восстановление модели ко всем игрокам
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= Players.LocalPlayer and player.Character then
-                local positionHistory = GunSilent.State.PositionHistory[player] or {}
-                restorePlayerModel(player, positionHistory)
-            end
-        end
-
         updateVisualsGun(nearestPlayer)
     end)
 end
