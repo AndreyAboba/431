@@ -46,7 +46,9 @@ local GunSilent = {
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
         DistanceFactor = { Value = 0.0015, Default = 0.0015 },
         SpeedFactor = { Value = 0.00003, Default = 0.00003 },
-        HitVisualAnimate = { Value = false, Default = false }
+        HitVisualAnimate = { Value = false, Default = false },
+        HitBoostEnabled = { Value = false, Default = false }, -- Новое: Включение HitBoost
+        HitBoostMultiplier = { Value = 2, Default = 2 } -- Новое: Множитель попаданий
     },
     State = {
         LastEventId = 0,
@@ -546,19 +548,33 @@ local function createHitDataGun(target)
     local hitPart = targetChar:FindFirstChild(GunSilent.Settings.HitPart.Value)
     if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
 
+    -- Корректировка позиции для HitBoost
+    local finalPosition = prediction.position
+    if GunSilent.Settings.HitBoostEnabled.Value then
+        -- Смещаем позицию ближе к центру хитбокса
+        local hitPartCenter = hitPart.Position
+        finalPosition = finalPosition:Lerp(hitPartCenter, 0.3) -- Смещаем на 30% ближе к центру
+    end
+
     local equippedTool = getEquippedGunTool()
     local isShotgunWeapon = GunSilent.Settings.ShotgunSupport.Value and equippedTool and isShotgun(equippedTool)
     local useMultiBullets = isShotgunWeapon or GunSilent.Settings.TestGenBullet.Value
     local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
+    -- HitBoost: Увеличиваем количество попаданий
+    local hitMultiplier = GunSilent.Settings.HitBoostEnabled.Value and GunSilent.Settings.HitBoostMultiplier.Value or 1
     if useMultiBullets then
-        for i = 1, numBullets do hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = prediction.position}} end
+        for i = 1, numBullets * hitMultiplier do
+            hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition}}
+        end
     else
-        hitData[1] = {{Normal = prediction.direction, Instance = hitPart, Position = prediction.position}}
+        for i = 1, hitMultiplier do
+            hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition}}
+        end
     end
 
-    if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and prediction.position then
+    if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and finalPosition then
         local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
         local trail = safeCreateInstance("Beam", {
             FaceCamera = true,
@@ -573,7 +589,7 @@ local function createHitDataGun(target)
             local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
             if attachment0 and attachment1 then
                 attachment0.Position = startPos
-                attachment1.Position = prediction.position
+                attachment1.Position = finalPosition
                 trail.Attachment0 = attachment0
                 trail.Attachment1 = attachment1
 
@@ -612,7 +628,7 @@ local function createHitDataGun(target)
     end
 
     GunSilent.State.LastHitTarget = target
-    GunSilent.State.LastHitPosition = prediction.position
+    GunSilent.State.LastHitPosition = finalPosition
     GunSilent.State.LastShotTime = tick()
 
     return hitData
@@ -1036,6 +1052,26 @@ local function Init(UI, Core, notify)
                 }, 'HitChance'),
                 callback = function(value) GunSilent.Settings.HitChance.Value = value end
             }
+            combatSection:Header({ Name = "HitBoost Exploit" })
+            CombatElements.HitBoostEnabled = {
+                element = combatSection:Toggle({
+                    Name = "HitBoost Enabled",
+                    Default = GunSilent.Settings.HitBoostEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.HitBoostEnabled.Value = value end
+                }, 'HitBoostEnabled'),
+                callback = function(value) GunSilent.Settings.HitBoostEnabled.Value = value end
+            }
+            CombatElements.HitBoostMultiplier = {
+                element = combatSection:Slider({
+                    Name = "HitBoost Multiplier",
+                    Default = GunSilent.Settings.HitBoostMultiplier.Value,
+                    Minimum = 1,
+                    Maximum = 5,
+                    Precision = 0,
+                    Callback = function(value) GunSilent.Settings.HitBoostMultiplier.Value = value end
+                }, 'HitBoostMultiplier'),
+                callback = function(value) GunSilent.Settings.HitBoostMultiplier.Value = value end
+            }
             combatSection:Header({ Name = "Prediction Settings" })
             CombatElements.ResolverEnabled = {
                 element = combatSection:Toggle({
@@ -1348,6 +1384,8 @@ local function Init(UI, Core, notify)
                 CombatElements.PredictVisual.callback(CombatElements.PredictVisual.element:GetState())
                 CombatElements.TrajectoryBeam.callback(CombatElements.TrajectoryBeam.element:GetState())
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
+                CombatElements.HitBoostEnabled.callback(CombatElements.HitBoostEnabled.element:GetState())
+                CombatElements.HitBoostMultiplier.callback(CombatElements.HitBoostMultiplier.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
