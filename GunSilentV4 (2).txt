@@ -8,10 +8,10 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
-        BasePrediction = { Value = 0.1, Default = 0.1 }, -- Уменьшен для точности
+        BasePrediction = { Value = 0.1, Default = 0.1 },
         VelocityPredictionWeight = { Value = 0.9, Default = 0.9 },
-        PingCompensationFactor = { Value = 0.8, Default = 0.8 }, -- Уменьшен для меньшей компенсации
-        SmoothingFactor = { Value = 0.1, Default = 0.1 }, -- Увеличен для более плавного сглаживания
+        PingCompensationFactor = { Value = 0.8, Default = 0.8 },
+        SmoothingFactor = { Value = 0.1, Default = 0.1 },
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -27,7 +27,7 @@ local GunSilent = {
         HitChance = { Value = 100, Default = 100 },
         ResolverEnabled = { Value = true, Default = true },
         ResolverThreshold = { Value = 0.3, Default = 0.3 },
-        PositionHistorySize = { Value = 20, Default = 20 }, -- Уменьшен размер истории для скорости
+        PositionHistorySize = { Value = 20, Default = 20 },
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
@@ -41,11 +41,11 @@ local GunSilent = {
         UseGradient = { Value = false, Default = false },
         ParticlePhysics = { Value = "None", Default = "None", Options = {"None", "Fall", "Rise"} },
         HitVisualEnabled = { Value = false, Default = false },
-        HitVisualFadeTime = { Value = 2, Default = 2 }, -- Увеличено для более плавного затухания
+        HitVisualFadeTime = { Value = 2, Default = 2 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        DistanceFactor = { Value = 0.0015, Default = 0.0015 }, -- Уменьшен для точности
-        SpeedFactor = { Value = 0.00003, Default = 0.00003 }, -- Уменьшен для точности
+        DistanceFactor = { Value = 0.0015, Default = 0.0015 },
+        SpeedFactor = { Value = 0.00003, Default = 0.00003 },
         HitVisualAnimate = { Value = false, Default = false }
     },
     State = {
@@ -68,7 +68,7 @@ local GunSilent = {
         LastTargetPos = nil,
         LastPredictionPos = nil,
         LastTargetUpdate = 0,
-        TargetUpdateInterval = 0.1, -- Уменьшен для скорости
+        TargetUpdateInterval = 0.1,
         LastFriendsList = nil,
         BulletTrails = {},
         TrailFadeConnections = {},
@@ -78,7 +78,8 @@ local GunSilent = {
         LastHitPosition = nil,
         LastShotTime = 0,
         PendingHits = {},
-        ActiveHitboxes = {}
+        ActiveHitboxes = {},
+        NotificationGui = nil
     }
 }
 
@@ -221,8 +222,8 @@ local function createHitboxPart(part, color, animate)
     smoothTween:Play()
 
     if animate and GunSilent.Settings.HitVisualAnimate.Value then
-        local liftHeight = 15 -- Уменьшена высота для более мягкого эффекта
-        local liftDuration = 2 -- Увеличено время подъёма
+        local liftHeight = 15
+        local liftDuration = 2
         local liftTweenInfo = TweenInfo.new(liftDuration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
         local liftTween = TweenService:Create(hitbox, liftTweenInfo, { Position = hitbox.Position + Vector3.new(0, liftHeight, 0) })
         liftTween:Play()
@@ -433,7 +434,6 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     local validEntries = 0
     local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
 
-    -- Уменьшено количество итераций до 3 для скорости
     for i = #positionHistory - 1, math.max(1, #positionHistory - 3), -1 do
         local currEntry = positionHistory[i + 1]
         local prevEntry = positionHistory[i]
@@ -511,9 +511,6 @@ local function predictTargetPositionGun(target)
     local pingContribution = ping * pingCompensationFactor
 
     local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution
-
-    -- Дебаг-логи для отслеживания
-    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "DistanceWeight:", distanceWeight)
 
     local clientPos = targetPos
     local predictedPos = clientPos + smoothedVelocity * predictionTime
@@ -735,6 +732,52 @@ local function updateVisualsGun(target)
     end
 end
 
+local function showNotification(isHit, damage)
+    if not GunSilent.State.NotificationGui then
+        local screenGui = safeCreateInstance("ScreenGui", { Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui") })
+        local frame = safeCreateInstance("Frame", {
+            Size = UDim2.new(0, 200, 0, 80),
+            Position = UDim2.new(0.5, -100, 0.6, 0), -- Центр экрана, чуть ниже
+            BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+            BorderSizePixel = 0,
+            Parent = screenGui
+        })
+        local uiCorner = safeCreateInstance("UICorner", { CornerRadius = UDim.new(0, 10), Parent = frame })
+        local icon = safeCreateInstance("ImageLabel", {
+            Size = UDim2.new(0, 40, 0, 40),
+            Position = UDim2.new(0, 10, 0, 20),
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BorderSizePixel = 0,
+            Parent = frame
+        })
+        local uiCornerIcon = safeCreateInstance("UICorner", { CornerRadius = UDim.new(0, 5), Parent = icon })
+        local text = safeCreateInstance("TextLabel", {
+            Size = UDim2.new(0, 150, 0, 40),
+            Position = UDim2.new(0, 60, 0, 20),
+            BackgroundTransparency = 1,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextSize = 16,
+            Font = Enum.Font.SourceSans,
+            Parent = frame
+        })
+        GunSilent.State.NotificationGui = { ScreenGui = screenGui, Frame = frame, Icon = icon, Text = text }
+    end
+
+    local gui = GunSilent.State.NotificationGui
+    local iconId = isHit and "rbxassetid://17829956110" or "rbxassetid://17829927053"
+    local backgroundColor = isHit and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    local message = isHit and "Sucessful! Damage: -10" or "Missed :("
+
+    gui.Icon.Image = iconId
+    gui.Icon.BackgroundColor3 = backgroundColor
+    gui.Text.Text = message
+
+    gui.Frame.Visible = true
+    task.delay(2, function()
+        if gui.Frame then gui.Frame.Visible = false end
+    end)
+end
+
 local function initializeGunSilent()
     if GunSilent.State.Connection then GunSilent.State.Connection:Disconnect() end
     if not GunSilent.State.V_U_4 then
@@ -759,10 +802,12 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
+                showNotification(true, -10)
                 if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                     GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
                 end
             elseif pendingHit.target then
+                showNotification(false)
                 if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                     GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
                 end
