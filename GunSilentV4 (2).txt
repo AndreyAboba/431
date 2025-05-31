@@ -576,10 +576,18 @@ local function createHitDataGun(target)
 
     -- WallBang: Обход стен через подмену позиции
     if GunSilent.Settings.WallBangEnabled.Value then
-        local raycastResult = Workspace.Raycast(startPos, (finalPosition - startPos).Unit * (startPos - finalPosition).Magnitude, RaycastParams.new())
+        local direction = (finalPosition - startPos).Unit
+        local distance = (finalPosition - startPos).Magnitude
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterDescendantsInstances = {Players.LocalPlayer.Character} -- Исключаем персонажа игрока
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.IgnoreWater = true
+
+        -- Исправляем синтаксис: используем двоеточие вместо точки
+        local raycastResult = Workspace:Raycast(startPos, direction * distance, raycastParams)
         if raycastResult then
             local penetrationDepth = math.min(GunSilent.Settings.WallBangPenetrationDepth.Value, 10)
-            finalPosition = raycastResult.Position + (finalPosition - raycastResult.Position).Unit * penetrationDepth
+            finalPosition = raycastResult.Position + direction * penetrationDepth
             print("[GunSilent] WallBang Applied: Hit wall at " .. tostring(raycastResult.Position) .. ", Adjusted to " .. tostring(finalPosition))
         end
     end
