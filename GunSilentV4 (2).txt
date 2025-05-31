@@ -52,8 +52,8 @@ local GunSilent = {
         ForceHitConfirmationEnabled = { Value = false, Default = false },
         OverrideServerTickEnabled = { Value = false, Default = false },
         ServerTickOffset = { Value = 0, Default = 0 },
-        FakeHitMultiplierEnabled = { Value = false, Default = false },
-        FakeHitMultiplierFactor = { Value = 2, Default = 2 }
+        SilentHitOverrideEnabled = { Value = false, Default = false },
+        SilentHitOverrideThreshold = { Value = 0.5, Default = 0.5 }
     },
     State = {
         LastEventId = 0,
@@ -591,18 +591,6 @@ local function createHitDataGun(target)
         hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos, Timestamp = timestamp}}
     end
 
-    -- FakeHitMultiplier: Дублирование hitData для увеличения количества попаданий
-    if GunSilent.Settings.FakeHitMultiplierEnabled.Value then
-        local multiplier = math.clamp(GunSilent.Settings.FakeHitMultiplierFactor.Value, 1, 5)
-        local originalHitData = table.clone(hitData)
-        for m = 2, multiplier do
-            for i = 1, #originalHitData do
-                hitData[#hitData + 1] = table.clone(originalHitData[i])
-            end
-        end
-        print("[GunSilent] FakeHitMultiplier Applied: Original Hits = " .. tostring(numBullets) .. ", Multiplied Hits = " .. tostring(#hitData) .. ", Multiplier = " .. tostring(multiplier))
-    end
-
     if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and finalPosition then
         local trail = safeCreateInstance("Beam", {
             FaceCamera = true,
@@ -797,10 +785,17 @@ local function initializeGunSilent()
             local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
                              { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
             if pendingHit.target then
+                -- SilentHitOverride: Подмена ответа сервера на подтверждение попадания
+                if GunSilent.Settings.SilentHitOverrideEnabled.Value and math.random() <= GunSilent.Settings.SilentHitOverrideThreshold.Value then
+                    headshot = true
+                    kill = true
+                    print("[GunSilent] SilentHitOverride Applied: Forced Hit Confirmation")
+                end
+
                 -- ForceHitConfirmation: Принудительное подтверждение попадания
                 if GunSilent.Settings.ForceHitConfirmationEnabled.Value then
                     local originalHeadshot = headshot
-                    headshot = true -- Принудительно подтверждаем попадание
+                    headshot = true
                     print("[GunSilent] ForceHitConfirmation Applied: Original Headshot = " .. tostring(originalHeadshot) .. ", Forced Headshot = " .. tostring(headshot))
                 end
                 if headshot or kill then
@@ -833,6 +828,18 @@ local function initializeGunSilent()
                         local hitData = createHitDataGun(nearestPlayer)
                         if aimCFrame and hitData then
                             modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
+
+                            -- FakeHitTimestamp: Подмена временной метки в hitData
+                            if GunSilent.Settings.FakeHitTimestampEnabled.Value then
+                                local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
+                                local originalTimestamp = hitData[1][1].Timestamp
+                                for i, data in ipairs(hitData) do
+                                    for j, hit in ipairs(data) do
+                                        hit.Timestamp = originalTimestamp + timeOffset
+                                    end
+                                end
+                                print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(originalTimestamp) .. ", Modified Timestamp = " .. tostring(hitData[1][1].Timestamp))
+                            end
 
                             -- OverrideServerTick: Синхронизация клиентского времени с серверным
                             if GunSilent.Settings.OverrideServerTickEnabled.Value then
@@ -1188,7 +1195,7 @@ local function Init(UI, Core, notify)
                 callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
             }
 
-            -- Новая секция для эксплоитов: GunSilent Mods
+            -- Секция для эксплоитов: GunSilent Mods
             combatSection:Header({ Name = "GunSilent Mods" })
             CombatElements.FakeHitTimestampEnabled = {
                 element = combatSection:Toggle({
@@ -1236,24 +1243,24 @@ local function Init(UI, Core, notify)
                 }, 'ServerTickOffset'),
                 callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
             }
-            CombatElements.FakeHitMultiplierEnabled = {
+            CombatElements.SilentHitOverrideEnabled = {
                 element = combatSection:Toggle({
-                    Name = "FakeHitMultiplier Enabled",
-                    Default = GunSilent.Settings.FakeHitMultiplierEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.FakeHitMultiplierEnabled.Value = value end
-                }, 'FakeHitMultiplierEnabled'),
-                callback = function(value) GunSilent.Settings.FakeHitMultiplierEnabled.Value = value end
+                    Name = "SilentHitOverride Enabled",
+                    Default = GunSilent.Settings.SilentHitOverrideEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.SilentHitOverrideEnabled.Value = value end
+                }, 'SilentHitOverrideEnabled'),
+                callback = function(value) GunSilent.Settings.SilentHitOverrideEnabled.Value = value end
             }
-            CombatElements.FakeHitMultiplierFactor = {
+            CombatElements.SilentHitOverrideThreshold = {
                 element = combatSection:Slider({
-                    Name = "FakeHitMultiplier Factor",
-                    Default = GunSilent.Settings.FakeHitMultiplierFactor.Value,
-                    Minimum = 1,
-                    Maximum = 5,
-                    Precision = 0,
-                    Callback = function(value) GunSilent.Settings.FakeHitMultiplierFactor.Value = value end
-                }, 'FakeHitMultiplierFactor'),
-                callback = function(value) GunSilent.Settings.FakeHitMultiplierFactor.Value = value end
+                    Name = "SilentHitOverride Threshold",
+                    Default = GunSilent.Settings.SilentHitOverrideThreshold.Value,
+                    Minimum = 0.1,
+                    Maximum = 1.0,
+                    Precision = 1,
+                    Callback = function(value) GunSilent.Settings.SilentHitOverrideThreshold.Value = value end
+                }, 'SilentHitOverrideThreshold'),
+                callback = function(value) GunSilent.Settings.SilentHitOverrideThreshold.Value = value end
             }
         end
     end
@@ -1494,8 +1501,8 @@ local function Init(UI, Core, notify)
                 CombatElements.ForceHitConfirmationEnabled.callback(CombatElements.ForceHitConfirmationEnabled.element:GetState())
                 CombatElements.OverrideServerTickEnabled.callback(CombatElements.OverrideServerTickEnabled.element:GetState())
                 CombatElements.ServerTickOffset.callback(CombatElements.ServerTickOffset.element:GetValue())
-                CombatElements.FakeHitMultiplierEnabled.callback(CombatElements.FakeHitMultiplierEnabled.element:GetState())
-                CombatElements.FakeHitMultiplierFactor.callback(CombatElements.FakeHitMultiplierFactor.element:GetValue())
+                CombatElements.SilentHitOverrideEnabled.callback(CombatElements.SilentHitOverrideEnabled.element:GetState())
+                CombatElements.SilentHitOverrideThreshold.callback(CombatElements.SilentHitOverrideThreshold.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
