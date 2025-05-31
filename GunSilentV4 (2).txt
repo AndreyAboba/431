@@ -8,6 +8,12 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
+        -- Новые параметры для предикции
+        BasePrediction = { Value = 0.15, Default = 0.15 }, -- Базовый предикт (секунды)
+        VelocityPredictionWeight = { Value = 0.65, Default = 0.65 }, -- Вес предсказания скорости (0-1)
+        PingCompensationFactor = { Value = 1.2, Default = 1.2 }, -- Компенсация пинга (множитель)
+        SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Фактор сглаживания
+
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -40,9 +46,8 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        SmoothingFactor = { Value = 0.05, Default = 0.05 },
-        DistanceFactor = { Value = 0.002, Default = 0.002 }, -- Новый параметр
-        SpeedFactor = { Value = 0.00005, Default = 0.00005 } -- Новый параметр
+        DistanceFactor = { Value = 0.002, Default = 0.002 }, -- Вернул обратно
+        SpeedFactor = { Value = 0.00005, Default = 0.00005 } -- Вернул обратно
     },
     State = {
         LastEventId = 0,
@@ -500,11 +505,19 @@ local function predictTargetPositionGun(target)
         distanceWeight = math.min(1, (velocityMagnitude - 30) / 30)
     end
 
-    -- Адаптивная формула предикта
-    local basePrediction = 0.1 -- Базовый предикт 0.1 секунды
+    -- Адаптивная формула предикта с новыми параметрами
+    local basePrediction = GunSilent.Settings.BasePrediction.Value
     local distanceFactor = GunSilent.Settings.DistanceFactor.Value
     local speedFactor = GunSilent.Settings.SpeedFactor.Value
-    local predictionTime = basePrediction + ping + (velocityMagnitude * distanceFactor * distanceWeight) + (distance * speedFactor)
+    local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
+    local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
+
+    -- Учитываем вес скорости в предсказании
+    local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
+    local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
+    local pingContribution = ping * pingCompensationFactor
+
+    local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution
     print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "DistanceWeight:", distanceWeight)
 
     -- Предсказанная позиция
@@ -1054,6 +1067,39 @@ local function Init(UI, Core, notify)
                 }, 'ResolverThreshold'),
                 callback = function(value) GunSilent.Settings.ResolverThreshold.Value = value end
             }
+            CombatElements.BasePrediction = {
+                element = combatSection:Slider({
+                    Name = "Base Prediction",
+                    Minimum = 0.05,
+                    Maximum = 0.5,
+                    Default = GunSilent.Settings.BasePrediction.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.BasePrediction.Value = value end
+                }, 'BasePrediction'),
+                callback = function(value) GunSilent.Settings.BasePrediction.Value = value end
+            }
+            CombatElements.VelocityPredictionWeight = {
+                element = combatSection:Slider({
+                    Name = "Velocity Prediction Weight",
+                    Minimum = 0,
+                    Maximum = 1,
+                    Default = GunSilent.Settings.VelocityPredictionWeight.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.VelocityPredictionWeight.Value = value end
+                }, 'VelocityPredictionWeight'),
+                callback = function(value) GunSilent.Settings.VelocityPredictionWeight.Value = value end
+            }
+            CombatElements.PingCompensationFactor = {
+                element = combatSection:Slider({
+                    Name = "Ping Compensation Factor",
+                    Minimum = 0.5,
+                    Maximum = 2,
+                    Default = GunSilent.Settings.PingCompensationFactor.Value,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.PingCompensationFactor.Value = value end
+                }, 'PingCompensationFactor'),
+                callback = function(value) GunSilent.Settings.PingCompensationFactor.Value = value end
+            }
             CombatElements.SmoothingFactor = {
                 element = combatSection:Slider({
                     Name = "Smoothing Factor",
@@ -1307,12 +1353,14 @@ local function Init(UI, Core, notify)
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
+                CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
+                CombatElements.VelocityPredictionWeight.callback(CombatElements.VelocityPredictionWeight.element:GetValue())
+                CombatElements.PingCompensationFactor.callback(CombatElements.PingCompensationFactor.element:GetValue())
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
                 CombatElements.SpeedFactor.callback(CombatElements.SpeedFactor.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
-                VisualsElements.BulletTrailsColor.callback(VisualsElements.BulletTrailsColor.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
                 VisualsElements.UseGradient.callback(VisualsElements.UseGradient.element:GetState())
                 local hitParticlesModeOptions = VisualsElements.HitParticlesMode.element:GetOptions()
@@ -1323,11 +1371,9 @@ local function Init(UI, Core, notify)
                 VisualsElements.HitParticlesCount.callback(VisualsElements.HitParticlesCount.element:GetValue())
                 VisualsElements.HitParticlesLifetime.callback(VisualsElements.HitParticlesLifetime.element:GetValue())
                 VisualsElements.HitParticlesMoveDistance.callback(VisualsElements.HitParticlesMoveDistance.element:GetValue())
-                VisualsElements.HitParticlesColor.callback(VisualsElements.HitParticlesColor.element:GetValue())
                 VisualsElements.HitVisualEnabled.callback(VisualsElements.HitVisualEnabled.element:GetState())
                 VisualsElements.HitVisualFadeTime.callback(VisualsElements.HitVisualFadeTime.element:GetValue())
                 VisualsElements.HitVisualTransparency.callback(VisualsElements.HitVisualTransparency.element:GetValue())
-                VisualsElements.HitVisualColor.callback(VisualsElements.HitVisualColor.element:GetValue())
             end
         }, 'SyncSettings')
     end
