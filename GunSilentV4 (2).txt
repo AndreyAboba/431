@@ -578,7 +578,7 @@ local function createHitDataGun(target)
     local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
-    -- FakeHitTimestamp: Подмена временной метки
+    -- FakeHitTimestamp: Подмена временной метки в hitData
     local timestamp = tick()
     if GunSilent.Settings.FakeHitTimestampEnabled.Value then
         local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
@@ -784,13 +784,11 @@ local function initializeGunSilent()
             local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
                              { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
             if pendingHit.target then
-                -- ForceHitConfirmation: Принудительное подтверждение попадания с улучшениями
+                -- ForceHitConfirmation: Принудительное подтверждение попадания
                 if GunSilent.Settings.ForceHitConfirmationEnabled.Value then
                     local originalHeadshot = headshot
                     headshot = true -- Принудительно подтверждаем попадание
-                    local randomDelay = math.random() * 0.05 -- Случайная задержка для имитации нормального поведения
-                    task.wait(randomDelay)
-                    print("[GunSilent] ForceHitConfirmation Applied: Original Headshot = " .. tostring(originalHeadshot) .. ", Forced Headshot = " .. tostring(headshot) .. ", Delay = " .. tostring(randomDelay))
+                    print("[GunSilent] ForceHitConfirmation Applied: Original Headshot = " .. tostring(originalHeadshot) .. ", Forced Headshot = " .. tostring(headshot))
                 end
                 if headshot or kill then
                     spawnHitParticles(pendingHit.target, pendingHit.position)
@@ -823,23 +821,25 @@ local function initializeGunSilent()
                         if aimCFrame and hitData then
                             modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
 
-                            -- SpoofHitSignature: Подмена цифровой подписи
+                            -- SpoofHitSignature: Подмена цифровой подписи для обхода проверки целостности
                             if GunSilent.Settings.SpoofHitSignatureEnabled.Value then
-                                local signature = "SpoofedSignature_" .. tostring(math.random(1000, 9999)) -- Простая подмена подписи
-                                table.insert(modifiedArgs, signature)
-                                print("[GunSilent] SpoofHitSignature Applied: Signature = " .. signature)
+                                local originalSignature = modifiedArgs[#modifiedArgs] -- Предполагаем, что подпись может быть последним аргументом
+                                local spoofedSignature = "SpoofedSignature_" .. tostring(math.random(1000, 9999))
+                                table.insert(modifiedArgs, spoofedSignature)
+                                print("[GunSilent] SpoofHitSignature Applied: Original Signature = " .. tostring(originalSignature or "None") .. ", Spoofed Signature = " .. tostring(spoofedSignature))
                             end
 
-                            -- OverrideServerTick: Синхронизация таймстампа
+                            -- OverrideServerTick: Синхронизация клиентского времени с серверным
                             if GunSilent.Settings.OverrideServerTickEnabled.Value then
                                 local serverTickOffset = GunSilent.Settings.ServerTickOffset.Value
+                                local originalTimestamp = hitData[1][1].Timestamp
                                 local adjustedTimestamp = tick() + serverTickOffset
                                 for i, data in ipairs(hitData) do
                                     for j, hit in ipairs(data) do
                                         hit.Timestamp = adjustedTimestamp
                                     end
                                 end
-                                print("[GunSilent] OverrideServerTick Applied: Adjusted Timestamp = " .. tostring(adjustedTimestamp) .. ", Offset = " .. tostring(serverTickOffset))
+                                print("[GunSilent] OverrideServerTick Applied: Original Timestamp = " .. tostring(originalTimestamp) .. ", Adjusted Timestamp = " .. tostring(adjustedTimestamp) .. ", Offset = " .. tostring(serverTickOffset))
                             end
 
                             GunSilent.State.PendingHits[args[1]] = {
