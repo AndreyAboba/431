@@ -8,10 +8,12 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
-        BasePrediction = { Value = 0.11, Default = 0.11 },
-        VelocityPredictionWeight = { Value = 0.7, Default = 0.7 },
-        PingCompensationFactor = { Value = 1.15, Default = 1.15 },
-        SmoothingFactor = { Value = 0.05, Default = 0.05 },
+        -- Новые параметры для предикции
+        BasePrediction = { Value = 0.11, Default = 0.11 }, -- Базовый предикт (секунды)
+        VelocityPredictionWeight = { Value = 0.7, Default = 0.7 }, -- Вес предсказания скорости (0-1)
+        PingCompensationFactor = { Value = 1.15, Default = 1.15 }, -- Компенсация пинга (множитель)
+        SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Фактор сглаживания
+
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -44,8 +46,8 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        DistanceFactor = { Value = 0.002, Default = 0.002 },
-        SpeedFactor = { Value = 0.00005, Default = 0.00005 }
+        DistanceFactor = { Value = 0.002, Default = 0.002 }, -- Вернул обратно
+        SpeedFactor = { Value = 0.00005, Default = 0.00005 } -- Вернул обратно
     },
     State = {
         LastEventId = 0,
@@ -81,6 +83,7 @@ local GunSilent = {
     }
 }
 
+-- Функция для экспоненциального сглаживания скорости
 local function smoothVelocity(target, newVelocity, alpha)
     local smoothed = GunSilent.State.SmoothedVelocity[target] or newVelocity
     smoothed = smoothed:Lerp(newVelocity, alpha)
@@ -442,37 +445,6 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     return validEntries > 0 and totalVelocity / totalWeight or Vector3.new(0, 0, 0)
 end
 
-local function isInvisibleTarget(targetChar)
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    if not targetRoot then return false end
-
-    -- Проверка высоты относительно земли
-    local rayOrigin = targetRoot.Position + Vector3.new(0, 5, 0)
-    local rayDirection = Vector3.new(0, -10, 0)
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {targetChar}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    local groundY = raycastResult and raycastResult.Position.Y or targetRoot.Position.Y
-    local heightOffset = targetRoot.Position.Y - groundY
-    local isLowHeight = heightOffset < -2
-
-    -- Проверка скорости
-    local velocity = targetRoot.Velocity
-    local isZeroVelocity = velocity.Magnitude < 0.1
-
-    -- Проверка видимости модели
-    local hasVisibleParts = false
-    for _, part in pairs(targetChar:GetChildren()) do
-        if part:IsA("BasePart") and part.Transparency < 0.9 then
-            hasVisibleParts = true
-            break
-        end
-    end
-
-    return isLowHeight or isZeroVelocity or not hasVisibleParts
-end
-
 local function predictTargetPositionGun(target)
     local localRoot = GunSilent.State.LocalRoot
     if not target or not target.Character or not localRoot then 
@@ -508,11 +480,10 @@ local function predictTargetPositionGun(target)
     end
     GunSilent.State.PositionHistory[target] = positionHistory
 
-    -- Проверка на невидимость
-    local isInvisible = isInvisibleTarget(targetChar)
-
     -- Получаем скорость с помощью резолвера
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
+    
+    -- Сглаживаем скорость
     local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
     
     -- Ограничиваем скорость
@@ -534,13 +505,14 @@ local function predictTargetPositionGun(target)
         distanceWeight = math.min(1, (velocityMagnitude - 30) / 30)
     end
 
-    -- Адаптивная формула предикта
+    -- Адаптивная формула предикта с новыми параметрами
     local basePrediction = GunSilent.Settings.BasePrediction.Value
     local distanceFactor = GunSilent.Settings.DistanceFactor.Value
     local speedFactor = GunSilent.Settings.SpeedFactor.Value
     local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
     local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
 
+    -- Учитываем вес скорости в предсказании
     local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
     local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
     local pingContribution = ping * pingCompensationFactor
@@ -551,20 +523,6 @@ local function predictTargetPositionGun(target)
     -- Предсказанная позиция
     local clientPos = targetPos
     local predictedPos = clientPos + smoothedVelocity * predictionTime
-
-    -- Корректировка для невидимости
-    if isInvisible then
-        predictedPos = predictedPos - Vector3.new(0, 2.5, 0) -- Смещаем прицел ниже
-    end
-
-    -- Проверка препятствий с raycast
-    local raycastParamsObstacles = RaycastParams.new()
-    raycastParamsObstacles.FilterDescendantsInstances = {targetChar, localRoot.Parent}
-    raycastParamsObstacles.FilterType = Enum.RaycastFilterType.Blacklist
-    local rayResult = Workspace:Raycast(myPos, (predictedPos - myPos).Unit * distance, raycastParamsObstacles)
-    if rayResult and rayResult.Instance then
-        predictedPos = rayResult.Position + rayResult.Normal * 0.1 -- Смещаемся чуть ближе к препятствию
-    end
 
     -- Сглаживание позиции
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
