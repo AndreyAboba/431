@@ -50,7 +50,9 @@ local GunSilent = {
         FakeHitTimestampEnabled = { Value = false, Default = false },
         FakeHitTimestampOffset = { Value = 0, Default = 0 },
         ForceHitConfirmationEnabled = { Value = false, Default = false },
-        ManipulateHitDataEnabled = { Value = false, Default = false }
+        SpoofHitSignatureEnabled = { Value = false, Default = false },
+        OverrideServerTickEnabled = { Value = false, Default = false },
+        ServerTickOffset = { Value = 0, Default = 0 }
     },
     State = {
         LastEventId = 0,
@@ -584,14 +586,6 @@ local function createHitDataGun(target)
         print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(tick()) .. ", Modified Timestamp = " .. tostring(timestamp))
     end
 
-    -- ManipulateHitData: Манипуляция данными попадания
-    if GunSilent.Settings.ManipulateHitDataEnabled.Value then
-        finalPosition = hitPart.Position -- Используем точную позицию хитбокса цели
-        local idealDirection = (finalPosition - startPos).Unit
-        prediction.direction = idealDirection -- Устанавливаем идеальное направление
-        print("[GunSilent] ManipulateHitData Applied: Adjusted Position = " .. tostring(finalPosition) .. ", Adjusted Direction = " .. tostring(idealDirection))
-    end
-
     for i = 1, numBullets do
         hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos, Timestamp = timestamp}}
     end
@@ -790,21 +784,23 @@ local function initializeGunSilent()
             local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
                              { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
             if pendingHit.target then
-                -- ForceHitConfirmation: Принудительное подтверждение попадания
+                -- ForceHitConfirmation: Принудительное подтверждение попадания с улучшениями
                 if GunSilent.Settings.ForceHitConfirmationEnabled.Value then
+                    local originalHeadshot = headshot
                     headshot = true -- Принудительно подтверждаем попадание
-                    print("[GunSilent] ForceHitConfirmation Applied: Forced Headshot Confirmation")
+                    local randomDelay = math.random() * 0.05 -- Случайная задержка для имитации нормального поведения
+                    task.wait(randomDelay)
+                    print("[GunSilent] ForceHitConfirmation Applied: Original Headshot = " .. tostring(originalHeadshot) .. ", Forced Headshot = " .. tostring(headshot) .. ", Delay = " .. tostring(randomDelay))
                 end
                 if headshot or kill then
                     spawnHitParticles(pendingHit.target, pendingHit.position)
                     spawnHitVisual(pendingHit.target, pendingHit.position)
-                    if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
-                        GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
-                    end
+                    print("[GunSilent] Hit Confirmed: Target = " .. pendingHit.target.Name .. ", Position = " .. tostring(pendingHit.position))
                 else
-                    if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
-                        GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
-                    end
+                    print("[GunSilent] Hit Rejected: Target = " .. pendingHit.target.Name)
+                end
+                if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
+                    GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
                 end
             end
         end
@@ -826,6 +822,26 @@ local function initializeGunSilent()
                         local hitData = createHitDataGun(nearestPlayer)
                         if aimCFrame and hitData then
                             modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
+
+                            -- SpoofHitSignature: Подмена цифровой подписи
+                            if GunSilent.Settings.SpoofHitSignatureEnabled.Value then
+                                local signature = "SpoofedSignature_" .. tostring(math.random(1000, 9999)) -- Простая подмена подписи
+                                table.insert(modifiedArgs, signature)
+                                print("[GunSilent] SpoofHitSignature Applied: Signature = " .. signature)
+                            end
+
+                            -- OverrideServerTick: Синхронизация таймстампа
+                            if GunSilent.Settings.OverrideServerTickEnabled.Value then
+                                local serverTickOffset = GunSilent.Settings.ServerTickOffset.Value
+                                local adjustedTimestamp = tick() + serverTickOffset
+                                for i, data in ipairs(hitData) do
+                                    for j, hit in ipairs(data) do
+                                        hit.Timestamp = adjustedTimestamp
+                                    end
+                                end
+                                print("[GunSilent] OverrideServerTick Applied: Adjusted Timestamp = " .. tostring(adjustedTimestamp) .. ", Offset = " .. tostring(serverTickOffset))
+                            end
+
                             GunSilent.State.PendingHits[args[1]] = {
                                 target = nearestPlayer,
                                 position = GunSilent.State.LastHitPosition
@@ -1109,14 +1125,34 @@ local function Init(UI, Core, notify)
                 }, 'ForceHitConfirmationEnabled'),
                 callback = function(value) GunSilent.Settings.ForceHitConfirmationEnabled.Value = value end
             }
-            combatSection:Header({ Name = "ManipulateHitData Exploit" })
-            CombatElements.ManipulateHitDataEnabled = {
+            combatSection:Header({ Name = "SpoofHitSignature Exploit" })
+            CombatElements.SpoofHitSignatureEnabled = {
                 element = combatSection:Toggle({
-                    Name = "ManipulateHitData Enabled",
-                    Default = GunSilent.Settings.ManipulateHitDataEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.ManipulateHitDataEnabled.Value = value end
-                }, 'ManipulateHitDataEnabled'),
-                callback = function(value) GunSilent.Settings.ManipulateHitDataEnabled.Value = value end
+                    Name = "SpoofHitSignature Enabled",
+                    Default = GunSilent.Settings.SpoofHitSignatureEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.SpoofHitSignatureEnabled.Value = value end
+                }, 'SpoofHitSignatureEnabled'),
+                callback = function(value) GunSilent.Settings.SpoofHitSignatureEnabled.Value = value end
+            }
+            combatSection:Header({ Name = "OverrideServerTick Exploit" })
+            CombatElements.OverrideServerTickEnabled = {
+                element = combatSection:Toggle({
+                    Name = "OverrideServerTick Enabled",
+                    Default = GunSilent.Settings.OverrideServerTickEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.OverrideServerTickEnabled.Value = value end
+                }, 'OverrideServerTickEnabled'),
+                callback = function(value) GunSilent.Settings.OverrideServerTickEnabled.Value = value end
+            }
+            CombatElements.ServerTickOffset = {
+                element = combatSection:Slider({
+                    Name = "ServerTick Offset",
+                    Default = GunSilent.Settings.ServerTickOffset.Value,
+                    Minimum = -0.1,
+                    Maximum = 0.1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
+                }, 'ServerTickOffset'),
+                callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
             }
             combatSection:Header({ Name = "Prediction Settings" })
             CombatElements.ResolverEnabled = {
@@ -1433,7 +1469,9 @@ local function Init(UI, Core, notify)
                 CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
                 CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
                 CombatElements.ForceHitConfirmationEnabled.callback(CombatElements.ForceHitConfirmationEnabled.element:GetState())
-                CombatElements.ManipulateHitDataEnabled.callback(CombatElements.ManipulateHitDataEnabled.element:GetState())
+                CombatElements.SpoofHitSignatureEnabled.callback(CombatElements.SpoofHitSignatureEnabled.element:GetState())
+                CombatElements.OverrideServerTickEnabled.callback(CombatElements.OverrideServerTickEnabled.element:GetState())
+                CombatElements.ServerTickOffset.callback(CombatElements.ServerTickOffset.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
