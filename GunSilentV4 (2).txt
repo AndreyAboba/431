@@ -47,13 +47,14 @@ local GunSilent = {
         DistanceFactor = { Value = 0.0015, Default = 0.0015 },
         SpeedFactor = { Value = 0.00003, Default = 0.00003 },
         HitVisualAnimate = { Value = false, Default = false },
-        FakeShotOriginEnabled = { Value = false, Default = false },
-        FakeShotOriginOffset = { Value = 0.5, Default = 0.5 },
-        AdvancedPredictionFactor = { Value = 0.5, Default = 0.5 },
-        FakeHitTimestampEnabled = { Value = false, Default = false }, -- Новое: Включение FakeHitTimestamp
-        FakeHitTimestampOffset = { Value = 0, Default = 0 }, -- Новое: Смещение времени выстрела
-        FakeVelocityInjectionEnabled = { Value = false, Default = false }, -- Новое: Включение FakeVelocityInjection
-        FakeVelocityInjectionFactor = { Value = 1, Default = 1 } -- Новое: Множитель искусственного ускорения
+        FakeHitTimestampEnabled = { Value = false, Default = false },
+        FakeHitTimestampOffset = { Value = 0, Default = 0 },
+        WallBangEnabled = { Value = false, Default = false },
+        WallBangPenetrationDepth = { Value = 5, Default = 5 },
+        FakeHitboxOffsetEnabled = { Value = false, Default = false },
+        FakeHitboxOffsetDistance = { Value = 0.5, Default = 0.5 },
+        SpoofServerLatencyEnabled = { Value = false, Default = false },
+        SpoofServerLatencyValue = { Value = 0.05, Default = 0.05 }
     },
     State = {
         LastEventId = 0,
@@ -509,20 +510,11 @@ local function predictTargetPositionGun(target)
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     local smoothedVelocity = smoothVelocity(target, rawVelocity, GunSilent.Settings.SmoothingFactor.Value)
 
-    -- Новое: FakeVelocityInjection - подделка скорости цели
-    local finalVelocity = smoothedVelocity
-    if GunSilent.Settings.FakeVelocityInjectionEnabled.Value then
-        local directionToTarget = (targetPos - myPos).Unit
-        local fakeVelocity = directionToTarget * (smoothedVelocity.Magnitude * GunSilent.Settings.FakeVelocityInjectionFactor.Value)
-        finalVelocity = smoothedVelocity + fakeVelocity
-        print("[GunSilent] FakeVelocityInjection Applied: Original Velocity = " .. tostring(smoothedVelocity) .. ", Modified Velocity = " .. tostring(finalVelocity))
-    end
-
     local acceleration = calculateAcceleration(positionHistory)
-    local velocityMagnitude = finalVelocity.Magnitude
+    local velocityMagnitude = smoothedVelocity.Magnitude
     local maxSpeed = 80
     if velocityMagnitude > maxSpeed then
-        finalVelocity = finalVelocity.Unit * maxSpeed
+        smoothedVelocity = smoothedVelocity.Unit * maxSpeed
         velocityMagnitude = maxSpeed
     end
 
@@ -537,7 +529,6 @@ local function predictTargetPositionGun(target)
     local speedFactor = GunSilent.Settings.SpeedFactor.Value
     local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
     local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
-    local advancedPredictionFactor = GunSilent.Settings.AdvancedPredictionFactor.Value
 
     local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
     local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
@@ -546,7 +537,7 @@ local function predictTargetPositionGun(target)
     local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution
 
     local clientPos = targetPos
-    local predictedPos = clientPos + finalVelocity * predictionTime + (0.5 * acceleration * predictionTime * predictionTime * advancedPredictionFactor)
+    local predictedPos = clientPos + smoothedVelocity * predictionTime + (0.5 * acceleration * predictionTime * predictionTime)
 
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
@@ -558,7 +549,7 @@ local function predictTargetPositionGun(target)
         direction = (predictedPos - myPos).Unit,
         timeToTarget = predictionTime,
         clientPosition = clientPos,
-        resolvedVelocity = finalVelocity
+        resolvedVelocity = smoothedVelocity
     }
 end
 
@@ -583,11 +574,21 @@ local function createHitDataGun(target)
     local finalPosition = prediction.position
     local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
 
-    -- FakeShotOrigin - подделка точки выстрела
-    if GunSilent.Settings.FakeShotOriginEnabled.Value then
-        local offsetFactor = GunSilent.Settings.FakeShotOriginOffset.Value
-        startPos = startPos:Lerp(finalPosition, offsetFactor)
-        print("[GunSilent] FakeShotOrigin Applied: Original StartPos = " .. tostring(localRoot.Position + Vector3.new(0, 1.5, 0)) .. ", Modified StartPos = " .. tostring(startPos))
+    -- WallBang: Обход стен через подмену позиции
+    if GunSilent.Settings.WallBangEnabled.Value then
+        local raycastResult = Workspace.Raycast(startPos, (finalPosition - startPos).Unit * (startPos - finalPosition).Magnitude, RaycastParams.new())
+        if raycastResult then
+            local penetrationDepth = math.min(GunSilent.Settings.WallBangPenetrationDepth.Value, 10)
+            finalPosition = raycastResult.Position + (finalPosition - raycastResult.Position).Unit * penetrationDepth
+            print("[GunSilent] WallBang Applied: Hit wall at " .. tostring(raycastResult.Position) .. ", Adjusted to " .. tostring(finalPosition))
+        end
+    end
+
+    -- FakeHitboxOffset: Смещение хитбокса
+    if GunSilent.Settings.FakeHitboxOffsetEnabled.Value then
+        local offsetDistance = math.min(GunSilent.Settings.FakeHitboxOffsetDistance.Value, 2)
+        finalPosition = finalPosition + (finalPosition - startPos).Unit * offsetDistance
+        print("[GunSilent] FakeHitboxOffset Applied: Original Position = " .. tostring(prediction.position) .. ", Modified Position = " .. tostring(finalPosition))
     end
 
     local equippedTool = getEquippedGunTool()
@@ -596,12 +597,19 @@ local function createHitDataGun(target)
     local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
-    -- FakeHitTimestamp - подделка временной метки
+    -- FakeHitTimestamp: Подмена временной метки
     local timestamp = tick()
     if GunSilent.Settings.FakeHitTimestampEnabled.Value then
         local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
         timestamp = timestamp + timeOffset
         print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(tick()) .. ", Modified Timestamp = " .. tostring(timestamp))
+    end
+
+    -- SpoofServerLatency: Подмена пинга
+    local ping = Players.LocalPlayer:GetAttribute("ServerPing") or 0.05
+    if GunSilent.Settings.SpoofServerLatencyEnabled.Value then
+        ping = math.clamp(GunSilent.Settings.SpoofServerLatencyValue.Value, 0.01, 0.1)
+        print("[GunSilent] SpoofServerLatency Applied: Original Ping = " .. tostring(Players.LocalPlayer:GetAttribute("ServerPing") or 0.05) .. ", Modified Ping = " .. tostring(ping))
     end
 
     for i = 1, numBullets do
@@ -1085,26 +1093,6 @@ local function Init(UI, Core, notify)
                 }, 'HitChance'),
                 callback = function(value) GunSilent.Settings.HitChance.Value = value end
             }
-            combatSection:Header({ Name = "FakeShotOrigin Exploit" })
-            CombatElements.FakeShotOriginEnabled = {
-                element = combatSection:Toggle({
-                    Name = "FakeShotOrigin Enabled",
-                    Default = GunSilent.Settings.FakeShotOriginEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.FakeShotOriginEnabled.Value = value end
-                }, 'FakeShotOriginEnabled'),
-                callback = function(value) GunSilent.Settings.FakeShotOriginEnabled.Value = value end
-            }
-            CombatElements.FakeShotOriginOffset = {
-                element = combatSection:Slider({
-                    Name = "FakeShotOrigin Offset",
-                    Default = GunSilent.Settings.FakeShotOriginOffset.Value,
-                    Minimum = 0,
-                    Maximum = 1,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.FakeShotOriginOffset.Value = value end
-                }, 'FakeShotOriginOffset'),
-                callback = function(value) GunSilent.Settings.FakeShotOriginOffset.Value = value end
-            }
             combatSection:Header({ Name = "FakeHitTimestamp Exploit" })
             CombatElements.FakeHitTimestampEnabled = {
                 element = combatSection:Toggle({
@@ -1125,25 +1113,65 @@ local function Init(UI, Core, notify)
                 }, 'FakeHitTimestampOffset'),
                 callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
             }
-            combatSection:Header({ Name = "FakeVelocityInjection Exploit" })
-            CombatElements.FakeVelocityInjectionEnabled = {
+            combatSection:Header({ Name = "WallBang Exploit" })
+            CombatElements.WallBangEnabled = {
                 element = combatSection:Toggle({
-                    Name = "FakeVelocityInjection Enabled",
-                    Default = GunSilent.Settings.FakeVelocityInjectionEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.FakeVelocityInjectionEnabled.Value = value end
-                }, 'FakeVelocityInjectionEnabled'),
-                callback = function(value) GunSilent.Settings.FakeVelocityInjectionEnabled.Value = value end
+                    Name = "WallBang Enabled",
+                    Default = GunSilent.Settings.WallBangEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.WallBangEnabled.Value = value end
+                }, 'WallBangEnabled'),
+                callback = function(value) GunSilent.Settings.WallBangEnabled.Value = value end
             }
-            CombatElements.FakeVelocityInjectionFactor = {
+            CombatElements.WallBangPenetrationDepth = {
                 element = combatSection:Slider({
-                    Name = "FakeVelocityInjection Factor",
-                    Default = GunSilent.Settings.FakeVelocityInjectionFactor.Value,
+                    Name = "WallBang Penetration Depth",
+                    Default = GunSilent.Settings.WallBangPenetrationDepth.Value,
+                    Minimum = 0,
+                    Maximum = 10,
+                    Precision = 1,
+                    Callback = function(value) GunSilent.Settings.WallBangPenetrationDepth.Value = value end
+                }, 'WallBangPenetrationDepth'),
+                callback = function(value) GunSilent.Settings.WallBangPenetrationDepth.Value = value end
+            }
+            combatSection:Header({ Name = "FakeHitboxOffset Exploit" })
+            CombatElements.FakeHitboxOffsetEnabled = {
+                element = combatSection:Toggle({
+                    Name = "FakeHitboxOffset Enabled",
+                    Default = GunSilent.Settings.FakeHitboxOffsetEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.FakeHitboxOffsetEnabled.Value = value end
+                }, 'FakeHitboxOffsetEnabled'),
+                callback = function(value) GunSilent.Settings.FakeHitboxOffsetEnabled.Value = value end
+            }
+            CombatElements.FakeHitboxOffsetDistance = {
+                element = combatSection:Slider({
+                    Name = "FakeHitboxOffset Distance",
+                    Default = GunSilent.Settings.FakeHitboxOffsetDistance.Value,
                     Minimum = 0,
                     Maximum = 2,
                     Precision = 2,
-                    Callback = function(value) GunSilent.Settings.FakeVelocityInjectionFactor.Value = value end
-                }, 'FakeVelocityInjectionFactor'),
-                callback = function(value) GunSilent.Settings.FakeVelocityInjectionFactor.Value = value end
+                    Callback = function(value) GunSilent.Settings.FakeHitboxOffsetDistance.Value = value end
+                }, 'FakeHitboxOffsetDistance'),
+                callback = function(value) GunSilent.Settings.FakeHitboxOffsetDistance.Value = value end
+            }
+            combatSection:Header({ Name = "SpoofServerLatency Exploit" })
+            CombatElements.SpoofServerLatencyEnabled = {
+                element = combatSection:Toggle({
+                    Name = "SpoofServerLatency Enabled",
+                    Default = GunSilent.Settings.SpoofServerLatencyEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.SpoofServerLatencyEnabled.Value = value end
+                }, 'SpoofServerLatencyEnabled'),
+                callback = function(value) GunSilent.Settings.SpoofServerLatencyEnabled.Value = value end
+            }
+            CombatElements.SpoofServerLatencyValue = {
+                element = combatSection:Slider({
+                    Name = "SpoofServerLatency Value",
+                    Default = GunSilent.Settings.SpoofServerLatencyValue.Value,
+                    Minimum = 0.01,
+                    Maximum = 0.1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.SpoofServerLatencyValue.Value = value end
+                }, 'SpoofServerLatencyValue'),
+                callback = function(value) GunSilent.Settings.SpoofServerLatencyValue.Value = value end
             }
             combatSection:Header({ Name = "Prediction Settings" })
             CombatElements.ResolverEnabled = {
@@ -1230,17 +1258,6 @@ local function Init(UI, Core, notify)
                     Callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
                 }, 'SpeedFactor'),
                 callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
-            }
-            CombatElements.AdvancedPredictionFactor = {
-                element = combatSection:Slider({
-                    Name = "Advanced Prediction Factor",
-                    Minimum = 0,
-                    Maximum = 1,
-                    Default = GunSilent.Settings.AdvancedPredictionFactor.Value,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.AdvancedPredictionFactor.Value = value end
-                }, 'AdvancedPredictionFactor'),
-                callback = function(value) GunSilent.Settings.AdvancedPredictionFactor.Value = value end
             }
         end
     end
@@ -1468,12 +1485,14 @@ local function Init(UI, Core, notify)
                 CombatElements.PredictVisual.callback(CombatElements.PredictVisual.element:GetState())
                 CombatElements.TrajectoryBeam.callback(CombatElements.TrajectoryBeam.element:GetState())
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
-                CombatElements.FakeShotOriginEnabled.callback(CombatElements.FakeShotOriginEnabled.element:GetState())
-                CombatElements.FakeShotOriginOffset.callback(CombatElements.FakeShotOriginOffset.element:GetValue())
                 CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
                 CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
-                CombatElements.FakeVelocityInjectionEnabled.callback(CombatElements.FakeVelocityInjectionEnabled.element:GetState())
-                CombatElements.FakeVelocityInjectionFactor.callback(CombatElements.FakeVelocityInjectionFactor.element:GetValue())
+                CombatElements.WallBangEnabled.callback(CombatElements.WallBangEnabled.element:GetState())
+                CombatElements.WallBangPenetrationDepth.callback(CombatElements.WallBangPenetrationDepth.element:GetValue())
+                CombatElements.FakeHitboxOffsetEnabled.callback(CombatElements.FakeHitboxOffsetEnabled.element:GetState())
+                CombatElements.FakeHitboxOffsetDistance.callback(CombatElements.FakeHitboxOffsetDistance.element:GetValue())
+                CombatElements.SpoofServerLatencyEnabled.callback(CombatElements.SpoofServerLatencyEnabled.element:GetState())
+                CombatElements.SpoofServerLatencyValue.callback(CombatElements.SpoofServerLatencyValue.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
@@ -1482,7 +1501,6 @@ local function Init(UI, Core, notify)
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
                 CombatElements.SpeedFactor.callback(CombatElements.SpeedFactor.element:GetValue())
-                CombatElements.AdvancedPredictionFactor.callback(CombatElements.AdvancedPredictionFactor.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
