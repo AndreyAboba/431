@@ -9,9 +9,9 @@ local Stats = game:GetService("Stats")
 local GunSilent = {
     Settings = {
         -- Новые параметры для предикции
-        BasePrediction = { Value = 0.11, Default = 0.11 }, -- Базовый предикт (секунды)
-        VelocityPredictionWeight = { Value = 0.7, Default = 0.7 }, -- Вес предсказания скорости (0-1)
-        PingCompensationFactor = { Value = 1.15, Default = 1.15 }, -- Компенсация пинга (множитель)
+        BasePrediction = { Value = 0.13, Default = 0.13 }, -- Базовый предикт (секунды)
+        VelocityPredictionWeight = { Value = 0.7, Default = 0.85 }, -- Вес предсказания скорости (0-1)
+        PingCompensationFactor = { Value = 1.2, Default = 1.2 }, -- Компенсация пинга (множитель)
         SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Фактор сглаживания
 
         Enabled = { Value = false, Default = false },
