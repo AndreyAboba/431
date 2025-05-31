@@ -49,12 +49,12 @@ local GunSilent = {
         HitVisualAnimate = { Value = false, Default = false },
         FakeHitTimestampEnabled = { Value = false, Default = false },
         FakeHitTimestampOffset = { Value = 0, Default = 0 },
-        WallBangEnabled = { Value = false, Default = false },
-        WallBangPenetrationDepth = { Value = 5, Default = 5 },
         FakeHitboxOffsetEnabled = { Value = false, Default = false },
         FakeHitboxOffsetDistance = { Value = 0.5, Default = 0.5 },
         SpoofServerLatencyEnabled = { Value = false, Default = false },
-        SpoofServerLatencyValue = { Value = 0.05, Default = 0.05 }
+        SpoofServerLatencyValue = { Value = 0.05, Default = 0.05 },
+        SpoofHitValidationEnabled = { Value = false, Default = false },
+        SpoofHitValidationAccuracy = { Value = 0.9, Default = 0.9 }
     },
     State = {
         LastEventId = 0,
@@ -574,24 +574,6 @@ local function createHitDataGun(target)
     local finalPosition = prediction.position
     local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
 
-    -- WallBang: Обход стен через подмену позиции
-    if GunSilent.Settings.WallBangEnabled.Value then
-        local direction = (finalPosition - startPos).Unit
-        local distance = (finalPosition - startPos).Magnitude
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterDescendantsInstances = {Players.LocalPlayer.Character} -- Исключаем персонажа игрока
-        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-        raycastParams.IgnoreWater = true
-
-        -- Исправляем синтаксис: используем двоеточие вместо точки
-        local raycastResult = Workspace:Raycast(startPos, direction * distance, raycastParams)
-        if raycastResult then
-            local penetrationDepth = math.min(GunSilent.Settings.WallBangPenetrationDepth.Value, 10)
-            finalPosition = raycastResult.Position + direction * penetrationDepth
-            print("[GunSilent] WallBang Applied: Hit wall at " .. tostring(raycastResult.Position) .. ", Adjusted to " .. tostring(finalPosition))
-        end
-    end
-
     -- FakeHitboxOffset: Смещение хитбокса
     if GunSilent.Settings.FakeHitboxOffsetEnabled.Value then
         local offsetDistance = math.min(GunSilent.Settings.FakeHitboxOffsetDistance.Value, 2)
@@ -618,6 +600,15 @@ local function createHitDataGun(target)
     if GunSilent.Settings.SpoofServerLatencyEnabled.Value then
         ping = math.clamp(GunSilent.Settings.SpoofServerLatencyValue.Value, 0.01, 0.1)
         print("[GunSilent] SpoofServerLatency Applied: Original Ping = " .. tostring(Players.LocalPlayer:GetAttribute("ServerPing") or 0.05) .. ", Modified Ping = " .. tostring(ping))
+    end
+
+    -- SpoofHitValidation: Подмена данных валидации
+    if GunSilent.Settings.SpoofHitValidationEnabled.Value then
+        local accuracy = GunSilent.Settings.SpoofHitValidationAccuracy.Value
+        finalPosition = hitPart.Position -- Используем точную позицию хитбокса цели
+        local idealDirection = (finalPosition - startPos).Unit
+        prediction.direction = idealDirection:Lerp(prediction.direction, accuracy) -- Сглаживаем направление для реалистичности
+        print("[GunSilent] SpoofHitValidation Applied: Original Direction = " .. tostring(prediction.direction) .. ", Modified Direction = " .. tostring(idealDirection))
     end
 
     for i = 1, numBullets do
@@ -1121,26 +1112,6 @@ local function Init(UI, Core, notify)
                 }, 'FakeHitTimestampOffset'),
                 callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
             }
-            combatSection:Header({ Name = "WallBang Exploit" })
-            CombatElements.WallBangEnabled = {
-                element = combatSection:Toggle({
-                    Name = "WallBang Enabled",
-                    Default = GunSilent.Settings.WallBangEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.WallBangEnabled.Value = value end
-                }, 'WallBangEnabled'),
-                callback = function(value) GunSilent.Settings.WallBangEnabled.Value = value end
-            }
-            CombatElements.WallBangPenetrationDepth = {
-                element = combatSection:Slider({
-                    Name = "WallBang Penetration Depth",
-                    Default = GunSilent.Settings.WallBangPenetrationDepth.Value,
-                    Minimum = 0,
-                    Maximum = 10,
-                    Precision = 1,
-                    Callback = function(value) GunSilent.Settings.WallBangPenetrationDepth.Value = value end
-                }, 'WallBangPenetrationDepth'),
-                callback = function(value) GunSilent.Settings.WallBangPenetrationDepth.Value = value end
-            }
             combatSection:Header({ Name = "FakeHitboxOffset Exploit" })
             CombatElements.FakeHitboxOffsetEnabled = {
                 element = combatSection:Toggle({
@@ -1180,6 +1151,26 @@ local function Init(UI, Core, notify)
                     Callback = function(value) GunSilent.Settings.SpoofServerLatencyValue.Value = value end
                 }, 'SpoofServerLatencyValue'),
                 callback = function(value) GunSilent.Settings.SpoofServerLatencyValue.Value = value end
+            }
+            combatSection:Header({ Name = "SpoofHitValidation Exploit" })
+            CombatElements.SpoofHitValidationEnabled = {
+                element = combatSection:Toggle({
+                    Name = "SpoofHitValidation Enabled",
+                    Default = GunSilent.Settings.SpoofHitValidationEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.SpoofHitValidationEnabled.Value = value end
+                }, 'SpoofHitValidationEnabled'),
+                callback = function(value) GunSilent.Settings.SpoofHitValidationEnabled.Value = value end
+            }
+            CombatElements.SpoofHitValidationAccuracy = {
+                element = combatSection:Slider({
+                    Name = "SpoofHitValidation Accuracy",
+                    Default = GunSilent.Settings.SpoofHitValidationAccuracy.Value,
+                    Minimum = 0,
+                    Maximum = 1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.SpoofHitValidationAccuracy.Value = value end
+                }, 'SpoofHitValidationAccuracy'),
+                callback = function(value) GunSilent.Settings.SpoofHitValidationAccuracy.Value = value end
             }
             combatSection:Header({ Name = "Prediction Settings" })
             CombatElements.ResolverEnabled = {
@@ -1495,12 +1486,12 @@ local function Init(UI, Core, notify)
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
                 CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
                 CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
-                CombatElements.WallBangEnabled.callback(CombatElements.WallBangEnabled.element:GetState())
-                CombatElements.WallBangPenetrationDepth.callback(CombatElements.WallBangPenetrationDepth.element:GetValue())
                 CombatElements.FakeHitboxOffsetEnabled.callback(CombatElements.FakeHitboxOffsetEnabled.element:GetState())
                 CombatElements.FakeHitboxOffsetDistance.callback(CombatElements.FakeHitboxOffsetDistance.element:GetValue())
                 CombatElements.SpoofServerLatencyEnabled.callback(CombatElements.SpoofServerLatencyEnabled.element:GetState())
                 CombatElements.SpoofServerLatencyValue.callback(CombatElements.SpoofServerLatencyValue.element:GetValue())
+                CombatElements.SpoofHitValidationEnabled.callback(CombatElements.SpoofHitValidationEnabled.element:GetState())
+                CombatElements.SpoofHitValidationAccuracy.callback(CombatElements.SpoofHitValidationAccuracy.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
