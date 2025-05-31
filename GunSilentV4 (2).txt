@@ -78,8 +78,7 @@ local GunSilent = {
         LastHitPosition = nil,
         LastShotTime = 0,
         PendingHits = {},
-        ActiveHitboxes = {},
-        NotificationGui = nil
+        ActiveHitboxes = {}
     }
 }
 
@@ -222,7 +221,7 @@ local function createHitboxPart(part, color, animate)
     smoothTween:Play()
 
     if animate and GunSilent.Settings.HitVisualAnimate.Value then
-        local liftHeight = 15
+        local liftHeight = 25
         local liftDuration = 2
         local liftTweenInfo = TweenInfo.new(liftDuration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
         local liftTween = TweenService:Create(hitbox, liftTweenInfo, { Position = hitbox.Position + Vector3.new(0, liftHeight, 0) })
@@ -732,52 +731,6 @@ local function updateVisualsGun(target)
     end
 end
 
-local function showNotification(isHit, damage)
-    if not GunSilent.State.NotificationGui then
-        local screenGui = safeCreateInstance("ScreenGui", { Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui") })
-        local frame = safeCreateInstance("Frame", {
-            Size = UDim2.new(0, 200, 0, 80),
-            Position = UDim2.new(0.5, -100, 0.6, 0), -- Центр экрана, чуть ниже
-            BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-            BorderSizePixel = 0,
-            Parent = screenGui
-        })
-        local uiCorner = safeCreateInstance("UICorner", { CornerRadius = UDim.new(0, 10), Parent = frame })
-        local icon = safeCreateInstance("ImageLabel", {
-            Size = UDim2.new(0, 40, 0, 40),
-            Position = UDim2.new(0, 10, 0, 20),
-            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-            BorderSizePixel = 0,
-            Parent = frame
-        })
-        local uiCornerIcon = safeCreateInstance("UICorner", { CornerRadius = UDim.new(0, 5), Parent = icon })
-        local text = safeCreateInstance("TextLabel", {
-            Size = UDim2.new(0, 150, 0, 40),
-            Position = UDim2.new(0, 60, 0, 20),
-            BackgroundTransparency = 1,
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextSize = 16,
-            Font = Enum.Font.SourceSans,
-            Parent = frame
-        })
-        GunSilent.State.NotificationGui = { ScreenGui = screenGui, Frame = frame, Icon = icon, Text = text }
-    end
-
-    local gui = GunSilent.State.NotificationGui
-    local iconId = isHit and "rbxassetid://17829956110" or "rbxassetid://17829927053"
-    local backgroundColor = isHit and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-    local message = isHit and "Sucessful! Damage: -10" or "Missed :("
-
-    gui.Icon.Image = iconId
-    gui.Icon.BackgroundColor3 = backgroundColor
-    gui.Text.Text = message
-
-    gui.Frame.Visible = true
-    task.delay(2, function()
-        if gui.Frame then gui.Frame.Visible = false end
-    end)
-end
-
 local function initializeGunSilent()
     if GunSilent.State.Connection then GunSilent.State.Connection:Disconnect() end
     if not GunSilent.State.V_U_4 then
@@ -802,12 +755,10 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
-                showNotification(true, -10)
                 if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                     GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
                 end
             elseif pendingHit.target then
-                showNotification(false)
                 if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                     GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
                 end
