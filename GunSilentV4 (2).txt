@@ -8,7 +8,7 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
-        -- Новые параметры для предикции
+        -- Параметры предикции
         BasePrediction = { Value = 0.15, Default = 0.15 }, -- Базовый предикт (секунды)
         VelocityPredictionWeight = { Value = 0.65, Default = 0.65 }, -- Вес предсказания скорости (0-1)
         PingCompensationFactor = { Value = 1.2, Default = 1.2 }, -- Компенсация пинга (множитель)
@@ -46,8 +46,8 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 1, Default = 1 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        DistanceFactor = { Value = 0.002, Default = 0.002 }, -- Вернул обратно
-        SpeedFactor = { Value = 0.00005, Default = 0.00005 } -- Вернул обратно
+        DistanceFactor = { Value = 0.002, Default = 0.002 },
+        SpeedFactor = { Value = 0.00005, Default = 0.00005 }
     },
     State = {
         LastEventId = 0,
@@ -418,8 +418,100 @@ local function isInVehicle(targetChar)
     return false
 end
 
+-- Функция для проверки видимости модели игрока
+local function isCharacterVisible(targetChar)
+    if not targetChar then return false end
+    
+    local head = targetChar:FindFirstChild("Head")
+    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
+    if not head or not humanoidRootPart then return false end
+
+    local allPartsVisible = true
+    for _, part in pairs(targetChar:GetChildren()) do
+        if part:IsA("BasePart") and part.Transparency >= 0.99 then
+            allPartsVisible = false
+            break
+        end
+    end
+
+    return allPartsVisible
+end
+
+-- Функция для проверки и корректировки позиции хитбокса
+local function correctHitboxPosition(targetChar, positionHistory)
+    if not targetChar then return nil end
+
+    local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return nil end
+
+    local currentPos = humanoidRootPart.Position
+    local lastKnownPos = positionHistory and #positionHistory > 0 and positionHistory[#positionHistory].pos or currentPos
+    local lastKnownTime = positionHistory and #positionHistory > 0 and positionHistory[#positionHistory].time or tick()
+
+    -- Проверяем, не находится ли хитбокс под землёй
+    local rayOrigin = currentPos + Vector3.new(0, 5, 0) -- Начинаем чуть выше позиции
+    local rayDirection = Vector3.new(0, -10, 0) -- Проверяем вниз
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {targetChar, GunSilent.State.LocalCharacter}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+
+    local groundY = raycastResult and raycastResult.Position.Y or currentPos.Y
+    local isUnderGround = currentPos.Y < groundY - 2 -- Если Y ниже земли больше чем на 2 единицы
+
+    if isUnderGround or not isCharacterVisible(targetChar) then
+        -- Корректируем позицию на основе последней известной
+        local correctedY = groundY + 3 -- Предполагаемая высота HumanoidRootPart над землёй
+        local correctedPos = Vector3.new(lastKnownPos.X, correctedY, lastKnownPos.Z)
+
+        -- Проверяем, нет ли препятствий между локальным игроком и скорректированной позицией
+        local localRoot = GunSilent.State.LocalRoot
+        if localRoot then
+            local rayOrigin = localRoot.Position
+            local rayDirection = (correctedPos - rayOrigin).Unit * (correctedPos - rayOrigin).Magnitude
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {GunSilent.State.LocalCharacter}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+
+            if not raycastResult then
+                return correctedPos
+            end
+        end
+        return correctedPos
+    end
+
+    return currentPos
+end
+
 local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity end
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then 
+        return clientVelocity 
+    end
+
+    local isVisible = isCharacterVisible(targetChar)
+    if not isVisible then
+        if #positionHistory > 0 then
+            local lastKnownPos = positionHistory[#positionHistory].pos
+            local lastKnownTime = positionHistory[#positionHistory].time
+            local lastKnownVelocity = positionHistory[#positionHistory].velocity or Vector3.new(0, 0, 0)
+
+            local localRoot = GunSilent.State.LocalRoot
+            if localRoot then
+                local rayOrigin = localRoot.Position
+                local rayDirection = (lastKnownPos - rayOrigin).Unit * (lastKnownPos - rayOrigin).Magnitude
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterDescendantsInstances = {GunSilent.State.LocalCharacter}
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+
+                if not raycastResult then
+                    return lastKnownVelocity
+                end
+            end
+        end
+        return clientVelocity
+    end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
@@ -460,8 +552,15 @@ local function predictTargetPositionGun(target)
         return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
     end
 
-    -- Текущая позиция цели
-    local targetPos = hitPart.Position
+    -- Корректируем позицию хитбокса
+    local positionHistory = GunSilent.State.PositionHistory[target] or {}
+    local correctedPos = correctHitboxPosition(targetChar, positionHistory)
+    if not correctedPos then
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil }
+    end
+
+    -- Используем скорректированную позицию как текущую
+    local targetPos = correctedPos
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then 
         return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil } 
@@ -470,11 +569,20 @@ local function predictTargetPositionGun(target)
 
     -- Дистанция и история позиций
     local distance = (targetPos - myPos).Magnitude
-    local positionHistory = GunSilent.State.PositionHistory[target] or {}
     local currentTime = tick()
 
     -- Сохраняем историю позиций
-    positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
+    if isCharacterVisible(targetChar) then
+        positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
+    else
+        if #positionHistory > 0 then
+            positionHistory[#positionHistory + 1] = { 
+                pos = targetPos, 
+                time = currentTime, 
+                velocity = positionHistory[#positionHistory].velocity or Vector3.new(0, 0, 0) 
+            }
+        end
+    end
     while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do 
         table.remove(positionHistory, 1) 
     end
@@ -505,14 +613,13 @@ local function predictTargetPositionGun(target)
         distanceWeight = math.min(1, (velocityMagnitude - 30) / 30)
     end
 
-    -- Адаптивная формула предикта с новыми параметрами
+    -- Адаптивная формула предикта
     local basePrediction = GunSilent.Settings.BasePrediction.Value
     local distanceFactor = GunSilent.Settings.DistanceFactor.Value
     local speedFactor = GunSilent.Settings.SpeedFactor.Value
     local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
     local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
 
-    -- Учитываем вес скорости в предсказании
     local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
     local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
     local pingContribution = ping * pingCompensationFactor
