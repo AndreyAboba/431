@@ -8,10 +8,10 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
-        BasePrediction = { Value = 0.15, Default = 0.15 }, -- Уменьшен базовый предикт для скорости
+        BasePrediction = { Value = 0.1, Default = 0.1 }, -- Уменьшен для точности
         VelocityPredictionWeight = { Value = 0.9, Default = 0.9 },
-        PingCompensationFactor = { Value = 0.9, Default = 0.9 },
-        SmoothingFactor = { Value = 0.05, Default = 0.05 },
+        PingCompensationFactor = { Value = 0.8, Default = 0.8 }, -- Уменьшен для меньшей компенсации
+        SmoothingFactor = { Value = 0.1, Default = 0.1 }, -- Увеличен для более плавного сглаживания
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -27,7 +27,7 @@ local GunSilent = {
         HitChance = { Value = 100, Default = 100 },
         ResolverEnabled = { Value = true, Default = true },
         ResolverThreshold = { Value = 0.3, Default = 0.3 },
-        PositionHistorySize = { Value = 30, Default = 30 },
+        PositionHistorySize = { Value = 20, Default = 20 }, -- Уменьшен размер истории для скорости
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
@@ -41,12 +41,12 @@ local GunSilent = {
         UseGradient = { Value = false, Default = false },
         ParticlePhysics = { Value = "None", Default = "None", Options = {"None", "Fall", "Rise"} },
         HitVisualEnabled = { Value = false, Default = false },
-        HitVisualFadeTime = { Value = 1, Default = 1 },
+        HitVisualFadeTime = { Value = 2, Default = 2 }, -- Увеличено для более плавного затухания
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        DistanceFactor = { Value = 0.002, Default = 0.002 },
-        SpeedFactor = { Value = 0.00005, Default = 0.00005 },
-        HitVisualAnimate = { Value = false, Default = false } -- Новый переключатель для анимации
+        DistanceFactor = { Value = 0.0015, Default = 0.0015 }, -- Уменьшен для точности
+        SpeedFactor = { Value = 0.00003, Default = 0.00003 }, -- Уменьшен для точности
+        HitVisualAnimate = { Value = false, Default = false }
     },
     State = {
         LastEventId = 0,
@@ -68,7 +68,7 @@ local GunSilent = {
         LastTargetPos = nil,
         LastPredictionPos = nil,
         LastTargetUpdate = 0,
-        TargetUpdateInterval = 0.15, -- Уменьшен интервал для большей отзывчивости
+        TargetUpdateInterval = 0.1, -- Уменьшен для скорости
         LastFriendsList = nil,
         BulletTrails = {},
         TrailFadeConnections = {},
@@ -78,8 +78,7 @@ local GunSilent = {
         LastHitPosition = nil,
         LastShotTime = 0,
         PendingHits = {},
-        ActiveHitboxes = {},
-        VelocityCache = {} -- Кэш для ускорения
+        ActiveHitboxes = {}
     }
 }
 
@@ -222,13 +221,14 @@ local function createHitboxPart(part, color, animate)
     smoothTween:Play()
 
     if animate and GunSilent.Settings.HitVisualAnimate.Value then
-        local liftHeight = 20 -- Высота подъёма
-        local liftTweenInfo = TweenInfo.new(GunSilent.Settings.HitVisualFadeTime.Value, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local liftHeight = 15 -- Уменьшена высота для более мягкого эффекта
+        local liftDuration = 2 -- Увеличено время подъёма
+        local liftTweenInfo = TweenInfo.new(liftDuration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
         local liftTween = TweenService:Create(hitbox, liftTweenInfo, { Position = hitbox.Position + Vector3.new(0, liftHeight, 0) })
         liftTween:Play()
     end
 
-    local fadeTweenInfo = TweenInfo.new(GunSilent.Settings.HitVisualFadeTime.Value, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local fadeTweenInfo = TweenInfo.new(GunSilent.Settings.HitVisualFadeTime.Value, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
     local fadeTween = TweenService:Create(hitbox, fadeTweenInfo, { Transparency = 1 })
     fadeTween:Play()
     fadeTween.Completed:Connect(function()
@@ -425,7 +425,7 @@ local function isInVehicle(targetChar)
 end
 
 local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 5 then return clientVelocity end
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 3 then return clientVelocity end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
@@ -433,7 +433,8 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     local validEntries = 0
     local maxSpeedLimit = isInVehicle(targetChar) and 150 or 80
 
-    for i = #positionHistory - 1, math.max(1, #positionHistory - 5), -1 do
+    -- Уменьшено количество итераций до 3 для скорости
+    for i = #positionHistory - 1, math.max(1, #positionHistory - 3), -1 do
         local currEntry = positionHistory[i + 1]
         local prevEntry = positionHistory[i]
         local timeDelta = currEntry.time - prevEntry.time
@@ -448,14 +449,7 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
         end
     end
 
-    return validEntries > 0 and totalVelocity / totalWeight or Vector3.new(0, 0, 0)
-end
-
-local function calculateAcceleration(positionHistory)
-    if #positionHistory < 3 then return Vector3.new(0, 0, 0) end
-    local currVel = (positionHistory[#positionHistory].pos - positionHistory[#positionHistory - 1].pos) / (positionHistory[#positionHistory].time - positionHistory[#positionHistory - 1].time)
-    local prevVel = (positionHistory[#positionHistory - 1].pos - positionHistory[#positionHistory - 2].pos) / (positionHistory[#positionHistory - 1].time - positionHistory[#positionHistory - 2].time)
-    return (currVel - prevVel) / (positionHistory[#positionHistory].time - positionHistory[#positionHistory - 2].time)
+    return validEntries > 0 and totalVelocity / totalWeight or clientVelocity
 end
 
 local function predictTargetPositionGun(target)
@@ -491,8 +485,7 @@ local function predictTargetPositionGun(target)
     GunSilent.State.PositionHistory[target] = positionHistory
 
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
-    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.15)
-    local acceleration = calculateAcceleration(positionHistory)
+    local smoothedVelocity = smoothVelocity(target, rawVelocity, GunSilent.Settings.SmoothingFactor.Value)
 
     local velocityMagnitude = smoothedVelocity.Magnitude
     local maxSpeed = 80
@@ -506,7 +499,6 @@ local function predictTargetPositionGun(target)
     local ping = math.floor(rawPing * 1000 + 0.5) / 1000
 
     local distanceWeight = velocityMagnitude > 30 and math.min(1, (velocityMagnitude - 30) / 30) or 0
-    local maneuverWeight = acceleration.Magnitude > 10 and math.min(0.5, acceleration.Magnitude / 50) or 0 -- Корректировка на маневры
 
     local basePrediction = GunSilent.Settings.BasePrediction.Value
     local distanceFactor = GunSilent.Settings.DistanceFactor.Value
@@ -517,13 +509,14 @@ local function predictTargetPositionGun(target)
     local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
     local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
     local pingContribution = ping * pingCompensationFactor
-    local accelerationContribution = acceleration.Magnitude * 0.001 * maneuverWeight -- Добавляем влияние ускорения
 
-    local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution + accelerationContribution
-    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "Acceleration:", acceleration.Magnitude)
+    local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution
+
+    -- Дебаг-логи для отслеживания
+    print("Prediction Time:", predictionTime, "Ping:", ping, "Velocity:", velocityMagnitude, "Distance:", distance, "DistanceWeight:", distanceWeight)
 
     local clientPos = targetPos
-    local predictedPos = clientPos + smoothedVelocity * predictionTime + 0.5 * acceleration * predictionTime * predictionTime -- Учитываем ускорение
+    local predictedPos = clientPos + smoothedVelocity * predictionTime
 
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
