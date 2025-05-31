@@ -50,9 +50,10 @@ local GunSilent = {
         FakeHitTimestampEnabled = { Value = false, Default = false },
         FakeHitTimestampOffset = { Value = 0, Default = 0 },
         ForceHitConfirmationEnabled = { Value = false, Default = false },
-        SpoofHitSignatureEnabled = { Value = false, Default = false },
         OverrideServerTickEnabled = { Value = false, Default = false },
-        ServerTickOffset = { Value = 0, Default = 0 }
+        ServerTickOffset = { Value = 0, Default = 0 },
+        FakeHitMultiplierEnabled = { Value = false, Default = false },
+        FakeHitMultiplierFactor = { Value = 2, Default = 2 }
     },
     State = {
         LastEventId = 0,
@@ -590,6 +591,18 @@ local function createHitDataGun(target)
         hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos, Timestamp = timestamp}}
     end
 
+    -- FakeHitMultiplier: Дублирование hitData для увеличения количества попаданий
+    if GunSilent.Settings.FakeHitMultiplierEnabled.Value then
+        local multiplier = math.clamp(GunSilent.Settings.FakeHitMultiplierFactor.Value, 1, 5)
+        local originalHitData = table.clone(hitData)
+        for m = 2, multiplier do
+            for i = 1, #originalHitData do
+                hitData[#hitData + 1] = table.clone(originalHitData[i])
+            end
+        end
+        print("[GunSilent] FakeHitMultiplier Applied: Original Hits = " .. tostring(numBullets) .. ", Multiplied Hits = " .. tostring(#hitData) .. ", Multiplier = " .. tostring(multiplier))
+    end
+
     if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and finalPosition then
         local trail = safeCreateInstance("Beam", {
             FaceCamera = true,
@@ -820,14 +833,6 @@ local function initializeGunSilent()
                         local hitData = createHitDataGun(nearestPlayer)
                         if aimCFrame and hitData then
                             modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
-
-                            -- SpoofHitSignature: Подмена цифровой подписи для обхода проверки целостности
-                            if GunSilent.Settings.SpoofHitSignatureEnabled.Value then
-                                local originalSignature = modifiedArgs[#modifiedArgs] -- Предполагаем, что подпись может быть последним аргументом
-                                local spoofedSignature = "SpoofedSignature_" .. tostring(math.random(1000, 9999))
-                                table.insert(modifiedArgs, spoofedSignature)
-                                print("[GunSilent] SpoofHitSignature Applied: Original Signature = " .. tostring(originalSignature or "None") .. ", Spoofed Signature = " .. tostring(spoofedSignature))
-                            end
 
                             -- OverrideServerTick: Синхронизация клиентского времени с серверным
                             if GunSilent.Settings.OverrideServerTickEnabled.Value then
@@ -1096,64 +1101,6 @@ local function Init(UI, Core, notify)
                 }, 'HitChance'),
                 callback = function(value) GunSilent.Settings.HitChance.Value = value end
             }
-            combatSection:Header({ Name = "FakeHitTimestamp Exploit" })
-            CombatElements.FakeHitTimestampEnabled = {
-                element = combatSection:Toggle({
-                    Name = "FakeHitTimestamp Enabled",
-                    Default = GunSilent.Settings.FakeHitTimestampEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.FakeHitTimestampEnabled.Value = value end
-                }, 'FakeHitTimestampEnabled'),
-                callback = function(value) GunSilent.Settings.FakeHitTimestampEnabled.Value = value end
-            }
-            CombatElements.FakeHitTimestampOffset = {
-                element = combatSection:Slider({
-                    Name = "FakeHitTimestamp Offset",
-                    Default = GunSilent.Settings.FakeHitTimestampOffset.Value,
-                    Minimum = -0.1,
-                    Maximum = 0.1,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
-                }, 'FakeHitTimestampOffset'),
-                callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
-            }
-            combatSection:Header({ Name = "ForceHitConfirmation Exploit" })
-            CombatElements.ForceHitConfirmationEnabled = {
-                element = combatSection:Toggle({
-                    Name = "ForceHitConfirmation Enabled",
-                    Default = GunSilent.Settings.ForceHitConfirmationEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.ForceHitConfirmationEnabled.Value = value end
-                }, 'ForceHitConfirmationEnabled'),
-                callback = function(value) GunSilent.Settings.ForceHitConfirmationEnabled.Value = value end
-            }
-            combatSection:Header({ Name = "SpoofHitSignature Exploit" })
-            CombatElements.SpoofHitSignatureEnabled = {
-                element = combatSection:Toggle({
-                    Name = "SpoofHitSignature Enabled",
-                    Default = GunSilent.Settings.SpoofHitSignatureEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.SpoofHitSignatureEnabled.Value = value end
-                }, 'SpoofHitSignatureEnabled'),
-                callback = function(value) GunSilent.Settings.SpoofHitSignatureEnabled.Value = value end
-            }
-            combatSection:Header({ Name = "OverrideServerTick Exploit" })
-            CombatElements.OverrideServerTickEnabled = {
-                element = combatSection:Toggle({
-                    Name = "OverrideServerTick Enabled",
-                    Default = GunSilent.Settings.OverrideServerTickEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.OverrideServerTickEnabled.Value = value end
-                }, 'OverrideServerTickEnabled'),
-                callback = function(value) GunSilent.Settings.OverrideServerTickEnabled.Value = value end
-            }
-            CombatElements.ServerTickOffset = {
-                element = combatSection:Slider({
-                    Name = "ServerTick Offset",
-                    Default = GunSilent.Settings.ServerTickOffset.Value,
-                    Minimum = -0.1,
-                    Maximum = 0.1,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
-                }, 'ServerTickOffset'),
-                callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
-            }
             combatSection:Header({ Name = "Prediction Settings" })
             CombatElements.ResolverEnabled = {
                 element = combatSection:Toggle({
@@ -1239,6 +1186,74 @@ local function Init(UI, Core, notify)
                     Callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
                 }, 'SpeedFactor'),
                 callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
+            }
+
+            -- Новая секция для эксплоитов: GunSilent Mods
+            combatSection:Header({ Name = "GunSilent Mods" })
+            CombatElements.FakeHitTimestampEnabled = {
+                element = combatSection:Toggle({
+                    Name = "FakeHitTimestamp Enabled",
+                    Default = GunSilent.Settings.FakeHitTimestampEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.FakeHitTimestampEnabled.Value = value end
+                }, 'FakeHitTimestampEnabled'),
+                callback = function(value) GunSilent.Settings.FakeHitTimestampEnabled.Value = value end
+            }
+            CombatElements.FakeHitTimestampOffset = {
+                element = combatSection:Slider({
+                    Name = "FakeHitTimestamp Offset",
+                    Default = GunSilent.Settings.FakeHitTimestampOffset.Value,
+                    Minimum = -0.1,
+                    Maximum = 0.1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
+                }, 'FakeHitTimestampOffset'),
+                callback = function(value) GunSilent.Settings.FakeHitTimestampOffset.Value = value end
+            }
+            CombatElements.ForceHitConfirmationEnabled = {
+                element = combatSection:Toggle({
+                    Name = "ForceHitConfirmation Enabled",
+                    Default = GunSilent.Settings.ForceHitConfirmationEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.ForceHitConfirmationEnabled.Value = value end
+                }, 'ForceHitConfirmationEnabled'),
+                callback = function(value) GunSilent.Settings.ForceHitConfirmationEnabled.Value = value end
+            }
+            CombatElements.OverrideServerTickEnabled = {
+                element = combatSection:Toggle({
+                    Name = "OverrideServerTick Enabled",
+                    Default = GunSilent.Settings.OverrideServerTickEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.OverrideServerTickEnabled.Value = value end
+                }, 'OverrideServerTickEnabled'),
+                callback = function(value) GunSilent.Settings.OverrideServerTickEnabled.Value = value end
+            }
+            CombatElements.ServerTickOffset = {
+                element = combatSection:Slider({
+                    Name = "ServerTick Offset",
+                    Default = GunSilent.Settings.ServerTickOffset.Value,
+                    Minimum = -0.1,
+                    Maximum = 0.1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
+                }, 'ServerTickOffset'),
+                callback = function(value) GunSilent.Settings.ServerTickOffset.Value = value end
+            }
+            CombatElements.FakeHitMultiplierEnabled = {
+                element = combatSection:Toggle({
+                    Name = "FakeHitMultiplier Enabled",
+                    Default = GunSilent.Settings.FakeHitMultiplierEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.FakeHitMultiplierEnabled.Value = value end
+                }, 'FakeHitMultiplierEnabled'),
+                callback = function(value) GunSilent.Settings.FakeHitMultiplierEnabled.Value = value end
+            }
+            CombatElements.FakeHitMultiplierFactor = {
+                element = combatSection:Slider({
+                    Name = "FakeHitMultiplier Factor",
+                    Default = GunSilent.Settings.FakeHitMultiplierFactor.Value,
+                    Minimum = 1,
+                    Maximum = 5,
+                    Precision = 0,
+                    Callback = function(value) GunSilent.Settings.FakeHitMultiplierFactor.Value = value end
+                }, 'FakeHitMultiplierFactor'),
+                callback = function(value) GunSilent.Settings.FakeHitMultiplierFactor.Value = value end
             }
         end
     end
@@ -1466,12 +1481,6 @@ local function Init(UI, Core, notify)
                 CombatElements.PredictVisual.callback(CombatElements.PredictVisual.element:GetState())
                 CombatElements.TrajectoryBeam.callback(CombatElements.TrajectoryBeam.element:GetState())
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
-                CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
-                CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
-                CombatElements.ForceHitConfirmationEnabled.callback(CombatElements.ForceHitConfirmationEnabled.element:GetState())
-                CombatElements.SpoofHitSignatureEnabled.callback(CombatElements.SpoofHitSignatureEnabled.element:GetState())
-                CombatElements.OverrideServerTickEnabled.callback(CombatElements.OverrideServerTickEnabled.element:GetState())
-                CombatElements.ServerTickOffset.callback(CombatElements.ServerTickOffset.element:GetValue())
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
@@ -1480,6 +1489,13 @@ local function Init(UI, Core, notify)
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
                 CombatElements.SpeedFactor.callback(CombatElements.SpeedFactor.element:GetValue())
+                CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
+                CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
+                CombatElements.ForceHitConfirmationEnabled.callback(CombatElements.ForceHitConfirmationEnabled.element:GetState())
+                CombatElements.OverrideServerTickEnabled.callback(CombatElements.OverrideServerTickEnabled.element:GetState())
+                CombatElements.ServerTickOffset.callback(CombatElements.ServerTickOffset.element:GetValue())
+                CombatElements.FakeHitMultiplierEnabled.callback(CombatElements.FakeHitMultiplierEnabled.element:GetState())
+                CombatElements.FakeHitMultiplierFactor.callback(CombatElements.FakeHitMultiplierFactor.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
