@@ -11,7 +11,7 @@ local GunSilent = {
         -- Новые параметры для предикции
         BasePrediction = { Value = 0.2, Default = 0.2 }, -- Базовый предикт (секунды)
         VelocityPredictionWeight = { Value = 0.9, Default = 0.9 }, -- Вес предсказания скорости (0-1)
-        PingCompensationFactor = { Value = 1.2, Default = 1.2 }, -- Компенсация пинга (множитель)
+        PingCompensationFactor = { Value = 0.9, Default = 0.9 }, -- Компенсация пинга (множитель)
         SmoothingFactor = { Value = 0.05, Default = 0.05 }, -- Фактор сглаживания
 
         Enabled = { Value = false, Default = false },
