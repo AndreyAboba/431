@@ -21,9 +21,6 @@ local GunSilent = {
         BulletTrailsFadeTime = { Value = 1, Default = 1 },
         BulletTrailsColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitChance = { Value = 100, Default = 100 },
-        ResolverEnabled = { Value = true, Default = true },
-        ResolverThreshold = { Value = 0.3, Default = 0.3 },
-        PositionHistorySize = { Value = 20, Default = 20 },
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
@@ -53,8 +50,6 @@ local GunSilent = {
         V_U_4 = nil,
         Connection = nil,
         OldFireServer = nil,
-        PositionHistory = {},
-        SmoothedVelocity = {},
         LastVisualUpdateTime = 0,
         LastTargetPosition = {},
         LocalCharacter = nil,
@@ -403,43 +398,10 @@ local function isInVehicle(targetChar)
     return false
 end
 
-local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 2 then
-        return clientVelocity
-    end
-
-    local currentTime = tick()
-    local totalVelocity = Vector3.new(0, 0, 0)
-    local totalWeight = 0
-    local maxSpeedLimit = isInVehicle(targetChar) and 100 or 50
-
-    -- Оптимизированный цикл по последним 2 точкам
-    for i = #positionHistory - 1, #positionHistory - 1, -1 do
-        local currEntry = positionHistory[i + 1]
-        local prevEntry = positionHistory[i]
-        local timeDelta = currEntry.time - prevEntry.time
-        if timeDelta > 0 and timeDelta <= 0.2 then
-            local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
-            if velocity.Magnitude <= maxSpeedLimit * 1.5 then
-                local weight = 1 - (currentTime - currEntry.time) * 2
-                totalVelocity = totalVelocity + velocity * weight
-                totalWeight = totalWeight + weight
-            end
-        end
-    end
-
-    local smoothedVelocity = totalWeight > 0 and totalVelocity / totalWeight or clientVelocity
-    if smoothedVelocity.Magnitude > maxSpeedLimit then
-        smoothedVelocity = smoothedVelocity.Unit * maxSpeedLimit
-    end
-
-    return smoothedVelocity
-end
-
 local function predictTargetPositionGun(target)
     local localRoot = GunSilent.State.LocalRoot
     if not target or not target.Character or not localRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, velocity = nil } 
     end
 
     local targetChar = target.Character
@@ -448,38 +410,32 @@ local function predictTargetPositionGun(target)
     if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
     local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
     if not hitPart or not targetRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, velocity = nil } 
     end
 
     local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, velocity = nil } 
     end
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
-    local positionHistory = GunSilent.State.PositionHistory[target] or {}
-    local currentTime = tick()
-
-    positionHistory[#positionHistory + 1] = { pos = targetPos, time = currentTime, velocity = targetRoot.Velocity }
-    while #positionHistory > GunSilent.Settings.PositionHistorySize.Value do 
-        table.remove(positionHistory, 1) 
+    local velocity = targetRoot.Velocity
+    local maxSpeedLimit = isInVehicle(targetChar) and 100 or 50
+    if velocity.Magnitude > maxSpeedLimit then
+        velocity = velocity.Unit * maxSpeedLimit
     end
-    GunSilent.State.PositionHistory[target] = positionHistory
-
-    local rawVelocity = targetRoot.Velocity
-    local smoothedVelocity = resolveVelocity(target, positionHistory, rawVelocity, targetChar)
 
     local ping = Players.LocalPlayer:GetAttribute("ServerPing") or 0.05
     local predictionTime = GunSilent.Settings.BasePrediction.Value + ping
-    local predictedPos = targetPos + smoothedVelocity * predictionTime
+    local predictedPos = targetPos + velocity * predictionTime
 
     return {
         position = predictedPos,
         direction = (predictedPos - myPos).Unit,
         timeToTarget = predictionTime,
         clientPosition = targetPos,
-        resolvedVelocity = smoothedVelocity
+        velocity = velocity
     }
 end
 
@@ -774,8 +730,6 @@ local function initializeGunSilent()
 
         local currentTool = getEquippedGunTool()
         if currentTool ~= GunSilent.State.LastTool then
-            GunSilent.State.PositionHistory = {}
-            GunSilent.State.SmoothedVelocity = {}
             GunSilent.State.LastTool = currentTool
         end
 
@@ -788,10 +742,6 @@ local function initializeGunSilent()
 
         local gunRange = getGunRange(currentTool)
         local nearestPlayer = getNearestPlayerGun(gunRange)
-        if nearestPlayer ~= GunSilent.Core.GunSilentTarget.CurrentTarget then
-            GunSilent.State.PositionHistory[nearestPlayer] = nil
-            GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
-        end
         updateVisualsGun(nearestPlayer)
     end)
 end
@@ -808,8 +758,6 @@ local function Init(UI, Core, notify)
             GunSilent.State.LocalRoot = character.HumanoidRootPart
             GunSilent.State.CurrentToolRangeApplied = nil
             GunSilent.State.BaseRangeCache = {}
-            GunSilent.State.PositionHistory = {}
-            GunSilent.State.SmoothedVelocity = {}
             cleanupTrajectoryBeam()
         end)
         if LocalPlayer.Character then
@@ -989,25 +937,6 @@ local function Init(UI, Core, notify)
                 callback = function(value) GunSilent.Settings.HitChance.Value = value end
             }
             combatSection:Header({ Name = "Prediction Settings" })
-            CombatElements.ResolverEnabled = {
-                element = combatSection:Toggle({
-                    Name = "Resolver Enabled",
-                    Default = GunSilent.Settings.ResolverEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.ResolverEnabled.Value = value end
-                }, 'ResolverEnabled'),
-                callback = function(value) GunSilent.Settings.ResolverEnabled.Value = value end
-            }
-            CombatElements.ResolverThreshold = {
-                element = combatSection:Slider({
-                    Name = "Resolver Threshold",
-                    Minimum = 0.2,
-                    Maximum = 0.5,
-                    Default = GunSilent.Settings.ResolverThreshold.Value,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.ResolverThreshold.Value = value end
-                }, 'ResolverThreshold'),
-                callback = function(value) GunSilent.Settings.ResolverThreshold.Value = value end
-            }
             CombatElements.BasePrediction = {
                 element = combatSection:Slider({
                     Name = "Base Prediction",
@@ -1245,8 +1174,6 @@ local function Init(UI, Core, notify)
                 CombatElements.PredictVisual.callback(CombatElements.PredictVisual.element:GetState())
                 CombatElements.TrajectoryBeam.callback(CombatElements.TrajectoryBeam.element:GetState())
                 CombatElements.HitChance.callback(CombatElements.HitChance.element:GetValue())
-                CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
-                CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
