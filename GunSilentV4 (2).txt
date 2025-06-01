@@ -9,9 +9,6 @@ local Stats = game:GetService("Stats")
 local GunSilent = {
     Settings = {
         BasePrediction = { Value = 0.1, Default = 0.1 }, -- Базовое время предсказания
-        VelocityPredictionWeight = { Value = 0.9, Default = 0.9 }, -- Влияние скорости игрока
-        PingCompensationFactor = { Value = 0.8, Default = 0.8 }, -- Компенсация пинга
-        SmoothingFactor = { Value = 0.1, Default = 0.1 }, -- Сглаживание предсказания
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -480,46 +477,28 @@ local function predictTargetPositionGun(target)
 
     -- Получаем скорость игрока через резолвер
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
-    local smoothedVelocity = smoothVelocity(target, rawVelocity, GunSilent.Settings.SmoothingFactor.Value)
+    local smoothedVelocity = smoothVelocity(target, rawVelocity, 0.1)
 
     -- Ограничиваем скорость, чтобы избежать аномалий
     local velocityMagnitude = smoothedVelocity.Magnitude
     local maxSpeed = 80
     if velocityMagnitude > maxSpeed then
         smoothedVelocity = smoothedVelocity.Unit * maxSpeed
-        velocityMagnitude = maxSpeed
     end
 
     -- Получаем пинг клиента
     local localPlayer = Players.LocalPlayer
-    local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
-    local ping = math.floor(rawPing * 1000 + 0.5) / 1000 -- Переводим пинг в секунды
+    local ping = localPlayer:GetAttribute("ServerPing") or 0.05 -- Пинг в секундах
 
-    -- Вычисляем время предсказания
-    local basePrediction = GunSilent.Settings.BasePrediction.Value
-    local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
-    local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
-
-    -- Учитываем скорость игрока и пинг
-    local velocityContribution = velocityMagnitude * velocityPredictionWeight
-    local pingContribution = ping * pingCompensationFactor
-    local predictionTime = basePrediction + velocityContribution + pingContribution
-
-    -- Предсказываем позицию
-    local clientPos = targetPos
-    local predictedPos = clientPos + smoothedVelocity * predictionTime
-
-    -- Применяем сглаживание
-    if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
-        predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
-    end
-    GunSilent.State.LastPredictionPos = predictedPos
+    -- Простое линейное предсказание
+    local predictionTime = GunSilent.Settings.BasePrediction.Value + ping
+    local predictedPos = targetPos + smoothedVelocity * predictionTime
 
     return {
         position = predictedPos,
         direction = (predictedPos - myPos).Unit,
         timeToTarget = predictionTime,
-        clientPosition = clientPos,
+        clientPosition = targetPos,
         resolvedVelocity = smoothedVelocity
     }
 end
@@ -555,7 +534,6 @@ local function createHitDataGun(target)
     if GunSilent.Settings.FakeHitTimestampEnabled.Value then
         local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
         timestamp = timestamp + timeOffset
-        print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(tick()) .. ", Modified Timestamp = " .. tostring(timestamp))
     end
 
     for i = 1, numBullets do
@@ -759,20 +737,15 @@ local function initializeGunSilent()
                 if GunSilent.Settings.SilentHitOverrideEnabled.Value then
                     headshot = true
                     kill = true
-                    print("[GunSilent] SilentHitOverride Applied: Forced Hit Confirmation")
                 end
 
                 if GunSilent.Settings.ForceHitConfirmationEnabled.Value then
                     local originalHeadshot = headshot
                     headshot = true
-                    print("[GunSilent] ForceHitConfirmation Applied: Original Headshot = " .. tostring(originalHeadshot) .. ", Forced Headshot = " .. tostring(headshot))
                 end
                 if headshot or kill then
                     spawnHitParticles(pendingHit.target, pendingHit.position)
                     spawnHitVisual(pendingHit.target, pendingHit.position)
-                    print("[GunSilent] Hit Confirmed: Target = " .. pendingHit.target.Name .. ", Position = " .. tostring(pendingHit.position))
-                else
-                    print("[GunSilent] Hit Rejected: Target = " .. pendingHit.target.Name)
                 end
                 if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                     GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
@@ -806,7 +779,6 @@ local function initializeGunSilent()
                                         hit.Timestamp = originalTimestamp + timeOffset
                                     end
                                 end
-                                print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(originalTimestamp) .. ", Modified Timestamp = " .. tostring(hitData[1][1].Timestamp))
                             end
 
                             if GunSilent.Settings.OverrideServerTickEnabled.Value then
@@ -818,7 +790,6 @@ local function initializeGunSilent()
                                         hit.Timestamp = adjustedTimestamp
                                     end
                                 end
-                                print("[GunSilent] OverrideServerTick Applied: Original Timestamp = " .. tostring(originalTimestamp) .. ", Adjusted Timestamp = " .. tostring(adjustedTimestamp) .. ", Offset = " .. tostring(serverTickOffset))
                             end
 
                             GunSilent.State.PendingHits[args[1]] = {
@@ -1106,39 +1077,6 @@ local function Init(UI, Core, notify)
                 }, 'BasePrediction'),
                 callback = function(value) GunSilent.Settings.BasePrediction.Value = value end
             }
-            CombatElements.VelocityPredictionWeight = {
-                element = combatSection:Slider({
-                    Name = "Velocity Prediction Weight",
-                    Minimum = 0,
-                    Maximum = 1,
-                    Default = GunSilent.Settings.VelocityPredictionWeight.Value,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.VelocityPredictionWeight.Value = value end
-                }, 'VelocityPredictionWeight'),
-                callback = function(value) GunSilent.Settings.VelocityPredictionWeight.Value = value end
-            }
-            CombatElements.PingCompensationFactor = {
-                element = combatSection:Slider({
-                    Name = "Ping Compensation Factor",
-                    Minimum = 0.5,
-                    Maximum = 2,
-                    Default = GunSilent.Settings.PingCompensationFactor.Value,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.PingCompensationFactor.Value = value end
-                }, 'PingCompensationFactor'),
-                callback = function(value) GunSilent.Settings.PingCompensationFactor.Value = value end
-            }
-            CombatElements.SmoothingFactor = {
-                element = combatSection:Slider({
-                    Name = "Smoothing Factor",
-                    Minimum = 0,
-                    Maximum = 1,
-                    Default = GunSilent.Settings.SmoothingFactor.Value,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
-                }, 'SmoothingFactor'),
-                callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
-            }
             combatSection:Header({ Name = "GunSilent Mods" })
             CombatElements.FakeHitTimestampEnabled = {
                 element = combatSection:Toggle({
@@ -1423,9 +1361,6 @@ local function Init(UI, Core, notify)
                 CombatElements.ResolverEnabled.callback(CombatElements.ResolverEnabled.element:GetState())
                 CombatElements.ResolverThreshold.callback(CombatElements.ResolverThreshold.element:GetValue())
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
-                CombatElements.VelocityPredictionWeight.callback(CombatElements.VelocityPredictionWeight.element:GetValue())
-                CombatElements.PingCompensationFactor.callback(CombatElements.PingCompensationFactor.element:GetValue())
-                CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
                 CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
                 CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
                 CombatElements.ForceHitConfirmationEnabled.callback(CombatElements.ForceHitConfirmationEnabled.element:GetState())
