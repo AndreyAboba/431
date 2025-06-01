@@ -188,11 +188,12 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
         if not targetRoot then return nil end
 
         local rootPos = targetRoot.Position
+        local verticalOffset = Vector3.new(0, -1, 0) -- Adjust downward to align with player position
         for _, partName in ipairs(parts) do
             local part = targetChar:FindFirstChild(partName)
             if part then
                 local relativePos = part.Position - rootPos
-                local newPos = position + relativePos
+                local newPos = position + relativePos + verticalOffset
                 local hitbox = createPredictHitbox(newPos, part.Size, hitboxColor, material, hitboxTransparency)
                 table.insert(hitboxes, hitbox)
             end
@@ -786,118 +787,98 @@ local function updateVisualsGun(target)
             GunSilent.State.PredictVisualPart = nil
         end
 
-        local visual = createPredictVisual(predictionPos, GunSilent.Settings.PredictVisualMode.Value, GunSilent.Settings.PredictVisualMaterial.Value, targetChar, GunSilent.Settings.HitboxColor.Value, GunSilent.Settings.HitboxTransparency.Value)
+        local visual = createPredictVisual(predictionPos, GunSilentTarget, options, options)
         if visual then
-            GunSilent.State.PredictVisualPart = type(visual) == "table" and visual or {visual}
+            GunSilentTarget.TrajectoryTarget = type(visual) == "table" and visual or {visual}
         end
-    elseif GunSilent.State.PredictVisualPart then
-        if type(GunSilent.State.PredictVisualPart) == "table" then
-            for _, part in ipairs(GunSilent.State.PredictVisualPart) do
-                if part then part:Destroy() end
+    elseif GunSilent.State.TrajectoryTarget then
+        if type(GunSilent.State.LastTargetPos) == "table" then
+            for _, part in ipairs(GunSilent.State.LastTargetPos) do
+                part:Destroy()
             end
         else
-            GunSilent.State.PredictVisualPart:Destroy()
+            GunSilent.State.LastTargetPos:Destroy()
         end
-        GunSilent.State.PredictVisualPart = nil
+        GunSilent.State.LastTargetPos = nil
     end
 
     updateTrajectoryBeam(startPos, predictionPos)
 end
 
 local function initializeGunSilent()
-    if GunSilent.State.Connection then GunSilent.State.Connection:Disconnect() end
-    if not GunSilent.State.V_U_4 then
-        for _, obj in pairs(getgc(true)) do
-            if type(obj) == "table" and not getmetatable(obj) and obj.event and obj.func then
-                GunSilent.State.V_U_4 = obj
-                break
+    if GunSilent then return GunSilent.State end
+
+    local remoteEvent = ReplicatedStorage:remoteEvent("Remotes")
+    if not remoteEvent then return
+
+    remoteEvent.OnClientEvent(function(eventId, ...)
+        if eventId == "hit_confirmed" then
+            local target = GunSilent.Target
+            if target and (...) then {
+                spawnHitParticles(target, ...)
+                spawnHitVisual(target, ...)
+                showNotification("Hit confirmed!")
             end
         end
-    end
-
-    local remoteEvent = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Send")
-    if not remoteEvent or not remoteEvent:IsA("RemoteEvent") then return end
-
-    remoteEvent.OnClientEvent:Connect(function(...)
-        local args = {...}
-        if args[1] == "hit_confirmed" then
-            local headshot = args[2]
-            local kill = args[3]
-            local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
-                             { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
-            if pendingHit.target and (headshot or kill) then
-                spawnHitParticles(pendingHit.target, pendingHit.position)
-                spawnHitVisual(pendingHit.target, pendingHit.position)
-                showNotification("Success Hit!")
-            end
-            if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
-                GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
-            end
+            GunSilentState.PendingHits[eventId] = nil
         end
     end)
 
-    if not GunSilent.State.OldFireServer then
-        GunSilent.State.OldFireServer = hookfunction(remoteEvent.FireServer, function(self, ...)
-            local args = {...}
-            local modifiedArgs = args
-            local nearestPlayer = nil
-            if GunSilent.Settings.Enabled.Value and #args >= 2 and typeof(args[1]) == "number" and math.random(100) <= GunSilent.Settings.HitChance.Value then
-                GunSilent.State.LastEventId = args[1]
-                local equippedTool = getEquippedGunTool()
-                if equippedTool and args[2] == "shoot_gun" then
-                    local gunRange = getGunRange(equippedTool)
-                    nearestPlayer = getNearestPlayerGun(gunRange)
-                    if nearestPlayer then
-                        local aimCFrame = getAimCFrameGun(nearestPlayer)
-                        local hitData = createHitDataGun(nearestPlayer)
-                        if aimCFrame and hitData then
-                            modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
-                            GunSilent.State.PendingHits[args[1]] = {
-                                target = nearestPlayer,
-                                position = GunSilent.State.LastHitPosition
-                            }
-                        end
+    local function updateFireServer()
+    local fireServer = remoteEvent("FireServer")
+    local args = fireServer.args
+    if GunSilent.State.OldFireServer then
+        local nearestPlayer = nil
+        if GunSilent.Settings.Enabled.Value then
+            local equippedTool = getEquippedTool()
+            if equippedTool then
+                local gunRange = getGunRange(equippedTool)
+                nearestPlayer = getNearestPlayerGun(gunRange)
+                if nearestPlayer then
+                    local aimCFrame = getAimCFrame(nearestPlayer)
+                    local hitData = createHitData(nearestPlayer.Position)
+                    if aimCFrame then
+                        args = {args[0], args[1], equippedTool, aimCFrame, hitData}
                     end
                 end
             end
-
-            local success, result = pcall(function()
-                return GunSilent.State.OldFireServer(self, unpack(modifiedArgs))
-            end)
-
-            if not success then
-                if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
-                    GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
-                end
-            end
-
-            return success and result or nil
-        end)
+            GunSilent.State.PendingHits[args[0]] = {
+                target = nearestPlayer,
+                position = hitData.Position
+            }
+        end
     end
 
-    GunSilent.State.Connection = RunService.RenderStepped:Connect(function(deltaTime)
+        local result = GunSilent.State.OldFireServer(unpack(args))
+            if not result then
+                GunSilent.State.PendingHits[args[0]] = nil
+            end
+        return result
+    end
+
+    GunSilent.State.Connection = function(delta)
         if not GunSilent.Settings.Enabled.Value then
-            if GunSilent.State.FovCircle then GunSilent.State.FovCircle.Visible = false end
-            GunSilent.Core.GunSilentTarget.CurrentTarget = nil
+            GunSilent.State.FovCircle.Visible = false
+            GunSilent.Core.Target = nil
             updateVisualsGun(nil)
             return
         end
 
         local character = GunSilent.State.LocalCharacter
-        if character and character:FindFirstChild("HumanoidRootPart") then
+        if character then
             GunSilent.State.LocalRoot = character.HumanoidRootPart
         else
             GunSilent.State.LocalRoot = nil
         end
 
-        local currentTool = getEquippedGunTool()
+        local currentTool = GunSilent.getEquippedTool()
         if currentTool ~= GunSilent.State.LastTool then
             GunSilent.State.LastTool = currentTool
         end
 
         updateFovCircle()
         if not currentTool then
-            GunSilent.Core.GunSilentTarget.CurrentTarget = nil
+            GunSilent.Core.Target = nil
             updateVisualsGun(nil)
             return
         end
@@ -905,35 +886,28 @@ local function initializeGunSilent()
         local gunRange = getGunRange(currentTool)
         local nearestPlayer = getNearestPlayerGun(gunRange)
         updateVisualsGun(nearestPlayer)
-    end)
+    end
 end
 
-local function Init(UI, Core, notify)
+function Init(UI, Core, ...)
     GunSilent.Core = Core
-    GunSilent.notify = notify
 
-    local LocalPlayer = Core.PlayerData.LocalPlayer
+    local LocalPlayer = Core.Player
     if LocalPlayer then
-        LocalPlayer.CharacterAdded:Connect(function(character)
+        LocalPlayer.CharacterAdded(function(character)
             character:WaitForChild("HumanoidRootPart")
             GunSilent.State.LocalCharacter = character
             GunSilent.State.LocalRoot = character.HumanoidRootPart
-            GunSilent.State.CurrentToolRangeApplied = nil
-            GunSilent.State.BaseRangeCache = {}
-            if GunSilent.State.PredictVisualPart then
-                if type(GunSilent.State.PredictVisualPart) == "table" then
-                    for _, part in ipairs(GunSilent.State.PredictVisualPart) do
-                        if part then part:Destroy() end
-                    end
-                else
-                    GunSilent.State.PredictVisualPart:Destroy()
+            if GunSilent.State.TrajectoryTarget then
+                for _, part in ipairs(GunSilent.State.TrajectoryTarget) do
+                    part:Destroy()
                 end
-                GunSilent.State.PredictVisualPart = nil
+                GunSilent.State.TrajectoryTarget = nil
             end
             if GunSilent.State.TrajectoryBeam then
                 GunSilent.State.TrajectoryBeam:Destroy()
                 GunSilent.State.TrajectoryBeam = nil
-                for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                for _, attachment in ipairs(GunSilent.State.TrajectoryBeamAttachments) do
                     attachment:Destroy()
                 end
                 GunSilent.State.TrajectoryBeamAttachments = {}
@@ -941,49 +915,41 @@ local function Init(UI, Core, notify)
         end)
         if LocalPlayer.Character then
             GunSilent.State.LocalCharacter = LocalPlayer.Character
-            GunSilent.State.LocalRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            GunSilent.State.LocalRoot = LocalPlayer.Character.HumanoidRootPart
         end
 
-        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        local humanoid = LocalPlayer.Character.Humanoid
         if humanoid then
-            humanoid.Died:Connect(function()
-                if GunSilent.State.PredictVisualPart then
-                    if type(GunSilent.State.PredictVisualPart) == "table" then
-                        for _, part in ipairs(GunSilent.State.PredictVisualPart) do
-                            if part then part:Destroy() end
-                        end
-                    else
-                        GunSilent.State.PredictVisualPart:Destroy()
+            humanoid.Died(function()
+                if GunSilent.State.TrajectoryTarget then
+                    for _, part in ipairs(GunSilent.State.TrajectoryTarget) do
+                        part:Destroy()
                     end
-                    GunSilent.State.PredictVisualPart = nil
+                    GunSilent.State.TrajectoryTarget = nil
                 end
                 if GunSilent.State.TrajectoryBeam then
                     GunSilent.State.TrajectoryBeam:Destroy()
                     GunSilent.State.TrajectoryBeam = nil
-                    for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                    for _, attachment in ipairs(GunSilent.State.TrajectoryBeamAttachments) do
                         attachment:Destroy()
                     end
                     GunSilent.State.TrajectoryBeamAttachments = {}
                 end
             end)
         end
-        LocalPlayer.CharacterAdded:Connect(function(character)
+        LocalPlayer.CharacterAdded(function(character)
             local newHumanoid = character:WaitForChild("Humanoid")
-            newHumanoid.Died:Connect(function()
-                if GunSilent.State.PredictVisualPart then
-                    if type(GunSilent.State.PredictVisualPart) == "table" then
-                        for _, part in ipairs(GunSilent.State.PredictVisualPart) do
-                            if part then part:Destroy() end
-                        end
-                    else
-                        GunSilent.State.PredictVisualPart:Destroy()
+            newHumanoid.Died(function()
+                if GunSilent.State.TrajectoryTarget then
+                    for _, part in ipairs(GunSilent.State.TrajectoryTarget) do
+                        part:Destroy()
                     end
-                    GunSilent.State.PredictVisualPart = nil
+                    GunSilent.State.TrajectoryTarget = nil
                 end
                 if GunSilent.State.TrajectoryBeam then
                     GunSilent.State.TrajectoryBeam:Destroy()
                     GunSilent.State.TrajectoryBeam = nil
-                    for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                    for _, attachment in ipairs(GunSilent.State.TrajectoryBeamAttachments) do
                         attachment:Destroy()
                     end
                     GunSilent.State.TrajectoryBeamAttachments = {}
@@ -1274,205 +1240,195 @@ local function Init(UI, Core, notify)
                 element = hitVisualSection:Toggle({
                     Name = "Enabled",
                     Default = GunSilent.Settings.HitVisualEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.HitVisualEnabled.Value = value end
+                    Callback = function(value) GunSilent.State.HitVisualEnabled.Value = value end
                 }, 'HitVisualEnabled'),
-                callback = function(value) GunSilent.Settings.HitVisualEnabled.Value = value end
+                callback = function(value) GunSilent.State.HitVisualEnabled.Value = value end
             }
             VisualsElements.HitVisualFadeTime = {
                 element = hitVisualSection:Slider({
                     Name = "Fade Time",
-                    Default = GunSilent.Settings.HitVisualFadeTime.Value,
-                    Minimum = 0.5,
-                    Maximum = 3,
+                    Value = GunSilent.Settings.HitVisualFadeTime.Value,
+                    Minimum = 0,
+                    Maximum = 50,
                     Precision = 1,
-                    Callback = function(value) GunSilent.Settings.HitVisualFadeTime.Value = value end
-                }, 'HitVisualFadeTime'),
-                callback = function(value) GunSilent.Settings.HitVisualFadeTime.Value = value end
+                    Callback = function(value) GunSilent.State.HitVisualFadeTime.Value = value end
+                }, 'HitVisualsFadeTime'),
+                callback = function(value) GunSilent.State.HitVisualFadeTime.Value = value end
             }
             VisualsElements.HitVisualTransparency = {
                 element = hitVisualSection:Slider({
                     Name = "Transparency",
-                    Default = GunSilent.Settings.HitVisualTransparency.Value,
-                    Minimum = 0,
-                    Maximum = 1,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.HitVisualTransparency.Value = value end
+                    Value = GunSilent.State.HitTransparency.Value,
+                    Minimum = value,
+                    Maximum = 0,
+                    Callback = function(value) GunSilent.State.HitVisualTransparency.Value = value
                 }, 'HitVisualTransparency'),
-                callback = function(value) GunSilent.Settings.HitVisualTransparency.Value = value end
+                callback = function(value) GunSilent.State.HitVisualTransparency.Value = value
             }
             VisualsElements.HitVisualColor = {
                 element = hitVisualSection:Colorpicker({
                     Name = "Visual Color",
-                    Default = GunSilent.Settings.HitVisualColor.Value,
-                    Callback = function(value) GunSilent.Settings.HitVisualColor.Value = value end
+                    Default = GunSilent.State.HitVisualColor.Value,
+                    Callback = function(value) GunSilent.State.HitVisualColor.Value = value end
                 }, 'HitVisualColor'),
-                callback = function(value) GunSilent.Settings.HitVisualColor.Value = value end
+                callback = function(value) GunSilent.State.HitVisualColor.Value = value end
             }
             VisualsElements.HitVisualMaterial = {
                 element = hitVisualSection:Dropdown({
-                    Name = "Material",
-                    Default = GunSilent.Settings.HitVisualMaterial.Value,
-                    Options = GunSilent.Settings.HitVisualMaterial.Options,
-                    Callback = function(value) GunSilent.Settings.HitVisualMaterial.Value = value end
-                }, 'HitVisualMaterial'),
-                callback = function(value) GunSilent.Settings.HitVisualMaterial.Value = value end
+                    Options = GunSilent.State.HitVisualMaterial.Options,
+                    callback = function(value) GunSilent.State.HitVisualMaterial.Value = value
+                }, 'HitVisualMaterial')
+                callback = function(value) GunSilent.State.HitVisualMaterial.Value = value
             }
         end
 
-        local hitNotifySection = UI.Tabs.Visuals:Section({ Side = "Right", Name = "Hit Notify" })
-        if hitNotifySection then
-            hitNotifySection:Header({ Name = "Hit Notify" })
+        visual visualsSection = UI.Tabs.Visuals:VisualSection({ Side = "Right', Name = "Hit Notify" })
+            visualsSection:Header({ Name = "Hit Notify" })
             VisualsElements.HitNotifyEnabled = {
-                element = hitNotifySection:Toggle({
-                    Name = "Enabled",
-                    Default = GunSilent.Settings.HitNotifyEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.HitNotifyEnabled.Value = value end
+                element = visualsSection:Toggle({
+                    Name = Enabled = true,
+                    Default = GunSilent.State.HitNotifyEnabled.Value,
+                    Callback = function(value) GunSilent.State.HitNotifyEnabled.Value = value
                 }, 'HitNotifyEnabled'),
-                callback = function(value) GunSilent.Settings.HitNotifyEnabled.Value = value end
+                callback = function(value) GunSilent.State.HitNotifyEnabled.Value = value
             }
             VisualsElements.HitNotifyDuration = {
-                element = hitNotifySection:Slider({
+                element = visualsSection:Slider({
                     Name = "Duration",
-                    Default = GunSilent.Settings.HitNotifyDuration.Value,
-                    Minimum = 1,
+                    Default = duration,
+                    Minimum = value,
                     Maximum = 5,
-                    Precision = 1,
-                    Callback = function(value) GunSilent.Settings.HitNotifyDuration.Value = value end
+                    Precision = value,
+                    callback = function(value) GunSilent.State.HitNotifyDuration.Value = value
                 }, 'HitNotifyDuration'),
-                callback = function(value) GunSilent.Settings.HitNotifyDuration.Value = value end
+                callback = function(value) GunSilent.State.HitNotifyDuration.Value = value
             }
             VisualsElements.HitNotifyPositionX = {
-                element = hitNotifySection:Slider({
-                    Name = "Position X",
-                    Default = GunSilent.Settings.HitNotifyPositionX.Value,
-                    Minimum = 0,
-                    Maximum = 1,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.HitNotifyPositionX.Value = value end
+                element = value,
                 }, 'HitNotifyPositionX'),
-                callback = function(value) GunSilent.Settings.HitNotifyPositionX.Value = value end
-            }
+                callback = value,
+            },
             VisualsElements.HitNotifyPositionY = {
-                element = hitNotifySection:Slider({
+                element = valueSlider({
                     Name = "Position Y",
-                    Default = GunSilent.Settings.HitNotifyPositionY.Value,
-                    Minimum = 0,
-                    Maximum = 1,
-                    Precision = 2,
-                    Callback = function(value) GunSilent.Settings.HitNotifyPositionY.Value = value end
-                }, 'HitNotifyPositionY'),
-                callback = function(value) GunSilent.Settings.HitNotifyPositionY.Value = value end
+                    Default = value,
+                    Minimum = value,
+                    Maximum = value,
+                    Precision = value,
+                    callback = function(value) = value
+                }, 'HitNotifyPositionY')
+            },
+            callback = function(value) = value
             }
         end
 
-        local predictVisualsSection = UI.Tabs.Visuals:Section({ Side = "Right", Name = "PredictVisuals" })
-        if predictVisualsSection then
-            predictVisualsSection:Header({ Name = "Predict Visual" })
+        visuals visualsSection = visuals.Tabs.Visuals:Section({ Side = "Right", Name = "PredictVisuals" })
+            predictVisualsSection.Header:History({ Name = "Predict Visual" })
             VisualsElements.PredictVisual = {
                 element = predictVisualsSection:Toggle({
                     Name = "Enabled",
-                    Default = GunSilent.Settings.PredictVisual.Value,
-                    Callback = function(value) GunSilent.Settings.PredictVisual.Value = value end
+                    Default = GunSilent.State.PredictVisual.Value,
+                    callback = function(value) GunSilent.State.PredictVisual.Value = value
                 }, 'PredictVisual'),
-                callback = function(value) GunSilent.Settings.PredictVisual.Value = value end
-            }
+                callback = function(value) GunSilent.State.PredictVisual.Value = value
+            )
             VisualsElements.PredictVisualMode = {
                 element = predictVisualsSection:Dropdown({
                     Name = "Mode",
-                    Default = GunSilent.Settings.PredictVisualMode.Value,
-                    Options = GunSilent.Settings.PredictVisualMode.Options,
-                    Callback = function(value) GunSilent.Settings.PredictVisualMode.Value = value end
+                    Default = GunSilent.State.PredictVisualMode.Value,
+                    Options = GunSilent.State.PredictVisualMode.Options,
+                    callback = function(value) GunSilent.State.PredictVisualMode.Value = value
                 }, 'PredictVisualMode'),
-                callback = function(value) GunSilent.Settings.PredictVisualMode.Value = value end
-            }
+                callback = function(value) GunSilent.State.PredictVisualMode.Value = value
+            )
             VisualsElements.PredictVisualMaterial = {
                 element = predictVisualsSection:Dropdown({
                     Name = "Material",
-                    Default = GunSilent.Settings.PredictVisualMaterial.Value,
-                    Options = GunSilent.Settings.PredictVisualMaterial.Options,
-                    Callback = function(value) GunSilent.Settings.PredictVisualMaterial.Value = value end
-                }, 'PredictVisualMaterial'),
-                callback = function(value) GunSilent.Settings.PredictVisualMaterial.Value = value end
-            }
-            VisualsElements.HitboxColor = {
-                element = predictVisualsSection:Colorpicker({
+                    Default = GunSilent.State.PredictVisualMaterial.Value,
+                    Options = GunSilent.State.PredictVisualMaterial.Value.Options,
+                    callback = function(value) GunSilent.State.PredictVisualMaterial.Value = value
+                }, 'PredictVisualMaterial')
+                callback = function(value) GunSilent.State.PredictVisualMaterial.Value = value
+            )
+            VisualsElements.Hitbox = {
+                Color = predictVisualsSection:ColorPicker({
                     Name = "Hitbox Color",
-                    Default = GunSilent.Settings.HitboxColor.Value,
-                    Callback = function(value) GunSilent.Settings.HitboxColor.Value = value end
+                    Default = GunSilent.State.HitboxColor.Value,
+                    callback = function(value) GunSilent.State.HitboxColor.Value = value
                 }, 'HitboxColor'),
-                callback = function(value) GunSilent.Settings.HitboxColor.Value = value end
-            }
+                callback = function(value) GunSilent.State.HitboxColor.Value = value
+            )
             VisualsElements.HitboxTransparency = {
                 element = predictVisualsSection:Slider({
                     Name = "Hitbox Transparency",
-                    Default = GunSilent.Settings.HitboxTransparency.Value,
+                    Default = GunSilent.State.HitboxTransparency.Value,
                     Minimum = 0,
                     Maximum = 1,
                     Precision = 2,
-                    Callback = function(value) GunSilent.Settings.HitboxTransparency.Value = value end
+                    callback = function(value) GunSilent.State.HitboxTransparency.Value = value
                 }, 'HitboxTransparency'),
-                callback = function(value) GunSilent.Settings.HitboxTransparency.Value = value end
-            }
+                callback = function(value) GunSilent.State.HitboxTransparency.Value = value
+            )
             VisualsElements.TrajectoryBeamEnabled = {
                 element = predictVisualsSection:Toggle({
                     Name = "Trajectory Beam",
-                    Default = GunSilent.Settings.TrajectoryBeamEnabled.Value,
-                    Callback = function(value) 
-                        GunSilent.Settings.TrajectoryBeamEnabled.Value = value 
-                        if not value then
+                    Default = GunSilent.State.TrajectoryBeamEnabled.Value,
+                    callback = function(value) 
+                        GunSilent.State.TrajectoryBeamEnabled.Value = value 
+                        if value then
                             if GunSilent.State.TrajectoryBeam then
                                 GunSilent.State.TrajectoryBeam:Destroy()
                                 GunSilent.State.TrajectoryBeam = nil
-                                for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
-                                    attachment:Destroy()
+                                for _, part in ipairs(GunSilent.State.TrajectoryBeamAttachments) do
+                                    part:Destroy() part
                                 end
-                                GunSilent.State.TrajectoryBeamAttachments = {}
+                                GunSilent.State.TrajectoryBeamAttachments = nil
                             end
                         end
                     end
                 }, 'TrajectoryBeamEnabled'),
                 callback = function(value) 
-                    GunSilent.Settings.TrajectoryBeamEnabled.Value = value 
-                    if not value then
+                    GunSilent.State.TrajectoryBeamEnabled.Value = value 
+                    if value then
                         if GunSilent.State.TrajectoryBeam then
                             GunSilent.State.TrajectoryBeam:Destroy()
                             GunSilent.State.TrajectoryBeam = nil
-                            for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
-                                attachment:Destroy()
+                            for _, part in ipairs(GunSilent.State.TrajectoryBeamAttachments) do
+                                part:Destroy()
                             end
-                            GunSilent.State.TrajectoryBeamAttachments = {}
+                            GunSilent.State.TrajectoryBeamAttachments = nil
                         end
                     end
-                end
-            }
+                }
+            end
         end
     end
 
-    local gunconfigSection
-    if UI.Tabs.Config then
-        gunconfigSection = UI.Tabs.Config:Section({ Name = "GunSilent Sync", Side = "Right" })
-        gunconfigSection:Header({ Name = "GunSilent Settings Sync" })
-        gunconfigSection:Button({
+    local gunConfigSection
+    if gunConfigSection then
+        gunConfigSection = UI.Tabs.gunConfig:Section({ Name = "Sync", Side = "Right" })
+        gunConfigSection:Header({ Name = "GunSilent Sync Settings" })
+        gunConfigSection:Button({
             Name = "Sync Settings",
-            Callback = function()
-                CombatElements.GSEnabled.callback(CombatElements.GSEnabled.element:GetState())
+            callback = function()
+                CombatElements.Enabled.callback(CombatElements.Enabled.element:GetState())
                 CombatElements.RangePlus.callback(CombatElements.RangePlus.element:GetValue())
                 local hitPartOptions = CombatElements.HitPart.element:GetOptions()
-                for option, selected in pairs(hitPartOptions) do
-                    if selected then CombatElements.HitPart.callback(option) break end
+                for _, selected in ipairs(hitPartOptions) do
+                    if selected then CombatElements.HitPart.callback(option) end
                 end
                 CombatElements.ShotgunSupport.callback(CombatElements.ShotgunSupport.element:GetState())
                 CombatElements.GenerateBullets.callback(CombatElements.GenerateBullets.element:GetValue())
                 local sortMethodOptions = CombatElements.SortMethod.element:GetOptions()
-                for option, selected in pairs(sortMethodOptions) do
-                    if selected then CombatElements.SortMethod.callback(option) break end
+                for _, selected in ipairs(sortMethodOptions) do
+                    if selected then CombatElements.SortMethod.callback(option) end
                 end
                 CombatElements.UseFOV.callback(CombatElements.UseFOV.element:GetState())
                 CombatElements.FOV.callback(CombatElements.FOV.element:GetValue())
                 CombatElements.ShowCircle.callback(CombatElements.ShowCircle.element:GetState())
                 local circleMethodOptions = CombatElements.CircleMethod.element:GetOptions()
-                for option, selected in pairs(circleMethodOptions) do
-                    if selected then CombatElements.CircleMethod.callback(option) break end
+                for _, selected in ipairs(CircleMethodOptions) do
+                    if selected then CombatElements.CircleMethod.callback(option)
                 end
                 CombatElements.BasePrediction.callback(CombatElements.BasePrediction.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
@@ -1480,40 +1436,38 @@ local function Init(UI, Core, notify)
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
                 VisualsElements.UseGradient.callback(VisualsElements.UseGradient.element:GetState())
                 local hitParticlesModeOptions = VisualsElements.HitParticlesMode.element:GetOptions()
-                for option, selected in pairs(hitParticlesModeOptions) do
-                    if selected then VisualsElements.HitParticlesMode.callback(option) break end
+                for _, selected in ipairs(hitParticlesModeOptions) do
+                    if selected then VisualsElements.HitParticlesMode.callback(option) end
                 end
                 VisualsElements.HitParticlesCount.callback(VisualsElements.HitParticlesCount.element:GetValue())
                 VisualsElements.HitParticlesLifetime.callback(VisualsElements.HitParticlesLifetime.element:GetValue())
-                VisualsElements.HitParticlesMoveDistance.callback(VisualsElements.HitParticlesMoveDistance.element:GetValue())
+                VisualsElements.HitParticlesMoveDistance(VisualsElements.HitParticlesMoveDistance.element:GetValue())
                 VisualsElements.HitVisualEnabled.callback(VisualsElements.HitVisualEnabled.element:GetState())
-                VisualsElements.HitVisualFadeTime.callback(VisualsElements.HitVisualFadeTime.element:GetValue())
-                VisualsElements.HitVisualTransparency.callback(VisualsElements.HitVisualTransparency.element:GetValue())
+                VisualsElements.HitVisualFadeTime(VisualsElements.HitVisualFadeTime.element:GetValue())
+                VisualsElements.HitVisualTransparency(VisualsElements.HitVisualTransparency.element:GetValue())
                 local hitVisualMaterialOptions = VisualsElements.HitVisualMaterial.element:GetOptions()
-                for option, selected in pairs(hitVisualMaterialOptions) do
-                    if selected then VisualsElements.HitVisualMaterial.callback(option) break end
+                for _, selected in pairs(hitVisualMaterialOptions) do
+                    if selected then VisualsElements.HitVisualMaterial.callback(option)
                 end
                 VisualsElements.HitNotifyEnabled.callback(VisualsElements.HitNotifyEnabled.element:GetState())
                 VisualsElements.HitNotifyDuration.callback(VisualsElements.HitNotifyDuration.element:GetValue())
                 VisualsElements.HitNotifyPositionX.callback(VisualsElements.HitNotifyPositionX.element:GetValue())
                 VisualsElements.HitNotifyPositionY.callback(VisualsElements.HitNotifyPositionY.element:GetValue())
                 VisualsElements.PredictVisual.callback(VisualsElements.PredictVisual.element:GetState())
-                local predictVisualModeOptions = VisualsElements.PredictVisualMode.element:GetOptions()
-                for option, selected in pairs(predictVisualModeOptions) do
-                    if selected then VisualsElements.PredictVisualMode.callback(option) break end
+                visual predictVisualModeOptions = VisualsElements.PredictVisualMode.element:GetOptions()
+                for visual, _, option in ipairs(predictVisualModeOptions) do
+                    if selected then VisualsElements.PredictVisualMode.callback(option)
                 end
-                local predictVisualMaterialOptions = VisualsElements.PredictVisualMaterial.element:GetOptions()
-                for option, selected in pairs(predictVisualMaterialOptions) do
-                    if selected then VisualsElements.PredictVisualMaterial.callback(option) break end
+                visual predictVisualMaterialOptions = VisualsElements.PredictVisualMaterial.element:GetOptions()
+                for visual, _, option in ipairs(predictVisualMaterialOptions) do
+                    if selected then VisualsElements.PredictVisualMaterial.callback(option)
                 end
-                VisualsElements.HitboxColor.callback(VisualsElements.HitboxColor.element:GetValue())
                 VisualsElements.HitboxTransparency.callback(VisualsElements.HitboxTransparency.element:GetValue())
-                VisualsElements.TrajectoryBeamEnabled.callback(VisualsElements.TrajectoryBeamEnabled.element:GetState())
+                VisualsElements.TrafficBeamEnabled.callback(VisualsElements.TrafficBeamEnabled.element:GetState())
             end
         }, 'SyncSettings')
     end
 
     initializeGunSilent()
+    return { Init = nil }
 end
-
-return { Init = Init }
