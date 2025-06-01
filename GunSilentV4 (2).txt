@@ -55,7 +55,6 @@ local GunSilent = {
         OldFireServer = nil,
         PositionHistory = {},
         SmoothedVelocity = {},
-        SmoothedAcceleration = {},
         LastVisualUpdateTime = 0,
         LastTargetPosition = {},
         LocalCharacter = nil,
@@ -76,13 +75,6 @@ local GunSilent = {
         ActiveHitboxes = {}
     }
 }
-
-local function smoothVector(target, newValue, alpha, stateKey)
-    local smoothed = GunSilent.State[stateKey][target] or newValue
-    smoothed = smoothed:Lerp(newValue, alpha)
-    GunSilent.State[stateKey][target] = smoothed
-    return smoothed
-end
 
 local function safeCreateInstance(className, properties)
     local instance = Instance.new(className)
@@ -405,20 +397,24 @@ local function getNearestPlayerGun(gunRange)
     return nearestPlayer
 end
 
-local function resolveVelocityAndAcceleration(target, positionHistory, clientVelocity)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 3 then
-        return clientVelocity, Vector3.new(0, 0, 0)
+local function isInVehicle(targetChar)
+    local humanoid = targetChar:FindFirstChild("Humanoid")
+    if humanoid then return humanoid.SeatPart ~= nil end
+    return false
+end
+
+local function resolveVelocity(target, positionHistory, clientVelocity, targetChar)
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 2 then
+        return clientVelocity
     end
 
     local currentTime = tick()
     local totalVelocity = Vector3.new(0, 0, 0)
-    local totalAcceleration = Vector3.new(0, 0, 0)
     local totalWeight = 0
-    local maxSpeedLimit = 100 -- Единое ограничение для всех
-    local maxAccelLimit = 50
+    local maxSpeedLimit = isInVehicle(targetChar) and 100 or 50
 
-    -- Оптимизированный цикл по последним 3 точкам
-    for i = #positionHistory - 1, #positionHistory - 2, -1 do
+    -- Оптимизированный цикл по последним 2 точкам
+    for i = #positionHistory - 1, #positionHistory - 1, -1 do
         local currEntry = positionHistory[i + 1]
         local prevEntry = positionHistory[i]
         local timeDelta = currEntry.time - prevEntry.time
@@ -428,39 +424,22 @@ local function resolveVelocityAndAcceleration(target, positionHistory, clientVel
                 local weight = 1 - (currentTime - currEntry.time) * 2
                 totalVelocity = totalVelocity + velocity * weight
                 totalWeight = totalWeight + weight
-
-                if i > 1 then
-                    local prevPrevEntry = positionHistory[i - 1]
-                    local prevTimeDelta = prevEntry.time - prevPrevEntry.time
-                    if prevTimeDelta > 0 and prevTimeDelta <= 0.2 then
-                        local prevVelocity = (prevEntry.pos - prevPrevEntry.pos) / prevTimeDelta
-                        local accel = (velocity - prevVelocity) / (timeDelta + prevTimeDelta) / 2
-                        if accel.Magnitude <= maxAccelLimit then
-                            totalAcceleration = totalAcceleration + accel * weight
-                        end
-                    end
-                end
             end
         end
     end
 
     local smoothedVelocity = totalWeight > 0 and totalVelocity / totalWeight or clientVelocity
-    local smoothedAcceleration = totalWeight > 0 and totalAcceleration / totalWeight or Vector3.new(0, 0, 0)
-
     if smoothedVelocity.Magnitude > maxSpeedLimit then
         smoothedVelocity = smoothedVelocity.Unit * maxSpeedLimit
     end
-    if smoothedAcceleration.Magnitude > maxAccelLimit then
-        smoothedAcceleration = smoothedAcceleration.Unit * maxAccelLimit
-    end
 
-    return smoothedVelocity, smoothedAcceleration
+    return smoothedVelocity
 end
 
 local function predictTargetPositionGun(target)
     local localRoot = GunSilent.State.LocalRoot
     if not target or not target.Character or not localRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil, resolvedAcceleration = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
     end
 
     local targetChar = target.Character
@@ -469,13 +448,13 @@ local function predictTargetPositionGun(target)
     if not hitPart then hitPart = targetChar:FindFirstChild("HumanoidRootPart") end
     local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
     if not hitPart or not targetRoot then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil, resolvedAcceleration = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
     end
 
     local targetPos = hitPart.Position
     local targetId = target and target.UserId and tostring(target.UserId) or nil
     if not targetId then 
-        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil, resolvedAcceleration = nil } 
+        return { position = nil, direction = nil, timeToTarget = 0, clientPosition = nil, resolvedVelocity = nil } 
     end
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
@@ -489,20 +468,18 @@ local function predictTargetPositionGun(target)
     GunSilent.State.PositionHistory[target] = positionHistory
 
     local rawVelocity = targetRoot.Velocity
-    local rawAcceleration = Vector3.new(0, 0, 0)
-    local smoothedVelocity, smoothedAcceleration = resolveVelocityAndAcceleration(target, positionHistory, rawVelocity)
+    local smoothedVelocity = resolveVelocity(target, positionHistory, rawVelocity, targetChar)
 
     local ping = Players.LocalPlayer:GetAttribute("ServerPing") or 0.05
     local predictionTime = GunSilent.Settings.BasePrediction.Value + ping
-    local predictedPos = targetPos + smoothedVelocity * predictionTime + 0.5 * smoothedAcceleration * predictionTime * predictionTime
+    local predictedPos = targetPos + smoothedVelocity * predictionTime
 
     return {
         position = predictedPos,
         direction = (predictedPos - myPos).Unit,
         timeToTarget = predictionTime,
         clientPosition = targetPos,
-        resolvedVelocity = smoothedVelocity,
-        resolvedAcceleration = smoothedAcceleration
+        resolvedVelocity = smoothedVelocity
     }
 end
 
@@ -646,7 +623,7 @@ end
 
 local function updateVisualsGun(target)
     local currentTime = tick()
-    if currentTime - GunSilent.State.LastVisualUpdateTime < 0.05 then return end -- Увеличен интервал для оптимизации
+    if currentTime - GunSilent.State.LastVisualUpdateTime < 0.05 then return end
     GunSilent.State.LastVisualUpdateTime = currentTime
 
     local localRoot = GunSilent.State.LocalRoot
@@ -799,7 +776,6 @@ local function initializeGunSilent()
         if currentTool ~= GunSilent.State.LastTool then
             GunSilent.State.PositionHistory = {}
             GunSilent.State.SmoothedVelocity = {}
-            GunSilent.State.SmoothedAcceleration = {}
             GunSilent.State.LastTool = currentTool
         end
 
@@ -815,7 +791,6 @@ local function initializeGunSilent()
         if nearestPlayer ~= GunSilent.Core.GunSilentTarget.CurrentTarget then
             GunSilent.State.PositionHistory[nearestPlayer] = nil
             GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
-            GunSilent.State.SmoothedAcceleration[nearestPlayer] = nil
         end
         updateVisualsGun(nearestPlayer)
     end)
@@ -835,7 +810,6 @@ local function Init(UI, Core, notify)
             GunSilent.State.BaseRangeCache = {}
             GunSilent.State.PositionHistory = {}
             GunSilent.State.SmoothedVelocity = {}
-            GunSilent.State.SmoothedAcceleration = {}
             cleanupTrajectoryBeam()
         end)
         if LocalPlayer.Character then
