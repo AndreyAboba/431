@@ -52,8 +52,7 @@ local GunSilent = {
         ForceHitConfirmationEnabled = { Value = false, Default = false },
         OverrideServerTickEnabled = { Value = false, Default = false },
         ServerTickOffset = { Value = 0, Default = 0 },
-        SilentHitOverrideEnabled = { Value = false, Default = false },
-        SilentHitOverrideThreshold = { Value = 0.5, Default = 0.5 }
+        SilentHitOverrideEnabled = { Value = false, Default = false }
     },
     State = {
         LastEventId = 0,
@@ -579,7 +578,6 @@ local function createHitDataGun(target)
     local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
     local hitData = {}
 
-    -- FakeHitTimestamp: Подмена временной метки в hitData
     local timestamp = tick()
     if GunSilent.Settings.FakeHitTimestampEnabled.Value then
         local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
@@ -785,14 +783,12 @@ local function initializeGunSilent()
             local pendingHit = GunSilent.State.PendingHits[GunSilent.State.LastEventId] or
                              { target = GunSilent.Core.GunSilentTarget.CurrentTarget, position = GunSilent.State.LastHitPosition }
             if pendingHit.target then
-                -- SilentHitOverride: Подмена ответа сервера на подтверждение попадания
-                if GunSilent.Settings.SilentHitOverrideEnabled.Value and math.random() <= GunSilent.Settings.SilentHitOverrideThreshold.Value then
+                if GunSilent.Settings.SilentHitOverrideEnabled.Value then
                     headshot = true
                     kill = true
                     print("[GunSilent] SilentHitOverride Applied: Forced Hit Confirmation")
                 end
 
-                -- ForceHitConfirmation: Принудительное подтверждение попадания
                 if GunSilent.Settings.ForceHitConfirmationEnabled.Value then
                     local originalHeadshot = headshot
                     headshot = true
@@ -829,7 +825,6 @@ local function initializeGunSilent()
                         if aimCFrame and hitData then
                             modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
 
-                            -- FakeHitTimestamp: Подмена временной метки в hitData
                             if GunSilent.Settings.FakeHitTimestampEnabled.Value then
                                 local timeOffset = GunSilent.Settings.FakeHitTimestampOffset.Value
                                 local originalTimestamp = hitData[1][1].Timestamp
@@ -841,7 +836,6 @@ local function initializeGunSilent()
                                 print("[GunSilent] FakeHitTimestamp Applied: Original Timestamp = " .. tostring(originalTimestamp) .. ", Modified Timestamp = " .. tostring(hitData[1][1].Timestamp))
                             end
 
-                            -- OverrideServerTick: Синхронизация клиентского времени с серверным
                             if GunSilent.Settings.OverrideServerTickEnabled.Value then
                                 local serverTickOffset = GunSilent.Settings.ServerTickOffset.Value
                                 local originalTimestamp = hitData[1][1].Timestamp
@@ -1195,7 +1189,6 @@ local function Init(UI, Core, notify)
                 callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
             }
 
-            -- Секция для эксплоитов: GunSilent Mods
             combatSection:Header({ Name = "GunSilent Mods" })
             CombatElements.FakeHitTimestampEnabled = {
                 element = combatSection:Toggle({
@@ -1250,17 +1243,6 @@ local function Init(UI, Core, notify)
                     Callback = function(value) GunSilent.Settings.SilentHitOverrideEnabled.Value = value end
                 }, 'SilentHitOverrideEnabled'),
                 callback = function(value) GunSilent.Settings.SilentHitOverrideEnabled.Value = value end
-            }
-            CombatElements.SilentHitOverrideThreshold = {
-                element = combatSection:Slider({
-                    Name = "SilentHitOverride Threshold",
-                    Default = GunSilent.Settings.SilentHitOverrideThreshold.Value,
-                    Minimum = 0.1,
-                    Maximum = 1.0,
-                    Precision = 1,
-                    Callback = function(value) GunSilent.Settings.SilentHitOverrideThreshold.Value = value end
-                }, 'SilentHitOverrideThreshold'),
-                callback = function(value) GunSilent.Settings.SilentHitOverrideThreshold.Value = value end
             }
         end
     end
@@ -1502,7 +1484,6 @@ local function Init(UI, Core, notify)
                 CombatElements.OverrideServerTickEnabled.callback(CombatElements.OverrideServerTickEnabled.element:GetState())
                 CombatElements.ServerTickOffset.callback(CombatElements.ServerTickOffset.element:GetValue())
                 CombatElements.SilentHitOverrideEnabled.callback(CombatElements.SilentHitOverrideEnabled.element:GetState())
-                CombatElements.SilentHitOverrideThreshold.callback(CombatElements.SilentHitOverrideThreshold.element:GetValue())
                 VisualsElements.BulletTrailsEnabled.callback(VisualsElements.BulletTrailsEnabled.element:GetState())
                 VisualsElements.BulletTrailsFadeTime.callback(VisualsElements.BulletTrailsFadeTime.element:GetValue())
                 VisualsElements.HitParticlesEnabled.callback(VisualsElements.HitParticlesEnabled.element:GetState())
