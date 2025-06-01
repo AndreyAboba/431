@@ -42,7 +42,10 @@ local GunSilent = {
         HitNotifyEnabled = { Value = true, Default = true },
         HitNotifyDuration = { Value = 2, Default = 2 },
         HitNotifyPositionX = { Value = 0.5, Default = 0.5 },
-        HitNotifyPositionY = { Value = 0.9, Default = 0.9 }
+        HitNotifyPositionY = { Value = 0.9, Default = 0.9 },
+        TrajectoryBeamEnabled = { Value = false, Default = false },
+        HitboxColor = { Value = Color3.fromRGB(0, 255, 255), Default = Color3.fromRGB(0, 255, 255) },
+        HitboxTransparency = { Value = 0.3, Default = 0.3 }
     },
     State = {
         LastEventId = 0,
@@ -102,7 +105,7 @@ end
 local function createHitboxPart(part, color, material, fadeTime, transparency)
     if not part then return end
     local hitbox = safeCreateInstance("Part", {
-        Size = part.Size * 1.1,
+        Size = part.Size,
         CFrame = part.CFrame,
         Anchored = true,
         CanCollide = false,
@@ -135,13 +138,13 @@ local function createHitboxPart(part, color, material, fadeTime, transparency)
     return hitbox
 end
 
-local function createPredictHitbox(position, size, color, material)
+local function createPredictHitbox(position, size, color, material, transparency)
     local hitbox = safeCreateInstance("Part", {
         Size = size,
         CFrame = CFrame.new(position),
         Anchored = true,
         CanCollide = false,
-        Transparency = 0.3,
+        Transparency = transparency,
         Material = Enum.Material[material],
         Color = color,
         Parent = Workspace
@@ -149,7 +152,7 @@ local function createPredictHitbox(position, size, color, material)
     return hitbox
 end
 
-local function createPredictVisual(position, mode, material, targetChar, fullHitboxColor)
+local function createPredictVisual(position, mode, material, targetChar, hitboxColor, hitboxTransparency)
     if mode == "Sphere" then
         return createOrb(position)
     elseif mode == "Hitbox" then
@@ -168,7 +171,7 @@ local function createPredictVisual(position, mode, material, targetChar, fullHit
         }
         local hitboxes = {}
         for _, partData in ipairs(parts) do
-            local hitbox = createPredictHitbox(position, partData[2], Color3.fromRGB(0, 255, 255), material)
+            local hitbox = createPredictHitbox(position, partData[2], Color3.fromRGB(0, 255, 255), material, hitboxTransparency)
             table.insert(hitboxes, hitbox)
         end
         return hitboxes
@@ -184,8 +187,7 @@ local function createPredictVisual(position, mode, material, targetChar, fullHit
             for _, partName in ipairs(parts) do
                 local part = targetChar:FindFirstChild(partName)
                 if part then
-                    local relativePos = part.Position - rootPart.Position
-                    local hitbox = createPredictHitbox(position + relativePos, part.Size * 1.1, fullHitboxColor, material)
+                    local hitbox = createPredictHitbox(part.Position, part.Size, hitboxColor, material, hitboxTransparency)
                     table.insert(hitboxes, hitbox)
                 end
             end
@@ -313,56 +315,73 @@ local function showNotification(message, color)
     local frame = Instance.new("Frame", screenGui)
     frame.Size = UDim2.new(0, 200, 0, 50)
     frame.Position = UDim2.new(GunSilent.Settings.HitNotifyPositionX.Value, -100, GunSilent.Settings.HitNotifyPositionY.Value, -60)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+    frame.BackgroundTransparency = 0.3
     frame.BorderSizePixel = 0
-    frame.BackgroundTransparency = 1
+    frame.Visible = false
+    frame.Parent = screenGui
 
     local uicorner = Instance.new("UICorner", frame)
-    uicorner.CornerRadius = UDim.new(0, 8)
+    uicorner.CornerRadius = UDim.new(0, 10)
 
-    local border = Instance.new("UIStroke", frame)
-    border.Color = color
-    border.Thickness = 2
-    border.Transparency = 1
+    local iconFrame = Instance.new("Frame", frame)
+    iconFrame.Size = UDim2.new(0, 40, 0, 40)
+    iconFrame.Position = UDim2.new(0, 5, 0, 5)
+    iconFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+    iconFrame.BackgroundTransparency = 0.3
+    iconFrame.BorderSizePixel = 0
+    iconFrame.Parent = frame
 
-    local shadow = Instance.new("ImageLabel", frame)
-    shadow.Size = UDim2.new(1, 20, 1, 20)
-    shadow.Position = UDim2.new(0, -10, 0, -10)
-    shadow.BackgroundTransparency = 1
-    shadow.Image = "rbxassetid://1316045217"
-    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = 0.8
-    shadow.ScaleType = Enum.ScaleType.Slice
-    shadow.SliceCenter = Rect.new(10, 10, 10, 10)
+    local iconCorner = Instance.new("UICorner", iconFrame)
+    iconCorner.CornerRadius = UDim.new(0, 5)
 
-    local textLabel = Instance.new("TextLabel", frame)
+    local icon = Instance.new("ImageLabel", iconFrame)
+    icon.Size = UDim2.new(0, 30, 0, 30)
+    icon.Position = UDim2.new(0, 5, 0, 5)
+    icon.BackgroundTransparency = 1
+    icon.Image = "rbxassetid://5578470911"
+    icon.ImageColor3 = Color3.fromRGB(240, 240, 240)
+    icon.Parent = iconFrame
+
+    local textFrame = Instance.new("Frame", frame)
+    textFrame.Size = UDim2.new(0, 150, 0, 40)
+    textFrame.Position = UDim2.new(0, 50, 0, 5)
+    textFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+    textFrame.BackgroundTransparency = 0.3
+    textFrame.BorderSizePixel = 0
+    textFrame.Parent = frame
+
+    local textCorner = Instance.new("UICorner", textFrame)
+    textCorner.CornerRadius = UDim.new(0, 5)
+
+    local textLabel = Instance.new("TextLabel", textFrame)
     textLabel.Size = UDim2.new(1, 0, 1, 0)
     textLabel.BackgroundTransparency = 1
     textLabel.Text = message
-    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textLabel.Font = Enum.Font.SourceSansBold
-    textLabel.TextSize = 20
+    textLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextSize = 16
+    textLabel.TextXAlignment = Enum.TextXAlignment.Center
     textLabel.TextTransparency = 1
+    textLabel.Parent = textFrame
 
     GunSilent.State.Notification = frame
 
-    local appearTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local appearTween = TweenService:Create(frame, appearTweenInfo, { BackgroundTransparency = 0 })
-    local textAppearTween = TweenService:Create(textLabel, appearTweenInfo, { TextTransparency = 0 })
-    local borderAppearTween = TweenService:Create(border, appearTweenInfo, { Transparency = 0 })
+    -- Плавная анимация появления
+    frame.Visible = true
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local appearTween = TweenService:Create(frame, tweenInfo, { Size = UDim2.new(0, 200, 0, 50), BackgroundTransparency = 0.3 })
+    local textAppearTween = TweenService:Create(textLabel, tweenInfo, { TextTransparency = 0 })
     appearTween:Play()
     textAppearTween:Play()
-    borderAppearTween:Play()
 
     task.delay(GunSilent.Settings.HitNotifyDuration.Value, function()
         if frame and frame.Parent then
-            local fadeTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            local fadeTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
             local fadeTween = TweenService:Create(frame, fadeTweenInfo, { BackgroundTransparency = 1 })
             local textFadeTween = TweenService:Create(textLabel, fadeTweenInfo, { TextTransparency = 1 })
-            local borderFadeTween = TweenService:Create(border, fadeTweenInfo, { Transparency = 1 })
             fadeTween:Play()
             textFadeTween:Play()
-            borderFadeTween:Play()
             fadeTween.Completed:Connect(function()
                 frame:Destroy()
                 GunSilent.State.Notification = nil
@@ -718,7 +737,7 @@ local function updateVisualsGun(target)
             GunSilent.State.PredictVisualPart = nil
         end
 
-        local visual = createPredictVisual(predictionPos, GunSilent.Settings.PredictVisualMode.Value, GunSilent.Settings.PredictVisualMaterial.Value, targetChar, GunSilent.Settings.FullHitboxColor.Value)
+        local visual = createPredictVisual(predictionPos, GunSilent.Settings.PredictVisualMode.Value, GunSilent.Settings.PredictVisualMaterial.Value, targetChar, GunSilent.Settings.HitboxColor.Value, GunSilent.Settings.HitboxTransparency.Value)
         if visual then
             GunSilent.State.PredictVisualPart = type(visual) == "table" and visual or {visual}
         end
@@ -758,7 +777,7 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
-                showNotification("HIT!", Color3.fromRGB(0, 255, 0))
+                showNotification("Success Hit!", Color3.fromRGB(0, 255, 0))
             else
                 showNotification("MISS!", Color3.fromRGB(255, 0, 0))
             end
@@ -843,7 +862,6 @@ end
 local function Init(UI, Core, notify)
     GunSilent.Core = Core
     GunSilent.notify = notify
-    GunSilent.Settings.FullHitboxColor = { Value = Color3.fromRGB(0, 255, 255), Default = Color3.fromRGB(0, 255, 255) }
 
     local LocalPlayer = Core.PlayerData.LocalPlayer
     if LocalPlayer then
@@ -1303,13 +1321,32 @@ local function Init(UI, Core, notify)
                 }, 'PredictVisualMaterial'),
                 callback = function(value) GunSilent.Settings.PredictVisualMaterial.Value = value end
             }
-            VisualsElements.FullHitboxColor = {
+            VisualsElements.HitboxColor = {
                 element = predictVisualsSection:Colorpicker({
-                    Name = "FullHitbox Color",
-                    Default = GunSilent.Settings.FullHitboxColor.Value,
-                    Callback = function(value) GunSilent.Settings.FullHitboxColor.Value = value end
-                }, 'FullHitboxColor'),
-                callback = function(value) GunSilent.Settings.FullHitboxColor.Value = value end
+                    Name = "Hitbox Color",
+                    Default = GunSilent.Settings.HitboxColor.Value,
+                    Callback = function(value) GunSilent.Settings.HitboxColor.Value = value end
+                }, 'HitboxColor'),
+                callback = function(value) GunSilent.Settings.HitboxColor.Value = value end
+            }
+            VisualsElements.HitboxTransparency = {
+                element = predictVisualsSection:Slider({
+                    Name = "Hitbox Transparency",
+                    Default = GunSilent.Settings.HitboxTransparency.Value,
+                    Minimum = 0,
+                    Maximum = 1,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.HitboxTransparency.Value = value end
+                }, 'HitboxTransparency'),
+                callback = function(value) GunSilent.Settings.HitboxTransparency.Value = value end
+            }
+            VisualsElements.TrajectoryBeamEnabled = {
+                element = predictVisualsSection:Toggle({
+                    Name = "Trajectory Beam",
+                    Default = GunSilent.Settings.TrajectoryBeamEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.TrajectoryBeamEnabled.Value = value end
+                }, 'TrajectoryBeamEnabled'),
+                callback = function(value) GunSilent.Settings.TrajectoryBeamEnabled.Value = value end
             }
         end
     end
@@ -1373,7 +1410,9 @@ local function Init(UI, Core, notify)
                 for option, selected in pairs(predictVisualMaterialOptions) do
                     if selected then VisualsElements.PredictVisualMaterial.callback(option) break end
                 end
-                VisualsElements.FullHitboxColor.callback(VisualsElements.FullHitboxColor.element:GetValue())
+                VisualsElements.HitboxColor.callback(VisualsElements.HitboxColor.element:GetValue())
+                VisualsElements.HitboxTransparency.callback(VisualsElements.HitboxTransparency.element:GetValue())
+                VisualsElements.TrajectoryBeamEnabled.callback(VisualsElements.TrajectoryBeamEnabled.element:GetState())
             end
         }, 'SyncSettings')
     end
