@@ -1483,7 +1483,6 @@ local function Init(UI, Core, notify)
                 for option, selected in pairs(hitParticlesModeOptions) do
                     if selected then VisualsElements.HitParticlesMode.callback(option) break end
                 end
-                VisualsElements.ParticlePhysics.callback(VisualsElements.ParticlePhysics.element:GetValue())
                 VisualsElements.HitParticlesCount.callback(VisualsElements.HitParticlesCount.element:GetValue())
                 VisualsElements.HitParticlesLifetime.callback(VisualsElements.HitParticlesLifetime.element:GetValue())
                 VisualsElements.HitParticlesMoveDistance.callback(VisualsElements.HitParticlesMoveDistance.element:GetValue())
