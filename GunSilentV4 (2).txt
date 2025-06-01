@@ -43,7 +43,7 @@ local GunSilent = {
         HitNotifyDuration = { Value = 2, Default = 2 },
         HitNotifyPositionX = { Value = 0.5, Default = 0.5 },
         HitNotifyPositionY = { Value = 0.9, Default = 0.9 },
-        TrajectoryBeamEnabled = { Value = false, Default = false },
+        TrajectoryBeamEnabled = { Value = true, Default = true },
         HitboxColor = { Value = Color3.fromRGB(0, 255, 255), Default = Color3.fromRGB(0, 255, 255) },
         HitboxTransparency = { Value = 0.3, Default = 0.3 }
     },
@@ -73,7 +73,9 @@ local GunSilent = {
         LastShotTime = 0,
         PendingHits = {},
         ActiveHitboxes = {},
-        Notification = nil
+        Notification = nil,
+        TrajectoryBeam = nil,
+        TrajectoryBeamAttachments = {}
     }
 }
 
@@ -96,7 +98,7 @@ local function createOrb(position)
         CanCollide = false,
         Transparency = 0.3,
         Material = Enum.Material.Neon,
-        Color = Color3.fromRGB(0, 255, 255),
+        Color = GunSilent.Settings.HitboxColor.Value,
         Parent = Workspace
     })
     return orb
@@ -171,7 +173,7 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
         }
         local hitboxes = {}
         for _, partData in ipairs(parts) do
-            local hitbox = createPredictHitbox(position, partData[2], Color3.fromRGB(0, 255, 255), material, hitboxTransparency)
+            local hitbox = createPredictHitbox(position, partData[2], hitboxColor, material, hitboxTransparency)
             table.insert(hitboxes, hitbox)
         end
         return hitboxes
@@ -182,14 +184,19 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
             "LowerTorso", "RightFoot", "RightHand", "RightLowerArm", "RightLowerLeg", "RightUpperArm", "RightUpperLeg", "UpperTorso"
         }
         local hitboxes = {}
-        local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            for _, partName in ipairs(parts) do
-                local part = targetChar:FindFirstChild(partName)
-                if part then
-                    local hitbox = createPredictHitbox(part.Position, part.Size, hitboxColor, material, hitboxTransparency)
-                    table.insert(hitboxes, hitbox)
-                end
+        local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+        if not targetRoot then return nil end
+
+        local rootPos = targetRoot.Position
+        local positionOffset = position - rootPos
+
+        for _, partName in ipairs(parts) do
+            local part = targetChar:FindFirstChild(partName)
+            if part then
+                local relativePos = part.Position - rootPos
+                local newPos = position + relativePos
+                local hitbox = createPredictHitbox(newPos, part.Size, hitboxColor, material, hitboxTransparency)
+                table.insert(hitboxes, hitbox)
             end
         end
         return hitboxes
@@ -315,14 +322,10 @@ local function showNotification(message, color)
     local frame = Instance.new("Frame", screenGui)
     frame.Size = UDim2.new(0, 200, 0, 50)
     frame.Position = UDim2.new(GunSilent.Settings.HitNotifyPositionX.Value, -100, GunSilent.Settings.HitNotifyPositionY.Value, -60)
-    frame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
-    frame.BackgroundTransparency = 0.3
+    frame.BackgroundTransparency = 1
     frame.BorderSizePixel = 0
     frame.Visible = false
     frame.Parent = screenGui
-
-    local uicorner = Instance.new("UICorner", frame)
-    uicorner.CornerRadius = UDim.new(0, 10)
 
     local iconFrame = Instance.new("Frame", frame)
     iconFrame.Size = UDim2.new(0, 40, 0, 40)
@@ -333,18 +336,18 @@ local function showNotification(message, color)
     iconFrame.Parent = frame
 
     local iconCorner = Instance.new("UICorner", iconFrame)
-    iconCorner.CornerRadius = UDim.new(0, 5)
+    iconCorner.CornerRadius = UDim.new(0.5, 0)
 
     local icon = Instance.new("ImageLabel", iconFrame)
     icon.Size = UDim2.new(0, 30, 0, 30)
     icon.Position = UDim2.new(0, 5, 0, 5)
     icon.BackgroundTransparency = 1
     icon.Image = "rbxassetid://5578470911"
-    icon.ImageColor3 = Color3.fromRGB(240, 240, 240)
+    icon.ImageColor3 = Color3.fromRGB(0, 255, 0)
     icon.Parent = iconFrame
 
     local textFrame = Instance.new("Frame", frame)
-    textFrame.Size = UDim2.new(0, 150, 0, 40)
+    textFrame.Size = UDim2.new(0, 145, 0, 40)
     textFrame.Position = UDim2.new(0, 50, 0, 5)
     textFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
     textFrame.BackgroundTransparency = 0.3
@@ -367,10 +370,9 @@ local function showNotification(message, color)
 
     GunSilent.State.Notification = frame
 
-    -- Плавная анимация появления
     frame.Visible = true
     local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local appearTween = TweenService:Create(frame, tweenInfo, { Size = UDim2.new(0, 200, 0, 50), BackgroundTransparency = 0.3 })
+    local appearTween = TweenService:Create(frame, tweenInfo, { Size = UDim2.new(0, 200, 0, 50) })
     local textAppearTween = TweenService:Create(textLabel, tweenInfo, { TextTransparency = 0 })
     appearTween:Play()
     textAppearTween:Play()
@@ -678,6 +680,53 @@ local function createHitDataGun(target)
     return hitData
 end
 
+local function updateTrajectoryBeam(startPos, endPos)
+    if not GunSilent.Settings.TrajectoryBeamEnabled.Value then
+        if GunSilent.State.TrajectoryBeam then
+            GunSilent.State.TrajectoryBeam:Destroy()
+            GunSilent.State.TrajectoryBeam = nil
+            for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                attachment:Destroy()
+            end
+            GunSilent.State.TrajectoryBeamAttachments = {}
+        end
+        return
+    end
+
+    if not startPos or not endPos then
+        if GunSilent.State.TrajectoryBeam then
+            GunSilent.State.TrajectoryBeam:Destroy()
+            GunSilent.State.TrajectoryBeam = nil
+            for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                attachment:Destroy()
+            end
+            GunSilent.State.TrajectoryBeamAttachments = {}
+        end
+        return
+    end
+
+    if not GunSilent.State.TrajectoryBeam then
+        local beam = safeCreateInstance("Beam", {
+            FaceCamera = true,
+            Width0 = 0.2,
+            Width1 = 0.2,
+            Transparency = NumberSequence.new(0.5),
+            Color = ColorSequence.new(GunSilent.Settings.HitboxColor.Value),
+            Parent = Workspace
+        })
+        local attachment0 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+        local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+        beam.Attachment0 = attachment0
+        beam.Attachment1 = attachment1
+        GunSilent.State.TrajectoryBeam = beam
+        GunSilent.State.TrajectoryBeamAttachments = {attachment0, attachment1}
+    end
+
+    GunSilent.State.TrajectoryBeamAttachments[1].Position = startPos
+    GunSilent.State.TrajectoryBeamAttachments[2].Position = endPos
+    GunSilent.State.TrajectoryBeam.Color = ColorSequence.new(GunSilent.Settings.HitboxColor.Value)
+end
+
 local function updateVisualsGun(target)
     local currentTime = tick()
     if currentTime - GunSilent.State.LastVisualUpdateTime < 0.05 then return end
@@ -695,6 +744,7 @@ local function updateVisualsGun(target)
             end
             GunSilent.State.PredictVisualPart = nil
         end
+        updateTrajectoryBeam(nil, nil)
         return
     end
 
@@ -713,6 +763,7 @@ local function updateVisualsGun(target)
             end
             GunSilent.State.PredictVisualPart = nil
         end
+        updateTrajectoryBeam(nil, nil)
         return
     end
 
@@ -751,6 +802,8 @@ local function updateVisualsGun(target)
         end
         GunSilent.State.PredictVisualPart = nil
     end
+
+    updateTrajectoryBeam(startPos, predictionPos)
 end
 
 local function initializeGunSilent()
@@ -881,6 +934,14 @@ local function Init(UI, Core, notify)
                 end
                 GunSilent.State.PredictVisualPart = nil
             end
+            if GunSilent.State.TrajectoryBeam then
+                GunSilent.State.TrajectoryBeam:Destroy()
+                GunSilent.State.TrajectoryBeam = nil
+                for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                    attachment:Destroy()
+                end
+                GunSilent.State.TrajectoryBeamAttachments = {}
+            end
         end)
         if LocalPlayer.Character then
             GunSilent.State.LocalCharacter = LocalPlayer.Character
@@ -900,6 +961,14 @@ local function Init(UI, Core, notify)
                     end
                     GunSilent.State.PredictVisualPart = nil
                 end
+                if GunSilent.State.TrajectoryBeam then
+                    GunSilent.State.TrajectoryBeam:Destroy()
+                    GunSilent.State.TrajectoryBeam = nil
+                    for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                        attachment:Destroy()
+                    end
+                    GunSilent.State.TrajectoryBeamAttachments = {}
+                end
             end)
         end
         LocalPlayer.CharacterAdded:Connect(function(character)
@@ -914,6 +983,14 @@ local function Init(UI, Core, notify)
                         GunSilent.State.PredictVisualPart:Destroy()
                     end
                     GunSilent.State.PredictVisualPart = nil
+                end
+                if GunSilent.State.TrajectoryBeam then
+                    GunSilent.State.TrajectoryBeam:Destroy()
+                    GunSilent.State.TrajectoryBeam = nil
+                    for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                        attachment:Destroy()
+                    end
+                    GunSilent.State.TrajectoryBeamAttachments = {}
                 end
             end)
         end)
@@ -1344,9 +1421,33 @@ local function Init(UI, Core, notify)
                 element = predictVisualsSection:Toggle({
                     Name = "Trajectory Beam",
                     Default = GunSilent.Settings.TrajectoryBeamEnabled.Value,
-                    Callback = function(value) GunSilent.Settings.TrajectoryBeamEnabled.Value = value end
+                    Callback = function(value) 
+                        GunSilent.Settings.TrajectoryBeamEnabled.Value = value 
+                        if not value then
+                            if GunSilent.State.TrajectoryBeam then
+                                GunSilent.State.TrajectoryBeam:Destroy()
+                                GunSilent.State.TrajectoryBeam = nil
+                                for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                                    attachment:Destroy()
+                                end
+                                GunSilent.State.TrajectoryBeamAttachments = {}
+                            end
+                        end
+                    end
                 }, 'TrajectoryBeamEnabled'),
-                callback = function(value) GunSilent.Settings.TrajectoryBeamEnabled.Value = value end
+                callback = function(value) 
+                    GunSilent.Settings.TrajectoryBeamEnabled.Value = value 
+                    if not value then
+                        if GunSilent.State.TrajectoryBeam then
+                            GunSilent.State.TrajectoryBeam:Destroy()
+                            GunSilent.State.TrajectoryBeam = nil
+                            for _, attachment in pairs(GunSilent.State.TrajectoryBeamAttachments) do
+                                attachment:Destroy()
+                            end
+                            GunSilent.State.TrajectoryBeamAttachments = {}
+                        end
+                    end
+                end
             }
         end
     end
