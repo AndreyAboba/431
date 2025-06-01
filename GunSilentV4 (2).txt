@@ -8,10 +8,10 @@ local Stats = game:GetService("Stats")
 
 local GunSilent = {
     Settings = {
-        BasePrediction = { Value = 0.1, Default = 0.1 },
-        VelocityPredictionWeight = { Value = 0.9, Default = 0.9 },
-        PingCompensationFactor = { Value = 0.8, Default = 0.8 },
-        SmoothingFactor = { Value = 0.1, Default = 0.1 },
+        BasePrediction = { Value = 0.1, Default = 0.1 }, -- Базовое время предсказания
+        VelocityPredictionWeight = { Value = 0.9, Default = 0.9 }, -- Влияние скорости игрока
+        PingCompensationFactor = { Value = 0.8, Default = 0.8 }, -- Компенсация пинга
+        SmoothingFactor = { Value = 0.1, Default = 0.1 }, -- Сглаживание предсказания
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -44,8 +44,6 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 2, Default = 2 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        DistanceFactor = { Value = 0.0015, Default = 0.0015 },
-        SpeedFactor = { Value = 0.00003, Default = 0.00003 },
         HitVisualAnimate = { Value = false, Default = false },
         FakeHitTimestampEnabled = { Value = false, Default = false },
         FakeHitTimestampOffset = { Value = 0, Default = 0 },
@@ -449,30 +447,6 @@ local function resolveVelocity(target, positionHistory, clientVelocity, targetCh
     return validEntries > 0 and totalVelocity / totalWeight or clientVelocity
 end
 
-local function calculateAcceleration(positionHistory)
-    if not positionHistory or #positionHistory < 3 then return Vector3.new(0, 0, 0) end
-
-    local totalAcceleration = Vector3.new(0, 0, 0)
-    local validEntries = 0
-
-    for i = #positionHistory - 1, math.max(1, #positionHistory - 2), -1 do
-        local currEntry = positionHistory[i + 1]
-        local prevEntry = positionHistory[i]
-        local timeDelta = currEntry.time - prevEntry.time
-        if timeDelta > 0 and timeDelta < 0.2 then
-            local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
-            local prevVelocity = i > 1 and (prevEntry.pos - positionHistory[i - 1].pos) / (prevEntry.time - positionHistory[i - 1].time) or velocity
-            local acceleration = (velocity - prevVelocity) / timeDelta
-            if acceleration.Magnitude <= 200 then
-                totalAcceleration = totalAcceleration + acceleration
-                validEntries = validEntries + 1
-            end
-        end
-    end
-
-    return validEntries > 0 and totalAcceleration / validEntries or Vector3.new(0, 0, 0)
-end
-
 local function predictTargetPositionGun(target)
     local localRoot = GunSilent.State.LocalRoot
     if not target or not target.Character or not localRoot then 
@@ -495,7 +469,6 @@ local function predictTargetPositionGun(target)
     end
     GunSilent.State.LastTargetPosition[targetId] = targetPos
 
-    local distance = (targetPos - myPos).Magnitude
     local positionHistory = GunSilent.State.PositionHistory[target] or {}
     local currentTime = tick()
 
@@ -505,10 +478,11 @@ local function predictTargetPositionGun(target)
     end
     GunSilent.State.PositionHistory[target] = positionHistory
 
+    -- Получаем скорость игрока через резолвер
     local rawVelocity = resolveVelocity(target, positionHistory, targetRoot.Velocity, targetChar)
     local smoothedVelocity = smoothVelocity(target, rawVelocity, GunSilent.Settings.SmoothingFactor.Value)
 
-    local acceleration = calculateAcceleration(positionHistory)
+    -- Ограничиваем скорость, чтобы избежать аномалий
     local velocityMagnitude = smoothedVelocity.Magnitude
     local maxSpeed = 80
     if velocityMagnitude > maxSpeed then
@@ -516,27 +490,26 @@ local function predictTargetPositionGun(target)
         velocityMagnitude = maxSpeed
     end
 
+    -- Получаем пинг клиента
     local localPlayer = Players.LocalPlayer
     local rawPing = localPlayer:GetAttribute("ServerPing") or 0.05
-    local ping = math.floor(rawPing * 1000 + 0.5) / 1000
+    local ping = math.floor(rawPing * 1000 + 0.5) / 1000 -- Переводим пинг в секунды
 
-    local distanceWeight = velocityMagnitude > 30 and math.min(1, (velocityMagnitude - 30) / 30) or 0
-
+    -- Вычисляем время предсказания
     local basePrediction = GunSilent.Settings.BasePrediction.Value
-    local distanceFactor = GunSilent.Settings.DistanceFactor.Value
-    local speedFactor = GunSilent.Settings.SpeedFactor.Value
     local velocityPredictionWeight = GunSilent.Settings.VelocityPredictionWeight.Value
     local pingCompensationFactor = GunSilent.Settings.PingCompensationFactor.Value
 
-    local velocityContribution = (velocityMagnitude * distanceFactor * distanceWeight) * velocityPredictionWeight
-    local distanceContribution = (distance * speedFactor) * (1 - velocityPredictionWeight)
+    -- Учитываем скорость игрока и пинг
+    local velocityContribution = velocityMagnitude * velocityPredictionWeight
     local pingContribution = ping * pingCompensationFactor
+    local predictionTime = basePrediction + velocityContribution + pingContribution
 
-    local predictionTime = basePrediction + pingContribution + velocityContribution + distanceContribution
-
+    -- Предсказываем позицию
     local clientPos = targetPos
-    local predictedPos = clientPos + smoothedVelocity * predictionTime + (0.5 * acceleration * predictionTime * predictionTime)
+    local predictedPos = clientPos + smoothedVelocity * predictionTime
 
+    -- Применяем сглаживание
     if GunSilent.State.LastPredictionPos and GunSilent.Settings.SmoothingFactor.Value > 0 then
         predictedPos = GunSilent.State.LastPredictionPos:Lerp(predictedPos, 1 - GunSilent.Settings.SmoothingFactor.Value)
     end
@@ -1166,29 +1139,6 @@ local function Init(UI, Core, notify)
                 }, 'SmoothingFactor'),
                 callback = function(value) GunSilent.Settings.SmoothingFactor.Value = value end
             }
-            CombatElements.DistanceFactor = {
-                element = combatSection:Slider({
-                    Name = "Distance Factor",
-                    Minimum = 0.001,
-                    Maximum = 0.01,
-                    Default = GunSilent.Settings.DistanceFactor.Value,
-                    Precision = 4,
-                    Callback = function(value) GunSilent.Settings.DistanceFactor.Value = value end
-                }, 'DistanceFactor'),
-                callback = function(value) GunSilent.Settings.DistanceFactor.Value = value end
-            }
-            CombatElements.SpeedFactor = {
-                element = combatSection:Slider({
-                    Name = "Speed Factor",
-                    Minimum = 0.00001,
-                    Maximum = 0.0001,
-                    Default = GunSilent.Settings.SpeedFactor.Value,
-                    Precision = 5,
-                    Callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
-                }, 'SpeedFactor'),
-                callback = function(value) GunSilent.Settings.SpeedFactor.Value = value end
-            }
-
             combatSection:Header({ Name = "GunSilent Mods" })
             CombatElements.FakeHitTimestampEnabled = {
                 element = combatSection:Toggle({
@@ -1476,8 +1426,6 @@ local function Init(UI, Core, notify)
                 CombatElements.VelocityPredictionWeight.callback(CombatElements.VelocityPredictionWeight.element:GetValue())
                 CombatElements.PingCompensationFactor.callback(CombatElements.PingCompensationFactor.element:GetValue())
                 CombatElements.SmoothingFactor.callback(CombatElements.SmoothingFactor.element:GetValue())
-                CombatElements.DistanceFactor.callback(CombatElements.DistanceFactor.element:GetValue())
-                CombatElements.SpeedFactor.callback(CombatElements.SpeedFactor.element:GetValue())
                 CombatElements.FakeHitTimestampEnabled.callback(CombatElements.FakeHitTimestampEnabled.element:GetState())
                 CombatElements.FakeHitTimestampOffset.callback(CombatElements.FakeHitTimestampOffset.element:GetValue())
                 CombatElements.ForceHitConfirmationEnabled.callback(CombatElements.ForceHitConfirmationEnabled.element:GetState())
