@@ -16,7 +16,11 @@ local GunSilent = {
         ShowCircle = { Value = true, Default = true },
         CircleMethod = { Value = "Center", Default = "Center", Options = {"Center", "Cursor"} },
         PredictVisual = { Value = true, Default = true },
+        PredictVisualMode = { Value = "Sphere", Default = "Sphere", Options = {"Sphere", "Hitboxes"} },
         TrajectoryBeam = { Value = true, Default = true },
+        TrajectoryBeamColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
+        TrajectoryBeamHeight = { Value = 0.15, Default = 0.15 },
+        TrajectoryBeamWidth = { Value = 0.15, Default = 0.15 },
         BulletTrailsEnabled = { Value = false, Default = false },
         BulletTrailsFadeTime = { Value = 1, Default = 1 },
         BulletTrailsColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
@@ -24,7 +28,6 @@ local GunSilent = {
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
-        TestGenBullet = { Value = false, Default = false },
         HitParticlesEnabled = { Value = false, Default = false },
         HitParticlesMode = { Value = "Orbs", Default = "Orbs", Options = {"Orbs", "Sparks"} },
         HitParticlesCount = { Value = 30, Default = 30 },
@@ -37,7 +40,9 @@ local GunSilent = {
         HitVisualFadeTime = { Value = 2, Default = 2 },
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
-        HitVisualAnimate = { Value = false, Default = false }
+        HitVisualMaterial = { Value = "Neon", Default = "Neon", Options = {"Neon", "ForceField"} },
+        HitNotifyEnabled = { Value = true, Default = true },
+        HitNotifyDuration = { Value = 2, Default = 2 }
     },
     State = {
         LastEventId = 0,
@@ -67,7 +72,8 @@ local GunSilent = {
         LastHitPosition = nil,
         LastShotTime = 0,
         PendingHits = {},
-        ActiveHitboxes = {}
+        ActiveHitboxes = {},
+        Notification = nil
     }
 }
 
@@ -84,15 +90,75 @@ end
 local function createOrb(position)
     local orb = safeCreateInstance("Part", {
         Shape = Enum.PartType.Ball,
-        Size = Vector3.new(0.6, 0.6, 0.6),
+        Size = Vector3.new(0.5, 0.5, 0.5),
         Position = position,
         Anchored = true,
         CanCollide = false,
-        Transparency = 0,
+        Transparency = 0.3,
         Material = Enum.Material.Neon,
+        Color = Color3.fromRGB(0, 255, 255),
         Parent = Workspace
     })
     return orb
+end
+
+local function createHitboxPart(position, size, color, material)
+    local hitbox = safeCreateInstance("Part", {
+        Size = size,
+        CFrame = CFrame.new(position),
+        Anchored = true,
+        CanCollide = false,
+        Transparency = 0.3,
+        Material = Enum.Material[material],
+        Color = color,
+        Parent = Workspace
+    })
+    return hitbox
+end
+
+local function createOrbOrHitboxes(position, mode)
+    if mode == "Sphere" then
+        return createOrb(position)
+    elseif mode == "Hitboxes" then
+        local character = GunSilent.State.LastHitTarget and GunSilent.State.LastHitTarget.Character
+        if not character then return nil end
+        local parts = {
+            {"Head", Vector3.new(1, 1, 1)},
+            {"UpperTorso", Vector3.new(1, 1, 1)},
+            {"LowerTorso", Vector3.new(1, 1, 1)},
+            {"LeftUpperArm", Vector3.new(0.5, 1, 0.5)},
+            {"RightUpperArm", Vector3.new(0.5, 1, 0.5)},
+            {"LeftLowerArm", Vector3.new(0.5, 1, 0.5)},
+            {"RightLowerArm", Vector3.new(0.5, 1, 0.5)},
+            {"LeftUpperLeg", Vector3.new(0.5, 1, 0.5)},
+            {"RightUpperLeg", Vector3.new(0.5, 1, 0.5)},
+            {"LeftLowerLeg", Vector3.new(0.5, 1, 0.5)},
+            {"RightLowerLeg", Vector3.new(0.5, 1, 0.5)}
+        }
+        local hitboxes = {}
+        for _, partData in ipairs(parts) do
+            local part = character:FindFirstChild(partData[1])
+            if part then
+                local hitbox = createHitboxPart(position, partData[2], Color3.fromRGB(0, 255, 255), "Neon")
+                table.insert(hitboxes, hitbox)
+            end
+        end
+        return hitboxes
+    end
+    return nil
+end
+
+local function cleanupPredictVisual()
+    if GunSilent.State.PredictVisualPart then
+        if type(GunSilent.State.PredictVisualPart) == "table" then
+            for _, part in ipairs(GunSilent.State.PredictVisualPart) do
+                if part then part:Destroy() end
+            end
+        else
+            GunSilent.State.PredictVisualPart:Destroy()
+        end
+        GunSilent.State.PredictVisualPart = nil
+    end
 end
 
 local function createSpark(position)
@@ -183,44 +249,17 @@ local function spawnHitParticles(target, hitPosition)
     end
 end
 
-local function createHitboxPart(part, color, animate)
-    if not part then return end
+local function createHitboxPart(position, size, color, material)
     local hitbox = safeCreateInstance("Part", {
-        Size = part.Size * 1.1,
-        CFrame = part.CFrame,
+        Size = size,
+        CFrame = CFrame.new(position),
         Anchored = true,
         CanCollide = false,
         Transparency = GunSilent.Settings.HitVisualTransparency.Value,
-        Material = Enum.Material.Neon,
+        Material = Enum.Material[material],
         Color = color,
         Parent = Workspace
     })
-    hitbox.Name = part.Name
-
-    local smoothTime = 0.1
-    local tweenInfo = TweenInfo.new(smoothTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-    local smoothTween = TweenService:Create(hitbox, tweenInfo, { CFrame = part.CFrame })
-    smoothTween:Play()
-
-    local fadeTweenInfo = TweenInfo.new(GunSilent.Settings.HitVisualFadeTime.Value, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
-    local fadeTween = TweenService:Create(hitbox, fadeTweenInfo, { Transparency = 1 })
-    fadeTween:Play()
-    fadeTween.Completed:Connect(function()
-        hitbox:Destroy()
-        GunSilent.State.ActiveHitboxes[hitbox] = nil
-    end)
-
-    GunSilent.State.ActiveHitboxes[hitbox] = true
-    if #GunSilent.State.ActiveHitboxes > 50 then
-        for oldHitbox, _ in pairs(GunSilent.State.ActiveHitboxes) do
-            if oldHitbox ~= hitbox then
-                oldHitbox:Destroy()
-                GunSilent.State.ActiveHitboxes[oldHitbox] = nil
-                break
-            end
-        end
-    end
-
     return hitbox
 end
 
@@ -231,14 +270,57 @@ local function spawnHitVisual(target, hitPosition)
     if not character then return end
 
     local parts = {
-        "Head", "LeftFoot", "LeftHand", "LeftLowerArm", "LeftLowerLeg", "LeftUpperArm", "LeftUpperLeg",
-        "LowerTorso", "RightFoot", "RightHand", "RightLowerArm", "RightLowerLeg", "RightUpperArm", "RightUpperLeg", "UpperTorso"
+        {"Head", Vector3.new(1, 1, 1)},
+        {"LeftFoot", Vector3.new(0.5, 1, 0.5)},
+        {"LeftHand", Vector3.new(0.5, 1, 0.5)},
+        {"LeftLowerArm", Vector3.new(0.5, 1, 0.5)},
+        {"LeftLowerLeg", Vector3.new(0.5, 1, 0.5)},
+        {"LeftUpperArm", Vector3.new(0.5, 1, 0.5)},
+        {"LeftUpperLeg", Vector3.new(0.5, 1, 0.5)},
+        {"LowerTorso", Vector3.new(1, 1, 1)},
+        {"RightFoot", Vector3.new(0.5, 1, 0.5)},
+        {"RightHand", Vector3.new(0.5, 1, 0.5)},
+        {"RightLowerArm", Vector3.new(0.5, 1, 0.5)},
+        {"RightLowerLeg", Vector3.new(0.5, 1, 0.5)},
+        {"RightUpperArm", Vector3.new(0.5, 1, 0.5)},
+        {"RightUpperLeg", Vector3.new(0.5, 1, 0.5)},
+        {"UpperTorso", Vector3.new(1, 1, 1)}
     }
 
-    for _, partName in ipairs(parts) do
-        local part = character:FindFirstChild(partName)
-        if part then createHitboxPart(part, GunSilent.Settings.HitVisualColor.Value, false) end
+    for _, partData in ipairs(parts) do
+        local part = character:FindFirstChild(partData[1])
+        if part then
+            createHitboxPart(part.Position, partData[2], GunSilent.Settings.HitVisualColor.Value, GunSilent.Settings.HitVisualMaterial.Value)
+        end
     end
+end
+
+local function showNotification(message, color)
+    if not GunSilent.Settings.HitNotifyEnabled.Value then return end
+    if GunSilent.State.Notification then GunSilent.State.Notification:Destroy() end
+
+    local screenGui = Instance.new("ScreenGui", game.Players.LocalPlayer:WaitForChild("PlayerGui"))
+    local frame = Instance.new("Frame", screenGui)
+    frame.Size = UDim2.new(0, 300, 0, 50)
+    frame.Position = UDim2.new(0.5, -150, 0.9, -60)
+    frame.BackgroundColor3 = color
+    frame.BorderSizePixel = 0
+
+    local textLabel = Instance.new("TextLabel", frame)
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = message
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.Font = Enum.Font.SourceSansBold
+    textLabel.TextSize = 20
+
+    GunSilent.State.Notification = frame
+    task.delay(GunSilent.Settings.HitNotifyDuration.Value, function()
+        if frame and frame.Parent then
+            frame:Destroy()
+            GunSilent.State.Notification = nil
+        end
+    end)
 end
 
 local function isGunTool(tool)
@@ -462,8 +544,7 @@ local function createHitDataGun(target)
 
     local equippedTool = getEquippedGunTool()
     local isShotgunWeapon = GunSilent.Settings.ShotgunSupport.Value and equippedTool and isShotgun(equippedTool)
-    local useMultiBullets = isShotgunWeapon or GunSilent.Settings.TestGenBullet.Value
-    local numBullets = useMultiBullets and (isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 4) or 1
+    local numBullets = isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 1
     local hitData = {}
 
     local timestamp = tick()
@@ -550,10 +631,11 @@ local function createTrajectoryBeam(startPos, endPos)
 
     local trajectoryBeam = safeCreateInstance("Beam", {
         FaceCamera = true,
-        Width0 = 0.15,
-        Width1 = 0.15,
+        Width0 = GunSilent.Settings.TrajectoryBeamWidth.Value,
+        Width1 = GunSilent.Settings.TrajectoryBeamWidth.Value,
+        Height = GunSilent.Settings.TrajectoryBeamHeight.Value,
         Transparency = NumberSequence.new(0.4),
-        Color = ColorSequence.new(Color3.fromRGB(147, 112, 219)),
+        Color = ColorSequence.new(GunSilent.Settings.TrajectoryBeamColor.Value),
         Parent = Workspace
     })
     if not trajectoryBeam then return end
@@ -584,7 +666,7 @@ local function updateVisualsGun(target)
 
     local localRoot = GunSilent.State.LocalRoot
     if not GunSilent.Settings.Enabled.Value or not localRoot then
-        if GunSilent.State.PredictVisualPart then GunSilent.State.PredictVisualPart.Transparency = 1 end
+        cleanupPredictVisual()
         if GunSilent.State.TrajectoryBeam then GunSilent.State.TrajectoryBeam.Enabled = false end
         return
     end
@@ -594,7 +676,7 @@ local function updateVisualsGun(target)
     local predictionPos = prediction and prediction.position
 
     if not target or not target.Character or not predictionPos or not prediction.direction then
-        if GunSilent.State.PredictVisualPart then GunSilent.State.PredictVisualPart.Transparency = 1 end
+        cleanupPredictVisual()
         if GunSilent.State.TrajectoryBeam then GunSilent.State.TrajectoryBeam.Enabled = false end
         return
     end
@@ -609,25 +691,11 @@ local function updateVisualsGun(target)
     local startPos = localRoot.Position + Vector3.new(0, 1.5, 0)
 
     if GunSilent.Settings.PredictVisual.Value then
-        local predictVisualPart = GunSilent.State.PredictVisualPart
-        if not predictVisualPart or not predictVisualPart.Parent then
-            predictVisualPart = safeCreateInstance("Part", {
-                Size = Vector3.new(0.5, 0.5, 0.5),
-                Shape = Enum.PartType.Ball,
-                Anchored = true,
-                CanCollide = false,
-                Transparency = 0.3,
-                Parent = Workspace
-            })
-            GunSilent.State.PredictVisualPart = predictVisualPart
+        cleanupPredictVisual()
+        local visual = createOrbOrHitboxes(predictionPos, GunSilent.Settings.PredictVisualMode.Value)
+        if visual then
+            GunSilent.State.PredictVisualPart = type(visual) == "table" and visual or {visual}
         end
-        if predictVisualPart then
-            predictVisualPart.Position = predictionPos
-            predictVisualPart.Color = Color3.fromRGB(0, 255, 255)
-            predictVisualPart.Transparency = 0.3
-        end
-    elseif GunSilent.State.PredictVisualPart then
-        GunSilent.State.PredictVisualPart.Transparency = 1
     end
 
     if GunSilent.Settings.TrajectoryBeam.Value and GunSilent.Settings.PredictVisual.Value then
@@ -667,6 +735,9 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
+                showNotification("HIT!", Color3.fromRGB(0, 255, 0))
+            else
+                showNotification("MISS!", Color3.fromRGB(255, 0, 0))
             end
             if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                 GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
@@ -759,6 +830,7 @@ local function Init(UI, Core, notify)
             GunSilent.State.CurrentToolRangeApplied = nil
             GunSilent.State.BaseRangeCache = {}
             cleanupTrajectoryBeam()
+            cleanupPredictVisual()
         end)
         if LocalPlayer.Character then
             GunSilent.State.LocalCharacter = LocalPlayer.Character
@@ -767,11 +839,17 @@ local function Init(UI, Core, notify)
 
         local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
         if humanoid then
-            humanoid.Died:Connect(cleanupTrajectoryBeam)
+            humanoid.Died:Connect(function()
+                cleanupTrajectoryBeam()
+                cleanupPredictVisual()
+            end)
         end
         LocalPlayer.CharacterAdded:Connect(function(character)
             local newHumanoid = character:WaitForChild("Humanoid")
-            newHumanoid.Died:Connect(cleanupTrajectoryBeam)
+            newHumanoid.Died:Connect(function()
+                cleanupTrajectoryBeam()
+                cleanupPredictVisual()
+            end)
         end)
     end
 
@@ -849,14 +927,6 @@ local function Init(UI, Core, notify)
                 }, 'GenerateBullets'),
                 callback = function(value) GunSilent.Settings.GenBullet.Value = value end
             }
-            CombatElements.TestGenerateBullets = {
-                element = combatSection:Toggle({
-                    Name = "Test Generate Bullets",
-                    Default = GunSilent.Settings.TestGenBullet.Value,
-                    Callback = function(value) GunSilent.Settings.TestGenBullet.Value = value end
-                }, 'TestGenerateBullets'),
-                callback = function(value) GunSilent.Settings.TestGenBullet.Value = value end
-            }
             CombatElements.SortMethod = {
                 element = combatSection:Dropdown({
                     Name = "Sort Method",
@@ -878,7 +948,7 @@ local function Init(UI, Core, notify)
                 element = combatSection:Slider({
                     Name = "FOV",
                     Default = GunSilent.Settings.FOV.Value,
-                    Minimum = 30,
+                    Minimum = 15,
                     Maximum = 120,
                     Precision = 0,
                     Callback = function(value) GunSilent.Settings.FOV.Value = value end
@@ -1103,14 +1173,6 @@ local function Init(UI, Core, notify)
                 }, 'HitVisualEnabled'),
                 callback = function(value) GunSilent.Settings.HitVisualEnabled.Value = value end
             }
-            VisualsElements.HitVisualAnimate = {
-                element = hitVisualSection:Toggle({
-                    Name = "Animate",
-                    Default = GunSilent.Settings.HitVisualAnimate.Value,
-                    Callback = function(value) GunSilent.Settings.HitVisualAnimate.Value = value end
-                }, 'HitVisualAnimate'),
-                callback = function(value) GunSilent.Settings.HitVisualAnimate.Value = value end
-            }
             VisualsElements.HitVisualFadeTime = {
                 element = hitVisualSection:Slider({
                     Name = "Fade Time",
@@ -1141,6 +1203,84 @@ local function Init(UI, Core, notify)
                 }, 'HitVisualColor'),
                 callback = function(value) GunSilent.Settings.HitVisualColor.Value = value end
             }
+            VisualsElements.HitVisualMaterial = {
+                element = hitVisualSection:Dropdown({
+                    Name = "Material",
+                    Default = GunSilent.Settings.HitVisualMaterial.Value,
+                    Options = GunSilent.Settings.HitVisualMaterial.Options,
+                    Callback = function(value) GunSilent.Settings.HitVisualMaterial.Value = value end
+                }, 'HitVisualMaterial'),
+                callback = function(value) GunSilent.Settings.HitVisualMaterial.Value = value end
+            }
+        end
+
+        local hitNotifySection = UI.Tabs.Visuals:Section({ Side = "Right", Name = "Hit Notify" })
+        if hitNotifySection then
+            hitNotifySection:Header({ Name = "Hit Notify" })
+            VisualsElements.HitNotifyEnabled = {
+                element = hitNotifySection:Toggle({
+                    Name = "Enabled",
+                    Default = GunSilent.Settings.HitNotifyEnabled.Value,
+                    Callback = function(value) GunSilent.Settings.HitNotifyEnabled.Value = value end
+                }, 'HitNotifyEnabled'),
+                callback = function(value) GunSilent.Settings.HitNotifyEnabled.Value = value end
+            }
+            VisualsElements.HitNotifyDuration = {
+                element = hitNotifySection:Slider({
+                    Name = "Duration",
+                    Default = GunSilent.Settings.HitNotifyDuration.Value,
+                    Minimum = 1,
+                    Maximum = 5,
+                    Precision = 1,
+                    Callback = function(value) GunSilent.Settings.HitNotifyDuration.Value = value end
+                }, 'HitNotifyDuration'),
+                callback = function(value) GunSilent.Settings.HitNotifyDuration.Value = value end
+            }
+        end
+
+        local predictVisualsSection = UI.Tabs.Visuals:Section({ Side = "Right", Name = "PredictVisuals" })
+        if predictVisualsSection then
+            predictVisualsSection:Header({ Name = "Predict Visual" })
+            VisualsElements.PredictVisualMode = {
+                element = predictVisualsSection:Dropdown({
+                    Name = "Mode",
+                    Default = GunSilent.Settings.PredictVisualMode.Value,
+                    Options = GunSilent.Settings.PredictVisualMode.Options,
+                    Callback = function(value) GunSilent.Settings.PredictVisualMode.Value = value end
+                }, 'PredictVisualMode'),
+                callback = function(value) GunSilent.Settings.PredictVisualMode.Value = value end
+            }
+            predictVisualsSection:Header({ Name = "Trajectory Beam" })
+            VisualsElements.TrajectoryBeamColor = {
+                element = predictVisualsSection:Colorpicker({
+                    Name = "Beam Color",
+                    Default = GunSilent.Settings.TrajectoryBeamColor.Value,
+                    Callback = function(value) GunSilent.Settings.TrajectoryBeamColor.Value = value end
+                }, 'TrajectoryBeamColor'),
+                callback = function(value) GunSilent.Settings.TrajectoryBeamColor.Value = value end
+            }
+            VisualsElements.TrajectoryBeamHeight = {
+                element = predictVisualsSection:Slider({
+                    Name = "Beam Height",
+                    Default = GunSilent.Settings.TrajectoryBeamHeight.Value,
+                    Minimum = 0.1,
+                    Maximum = 0.5,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.TrajectoryBeamHeight.Value = value end
+                }, 'TrajectoryBeamHeight'),
+                callback = function(value) GunSilent.Settings.TrajectoryBeamHeight.Value = value end
+            }
+            VisualsElements.TrajectoryBeamWidth = {
+                element = predictVisualsSection:Slider({
+                    Name = "Beam Width",
+                    Default = GunSilent.Settings.TrajectoryBeamWidth.Value,
+                    Minimum = 0.1,
+                    Maximum = 0.5,
+                    Precision = 2,
+                    Callback = function(value) GunSilent.Settings.TrajectoryBeamWidth.Value = value end
+                }, 'TrajectoryBeamWidth'),
+                callback = function(value) GunSilent.Settings.TrajectoryBeamWidth.Value = value end
+            }
         end
     end
 
@@ -1159,7 +1299,6 @@ local function Init(UI, Core, notify)
                 end
                 CombatElements.ShotgunSupport.callback(CombatElements.ShotgunSupport.element:GetState())
                 CombatElements.GenerateBullets.callback(CombatElements.GenerateBullets.element:GetValue())
-                CombatElements.TestGenerateBullets.callback(CombatElements.TestGenerateBullets.element:GetState())
                 local sortMethodOptions = CombatElements.SortMethod.element:GetOptions()
                 for option, selected in pairs(sortMethodOptions) do
                     if selected then CombatElements.SortMethod.callback(option) break end
@@ -1188,9 +1327,18 @@ local function Init(UI, Core, notify)
                 VisualsElements.HitParticlesLifetime.callback(VisualsElements.HitParticlesLifetime.element:GetValue())
                 VisualsElements.HitParticlesMoveDistance.callback(VisualsElements.HitParticlesMoveDistance.element:GetValue())
                 VisualsElements.HitVisualEnabled.callback(VisualsElements.HitVisualEnabled.element:GetState())
-                VisualsElements.HitVisualAnimate.callback(VisualsElements.HitVisualAnimate.element:GetState())
                 VisualsElements.HitVisualFadeTime.callback(VisualsElements.HitVisualFadeTime.element:GetValue())
                 VisualsElements.HitVisualTransparency.callback(VisualsElements.HitVisualTransparency.element:GetValue())
+                local hitVisualMaterialOptions = VisualsElements.HitVisualMaterial.element:GetOptions()
+                for option, selected in pairs(hitVisualMaterialOptions) do
+                    if selected then VisualsElements.HitVisualMaterial.callback(option) break end
+                end
+                VisualsElements.HitNotifyEnabled.callback(VisualsElements.HitNotifyEnabled.element:GetState())
+                VisualsElements.HitNotifyDuration.callback(VisualsElements.HitNotifyDuration.element:GetValue())
+                VisualsElements.PredictVisualMode.callback(VisualsElements.PredictVisualMode.element:GetValue())
+                VisualsElements.TrajectoryBeamColor.callback(VisualsElements.TrajectoryBeamColor.element:GetValue())
+                VisualsElements.TrajectoryBeamHeight.callback(VisualsElements.TrajectoryBeamHeight.element:GetValue())
+                VisualsElements.TrajectoryBeamWidth.callback(VisualsElements.TrajectoryBeamWidth.element:GetValue())
             end
         }, 'SyncSettings')
     end
