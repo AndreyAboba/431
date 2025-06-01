@@ -7,7 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GunSilent = {
     Settings = {
-        BasePrediction = { Value = 0.1, Default = 0.1 }, -- Базовое время предсказания
+        BasePrediction = { Value = 0.1, Default = 0.1 },
         Enabled = { Value = false, Default = false },
         RangePlus = { Value = 200, Default = 200 },
         HitPart = { Value = "Head", Default = "Head" },
@@ -23,7 +23,7 @@ local GunSilent = {
         HitChance = { Value = 100, Default = 100 },
         ResolverEnabled = { Value = true, Default = true },
         ResolverThreshold = { Value = 0.3, Default = 0.3 },
-        PositionHistorySize = { Value = 10, Default = 10 }, -- Уменьшено для оптимизации
+        PositionHistorySize = { Value = 20, Default = 20 },
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
@@ -56,7 +56,6 @@ local GunSilent = {
         PositionHistory = {},
         SmoothedVelocity = {},
         SmoothedAcceleration = {},
-        SmoothedPredictedPosition = {},
         LastVisualUpdateTime = 0,
         LastTargetPosition = {},
         LocalCharacter = nil,
@@ -406,51 +405,54 @@ local function getNearestPlayerGun(gunRange)
     return nearestPlayer
 end
 
-local function isInVehicle(targetChar)
-    local humanoid = targetChar:FindFirstChild("Humanoid")
-    if humanoid then return humanoid.SeatPart ~= nil end
-    return false
-end
-
-local function resolveVelocityAndAcceleration(target, positionHistory, clientVelocity, targetChar)
-    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 2 then
+local function resolveVelocityAndAcceleration(target, positionHistory, clientVelocity)
+    if not GunSilent.Settings.ResolverEnabled.Value or not positionHistory or #positionHistory < 3 then
         return clientVelocity, Vector3.new(0, 0, 0)
     end
 
     local currentTime = tick()
-    local maxSpeedLimit = isInVehicle(targetChar) and 100 or 50 -- Ужесточённое ограничение
-    local maxAccelLimit = 30 -- Ужесточённое ограничение
+    local totalVelocity = Vector3.new(0, 0, 0)
+    local totalAcceleration = Vector3.new(0, 0, 0)
+    local totalWeight = 0
+    local maxSpeedLimit = 100 -- Единое ограничение для всех
+    local maxAccelLimit = 50
 
-    -- Используем только последние 2 точки для оптимизации
-    local currEntry = positionHistory[#positionHistory]
-    local prevEntry = positionHistory[#positionHistory - 1]
-    local timeDelta = currEntry.time - prevEntry.time
+    -- Оптимизированный цикл по последним 3 точкам
+    for i = #positionHistory - 1, #positionHistory - 2, -1 do
+        local currEntry = positionHistory[i + 1]
+        local prevEntry = positionHistory[i]
+        local timeDelta = currEntry.time - prevEntry.time
+        if timeDelta > 0 and timeDelta <= 0.2 then
+            local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
+            if velocity.Magnitude <= maxSpeedLimit * 1.5 then
+                local weight = 1 - (currentTime - currEntry.time) * 2
+                totalVelocity = totalVelocity + velocity * weight
+                totalWeight = totalWeight + weight
 
-    if timeDelta <= 0 or timeDelta > 0.2 then
-        return clientVelocity, Vector3.new(0, 0, 0)
-    end
-
-    local velocity = (currEntry.pos - prevEntry.pos) / timeDelta
-    if velocity.Magnitude > maxSpeedLimit then
-        velocity = velocity.Unit * maxSpeedLimit
-    end
-
-    local acceleration = Vector3.new(0, 0, 0)
-    if #positionHistory >= 3 then
-        local prevPrevEntry = positionHistory[#positionHistory - 2]
-        local prevTimeDelta = prevEntry.time - prevPrevEntry.time
-        if prevTimeDelta > 0 and prevTimeDelta < 0.2 then
-            local prevVelocity = (prevEntry.pos - prevPrevEntry.pos) / prevTimeDelta
-            acceleration = (velocity - prevVelocity) / (timeDelta + prevTimeDelta) / 2
-            if acceleration.Magnitude > maxAccelLimit then
-                acceleration = acceleration.Unit * maxAccelLimit
+                if i > 1 then
+                    local prevPrevEntry = positionHistory[i - 1]
+                    local prevTimeDelta = prevEntry.time - prevPrevEntry.time
+                    if prevTimeDelta > 0 and prevTimeDelta <= 0.2 then
+                        local prevVelocity = (prevEntry.pos - prevPrevEntry.pos) / prevTimeDelta
+                        local accel = (velocity - prevVelocity) / (timeDelta + prevTimeDelta) / 2
+                        if accel.Magnitude <= maxAccelLimit then
+                            totalAcceleration = totalAcceleration + accel * weight
+                        end
+                    end
+                end
             end
         end
     end
 
-    -- Сильное сглаживание для устранения дёрганий
-    local smoothedVelocity = smoothVector(target, velocity, 0.4, "SmoothedVelocity")
-    local smoothedAcceleration = smoothVector(target, acceleration, 0.4, "SmoothedAcceleration")
+    local smoothedVelocity = totalWeight > 0 and totalVelocity / totalWeight or clientVelocity
+    local smoothedAcceleration = totalWeight > 0 and totalAcceleration / totalWeight or Vector3.new(0, 0, 0)
+
+    if smoothedVelocity.Magnitude > maxSpeedLimit then
+        smoothedVelocity = smoothedVelocity.Unit * maxSpeedLimit
+    end
+    if smoothedAcceleration.Magnitude > maxAccelLimit then
+        smoothedAcceleration = smoothedAcceleration.Unit * maxAccelLimit
+    end
 
     return smoothedVelocity, smoothedAcceleration
 end
@@ -486,21 +488,13 @@ local function predictTargetPositionGun(target)
     end
     GunSilent.State.PositionHistory[target] = positionHistory
 
-    -- Получаем скорость и ускорение через резолвер
     local rawVelocity = targetRoot.Velocity
     local rawAcceleration = Vector3.new(0, 0, 0)
-    local smoothedVelocity, smoothedAcceleration = resolveVelocityAndAcceleration(target, positionHistory, rawVelocity, targetChar)
+    local smoothedVelocity, smoothedAcceleration = resolveVelocityAndAcceleration(target, positionHistory, rawVelocity)
 
-    -- Получаем пинг клиента
-    local localPlayer = Players.LocalPlayer
-    local ping = localPlayer:GetAttribute("ServerPing") or 0.05 -- Пинг в секундах
-
-    -- Нелинейное предсказание с учётом ускорения
+    local ping = Players.LocalPlayer:GetAttribute("ServerPing") or 0.05
     local predictionTime = GunSilent.Settings.BasePrediction.Value + ping
     local predictedPos = targetPos + smoothedVelocity * predictionTime + 0.5 * smoothedAcceleration * predictionTime * predictionTime
-
-    -- Сглаживание итоговой позиции для устранения дёрганий
-    predictedPos = smoothVector(target, predictedPos, 0.5, "SmoothedPredictedPosition")
 
     return {
         position = predictedPos,
@@ -652,7 +646,7 @@ end
 
 local function updateVisualsGun(target)
     local currentTime = tick()
-    if currentTime - GunSilent.State.LastVisualUpdateTime < 0.0345 then return end
+    if currentTime - GunSilent.State.LastVisualUpdateTime < 0.05 then return end -- Увеличен интервал для оптимизации
     GunSilent.State.LastVisualUpdateTime = currentTime
 
     local localRoot = GunSilent.State.LocalRoot
@@ -806,7 +800,6 @@ local function initializeGunSilent()
             GunSilent.State.PositionHistory = {}
             GunSilent.State.SmoothedVelocity = {}
             GunSilent.State.SmoothedAcceleration = {}
-            GunSilent.State.SmoothedPredictedPosition = {}
             GunSilent.State.LastTool = currentTool
         end
 
@@ -823,7 +816,6 @@ local function initializeGunSilent()
             GunSilent.State.PositionHistory[nearestPlayer] = nil
             GunSilent.State.SmoothedVelocity[nearestPlayer] = nil
             GunSilent.State.SmoothedAcceleration[nearestPlayer] = nil
-            GunSilent.State.SmoothedPredictedPosition[nearestPlayer] = nil
         end
         updateVisualsGun(nearestPlayer)
     end)
@@ -844,7 +836,6 @@ local function Init(UI, Core, notify)
             GunSilent.State.PositionHistory = {}
             GunSilent.State.SmoothedVelocity = {}
             GunSilent.State.SmoothedAcceleration = {}
-            GunSilent.State.SmoothedPredictedPosition = {}
             cleanupTrajectoryBeam()
         end)
         if LocalPlayer.Character then
