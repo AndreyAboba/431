@@ -187,11 +187,13 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
         local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
         if not targetRoot then return nil end
 
+        local rootPos = targetRoot.Position
         for _, partName in ipairs(parts) do
             local part = targetChar:FindFirstChild(partName)
             if part then
-                local hitbox = createPredictHitbox(part.Position, part.Size, hitboxColor, material, hitboxTransparency)
-                hitbox.CFrame = part.CFrame -- Use the part's CFrame to match orientation
+                local relativePos = part.Position - rootPos
+                local newPos = position + relativePos
+                local hitbox = createPredictHitbox(newPos, part.Size, hitboxColor, material, hitboxTransparency)
                 table.insert(hitboxes, hitbox)
             end
         end
@@ -414,7 +416,7 @@ local function getEquippedGunTool()
         end
     end
 
-    Ricciardo local character = localPlayer.Character
+    local character = localPlayer.Character
     for _, child in pairs(character:GetChildren()) do
         if child.ClassName == "Tool" and isGunTool(child) then return child end
     end
