@@ -188,13 +188,13 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
         if not targetRoot then return nil end
 
         local rootPos = targetRoot.Position
-        local positionOffset = position - rootPos
+        local positionOffset = position - rootPos + Vector3.new(0, 2, 0) -- Сдвиг вверх на 2 единицы
 
         for _, partName in ipairs(parts) do
             local part = targetChar:FindFirstChild(partName)
             if part then
                 local relativePos = part.Position - rootPos
-                local newPos = position + relativePos
+                local newPos = positionOffset + relativePos
                 local hitbox = createPredictHitbox(newPos, part.Size, hitboxColor, material, hitboxTransparency)
                 table.insert(hitboxes, hitbox)
             end
@@ -311,7 +311,7 @@ local function spawnHitVisual(target, hitPosition)
     end
 end
 
-local function showNotification(message, color)
+local function showNotification(message)
     if not GunSilent.Settings.HitNotifyEnabled.Value then return end
     if GunSilent.State.Notification then GunSilent.State.Notification:Destroy() end
 
@@ -355,7 +355,7 @@ local function showNotification(message, color)
     textFrame.Parent = frame
 
     local textCorner = Instance.new("UICorner", textFrame)
-    textCorner.CornerRadius = UDim.new(0, 5)
+    textCorner.CornerRadius = UDim.new(0.5, 0)
 
     local textLabel = Instance.new("TextLabel", textFrame)
     textLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -830,9 +830,7 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
-                showNotification("Success Hit!", Color3.fromRGB(0, 255, 0))
-            else
-                showNotification("MISS!", Color3.fromRGB(255, 0, 0))
+                showNotification("Success Hit!")
             end
             if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                 GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
