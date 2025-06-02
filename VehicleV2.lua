@@ -1,4 +1,4 @@
--- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с обходом
+-- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с новым обходом
 local Vehicles = {
     VehicleSpeed = {
         Settings = {
@@ -403,7 +403,7 @@ function Vehicles.Init(UI, Core, notify)
         notify("VehicleFly", "FlySpeed set to: " .. newSpeed, false)
     end
 
-    -- Функции VehicleExploit с обходом
+    -- Функции VehicleExploit с новым обходом
     local vehicleDropdown -- Переменная для хранения dropdown
 
     local function updateVehicleList()
@@ -458,45 +458,14 @@ function Vehicles.Init(UI, Core, notify)
         end
     end
 
-    -- Имитация естественного взлома
-    local function simulateLockpicking(vehicle, seat)
-        -- Имитация времени на взлом (чтобы сервер не заподозрил мгновенный успех)
-        local lockpickTime = 3 -- Среднее время прохождения мини-игры
-        local steps = 5 -- Количество этапов (как в SliderMinigame)
-        local stepTime = lockpickTime / steps
-
-        for i = 1, steps do
-            u5.send("lockpick_progress", vehicle, i / steps) -- Прогресс взлома
-            task.wait(stepTime)
-        end
-
-        -- Финальный успех
-        u5.send("lockpick_success", vehicle)
-    end
-
-    -- Плавная посадка
-    local function sitInVehicleSmoothly(vehicleSeat)
-        if not vehicleSeat then return end
+    -- Новый метод посадки через телепортацию и триггер
+    local function enterVehicle(vehicleSeat)
+        if not vehicleSeat or vehicleSeat.Occupant then return end
 
         local vehicle = vehicleSeat.Parent
         local vehicleState = u11.class.get(vehicle)
 
-        -- Разблокировка на клиенте (для локального состояния)
-        if vehicleState and vehicleState.states.locked.get() then
-            vehicleState.states.locked.set(false)
-        end
-
-        -- Проверка и включение DrivePrompt
-        local drivePrompt = vehicleSeat:FindFirstChild("DrivePrompt", true)
-        if drivePrompt then
-            drivePrompt.Enabled = true
-            -- Имитация взаимодействия с Prompt
-            if drivePrompt:IsA("ProximityPrompt") then
-                fireProximityPrompt(drivePrompt, LocalPlayer)
-            end
-        end
-
-        -- Позиционирование игрока перед посадкой
+        -- Телепортация к месту посадки
         local seatPosition = vehicleSeat.Position + Vector3.new(0, 3, 0)
         HumanoidRootPart:PivotTo(CFrame.new(seatPosition))
         task.wait(0.2)
@@ -504,11 +473,23 @@ function Vehicles.Init(UI, Core, notify)
         -- Стабилизация транспорта
         stabilizeVehicle(vehicle)
 
-        -- Плавная посадка
-        vehicleSeat:Sit(Humanoid)
-        task.wait(0.3)
-        if Humanoid.SeatPart ~= vehicleSeat then
-            vehicleSeat:Sit(Humanoid)
+        -- Проверка и активация ProximityPrompt
+        local prompt = vehicleSeat:FindFirstChild("DrivePrompt", true) or vehicleSeat:FindFirstChild("PassengerPrompt", true)
+        if prompt and prompt:IsA("ProximityPrompt") then
+            prompt.Enabled = true
+            fireProximityPrompt(prompt, LocalPlayer)
+            task.wait(0.5) -- Ожидание серверного ответа
+        else
+            -- Альтернативный вызов серверной функции посадки
+            u5.send("request_vehicle_seat", vehicleSeat)
+            task.wait(0.3)
+        end
+
+        -- Проверка результата
+        if Humanoid.SeatPart == vehicleSeat then
+            notify("Vehicle Exploit", "Successfully entered vehicle!", true)
+        else
+            notify("Vehicle Exploit", "Failed to enter vehicle.", true)
         end
     end
 
@@ -525,28 +506,7 @@ function Vehicles.Init(UI, Core, notify)
             return
         end
 
-        local vehicle = vehicleSeat.Parent
-        local vehicleState = u11.class.get(vehicle)
-
-        -- Проверка состояния блокировки
-        if vehicleState and vehicleState.states.locked.get() then
-            notify("Vehicle Exploit", "Initiating lockpicking for: " .. vehicleName, true)
-            u5.send("initiate_lockpicking", vehicle)
-
-            -- Имитация взлома
-            simulateLockpicking(vehicle, vehicleSeat)
-
-            -- Ожидание ответа сервера (сервер должен сам разблокировать машину)
-            task.wait(0.5)
-        end
-
-        -- Проверка, разблокирована ли машина
-        if vehicleState and not vehicleState.states.locked.get() then
-            sitInVehicleSmoothly(vehicleSeat)
-            notify("Vehicle Exploit", "Successfully controlled vehicle: " .. vehicleName, true)
-        else
-            notify("Vehicle Exploit", "Failed to unlock vehicle: " .. vehicleName, true)
-        end
+        enterVehicle(vehicleSeat)
     end
 
     local function updateVehicleDropdownOptions()
