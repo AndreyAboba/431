@@ -1,4 +1,4 @@
--- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с полным обходом
+-- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с новым обходом через сетевые вызовы
 local Vehicles = {
     VehicleSpeed = {
         Settings = {
@@ -403,7 +403,7 @@ function Vehicles.Init(UI, Core, notify)
         notify("VehicleFly", "FlySpeed set to: " .. newSpeed, false)
     end
 
-    -- Функции VehicleExploit с полным обходом
+    -- Функции VehicleExploit с новым обходом через сетевые вызовы
     local vehicleDropdown -- Переменная для хранения dropdown
 
     local function updateVehicleList()
@@ -458,29 +458,14 @@ function Vehicles.Init(UI, Core, notify)
         end
     end
 
-    -- Функция полного обхода для посадки
-    local function bypassAndSit(vehicleSeat)
+    -- Функция обхода через сетевой вызов
+    local function networkBypassAndSit(vehicleSeat)
         if not vehicleSeat or vehicleSeat.Occupant then return end
 
         local vehicle = vehicleSeat.Parent
         local vehicleState = u11.class.get(vehicle)
 
-        -- Подмена владельца на клиенте
-        local originalOwnerId = vehicle:GetAttribute("OwnerUserId")
-        vehicle:SetAttribute("OwnerUserId", LocalPlayer.UserId)
-
-        -- Разблокировка машины на клиенте
-        if vehicleState and vehicleState.states.locked.get() then
-            vehicleState.states.locked.set(false)
-        end
-
-        -- Отключение ProximityPrompt, чтобы избежать лишних проверок
-        local prompt = vehicleSeat:FindFirstChild("DrivePrompt", true) or vehicleSeat:FindFirstChild("PassengerPrompt", true)
-        if prompt then
-            prompt.Enabled = false
-        end
-
-        -- Телепортация к месту посадки
+        -- Телепортация к месту посадки для естественного поведения
         local seatPosition = vehicleSeat.Position + Vector3.new(0, 3, 0)
         HumanoidRootPart:PivotTo(CFrame.new(seatPosition))
         task.wait(0.2)
@@ -488,23 +473,22 @@ function Vehicles.Init(UI, Core, notify)
         -- Стабилизация транспорта
         stabilizeVehicle(vehicle)
 
-        -- Прямая посадка
-        vehicleSeat:Sit(Humanoid)
-        task.wait(0.3)
+        -- Отправка серверного запроса на посадку
+        -- Используем "move_player_into_vehicle" на основе анализа VehicleSeat.lua
+        u5.send("move_player_into_vehicle", LocalPlayer, vehicle, vehicleSeat, true) -- true означает, что это водительское место
+        task.wait(0.5)
 
         -- Проверка результата
         if Humanoid.SeatPart == vehicleSeat then
             notify("Vehicle Exploit", "Successfully controlled vehicle!", true)
         else
-            -- Если сервер отклонил, пытаемся снова
-            vehicleSeat:Sit(Humanoid)
+            -- Если не удалось, пробуем ещё раз
+            u5.send("move_player_into_vehicle", LocalPlayer, vehicle, vehicleSeat, true)
             task.wait(0.5)
             if Humanoid.SeatPart == vehicleSeat then
                 notify("Vehicle Exploit", "Successfully controlled vehicle on second attempt!", true)
             else
-                notify("Vehicle Exploit", "Failed to control vehicle.", true)
-                -- Восстановление оригинального OwnerUserId
-                vehicle:SetAttribute("OwnerUserId", originalOwnerId)
+                notify("Vehicle Exploit", "Failed to control vehicle. Server validation failed.", true)
             end
         end
     end
@@ -529,7 +513,7 @@ function Vehicles.Init(UI, Core, notify)
             task.wait(0.5)
         end
 
-        bypassAndSit(vehicleSeat)
+        networkBypassAndSit(vehicleSeat)
     end
 
     local function updateVehicleDropdownOptions()
