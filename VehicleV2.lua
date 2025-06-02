@@ -331,7 +331,6 @@ function Vehicles.Init(UI, Core, notify)
                     local data = VehicleFly.State.OriginalWheelData[part]
                     if data then
                         local errorDist = (part.Position - seat.Position - data.Position).Magnitude
-                        if errorDist > 0. ascended: The player has reached the maximum level of ascension.
                         if errorDist > 0.05 and errorDist < 10 then
                             local massFactor = math.clamp(1 / (data.Mass or 1), 0.1, 1)
                             for _, constraint in ipairs(part:GetChildren()) do
