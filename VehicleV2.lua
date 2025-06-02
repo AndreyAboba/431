@@ -1,4 +1,4 @@
--- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit
+-- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с обходом
 local Vehicles = {
     VehicleSpeed = {
         Settings = {
@@ -37,7 +37,7 @@ local Vehicles = {
             VehiclesList = {},
             VehicleSeats = {},
             LastUpdate = 0,
-            UpdateInterval = 1 -- Интервал обновления списка машин (в секундах)
+            UpdateInterval = 1
         }
     }
 }
@@ -56,7 +56,7 @@ function Vehicles.Init(UI, Core, notify)
     local u5 = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Net"))
     local u11 = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Game"):WaitForChild("VehicleSystem"):WaitForChild("Vehicle"))
 
-    -- Общая функция: получение текущего транспорта
+    -- Получение текущего транспорта
     local function getCurrentVehicle()
         local char = Core.PlayerData.LocalPlayer.Character
         if char and char.Humanoid and char.Humanoid.SeatPart and char.Humanoid.SeatPart:IsA("VehicleSeat") then
@@ -331,6 +331,7 @@ function Vehicles.Init(UI, Core, notify)
                     local data = VehicleFly.State.OriginalWheelData[part]
                     if data then
                         local errorDist = (part.Position - seat.Position - data.Position).Magnitude
+                        if errorDist > 0. ascended: The player has reached the maximum level of ascension.
                         if errorDist > 0.05 and errorDist < 10 then
                             local massFactor = math.clamp(1 / (data.Mass or 1), 0.1, 1)
                             for _, constraint in ipairs(part:GetChildren()) do
@@ -403,7 +404,7 @@ function Vehicles.Init(UI, Core, notify)
         notify("VehicleFly", "FlySpeed set to: " .. newSpeed, false)
     end
 
-    -- Функции VehicleExploit
+    -- Функции VehicleExploit с обходом
     local vehicleDropdown -- Переменная для хранения dropdown
 
     local function updateVehicleList()
@@ -453,77 +454,100 @@ function Vehicles.Init(UI, Core, notify)
             chassis.Anchored = true
             chassis.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             chassis.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            return function()
-                chassis.Anchored = originalAnchored
-            end
+            task.wait(0.1)
+            chassis.Anchored = originalAnchored
         end
-        return function() end
     end
 
-    local function sitAsPassenger(vehicleSeat)
+    -- Имитация естественного взлома
+    local function simulateLockpicking(vehicle, seat)
+        -- Имитация времени на взлом (чтобы сервер не заподозрил мгновенный успех)
+        local lockpickTime = 3 -- Среднее время прохождения мини-игры
+        local steps = 5 -- Количество этапов (как в SliderMinigame)
+        local stepTime = lockpickTime / steps
+
+        for i = 1, steps do
+            u5.send("lockpick_progress", vehicle, i / steps) -- Прогресс взлома
+            task.wait(stepTime)
+        end
+
+        -- Финальный успех
+        u5.send("lockpick_success", vehicle)
+    end
+
+    -- Плавная посадка
+    local function sitInVehicleSmoothly(vehicleSeat)
         if not vehicleSeat then return end
 
         local vehicle = vehicleSeat.Parent
         local vehicleState = u11.class.get(vehicle)
 
+        -- Разблокировка на клиенте (для локального состояния)
         if vehicleState and vehicleState.states.locked.get() then
             vehicleState.states.locked.set(false)
         end
 
-        local passengerSeat
-        for _, part in pairs(vehicle:GetDescendants()) do
-            if part:IsA("Seat") and part.Name ~= "DriverSeat" and part.Occupant == nil then
-                passengerSeat = part
-                break
-            end
-        end
-
-        if not passengerSeat then return end
-
-        local originalWalkSpeed = Humanoid.WalkSpeed
-        Humanoid.WalkSpeed = 0
-        task.wait(0.1)
-
-        local seatPosition = passengerSeat.Position
-        local seatCFrame = CFrame.new(seatPosition + Vector3.new(0, 3, 0))
-        HumanoidRootPart:PivotTo(seatCFrame)
-        task.wait(0.2)
-
-        local restoreVehicle = stabilizeVehicle(vehicle)
-        passengerSeat:Sit(Humanoid)
-
-        if Humanoid.SeatPart ~= passengerSeat then
-            task.wait(0.5)
-            passengerSeat:Sit(Humanoid)
-        end
-
-        Humanoid.WalkSpeed = originalWalkSpeed
-        restoreVehicle()
-    end
-
-    local function sitInVehicle(vehicleSeat)
-        if not vehicleSeat then return end
-
-        local vehicle = vehicleSeat.Parent
-        local vehicleState = u11.class.get(vehicle)
-        if vehicleState and vehicleState.states.locked.get() then
-            vehicleState.states.locked.set(false)
-        end
-
+        -- Проверка и включение DrivePrompt
         local drivePrompt = vehicleSeat:FindFirstChild("DrivePrompt", true)
         if drivePrompt then
             drivePrompt.Enabled = true
+            -- Имитация взаимодействия с Prompt
+            if drivePrompt:IsA("ProximityPrompt") then
+                fireProximityPrompt(drivePrompt, LocalPlayer)
+            end
         end
 
-        local restoreVehicle = stabilizeVehicle(vehicle)
-        vehicleSeat:Sit(Humanoid)
+        -- Позиционирование игрока перед посадкой
+        local seatPosition = vehicleSeat.Position + Vector3.new(0, 3, 0)
+        HumanoidRootPart:PivotTo(CFrame.new(seatPosition))
+        task.wait(0.2)
 
+        -- Стабилизация транспорта
+        stabilizeVehicle(vehicle)
+
+        -- Плавная посадка
+        vehicleSeat:Sit(Humanoid)
+        task.wait(0.3)
         if Humanoid.SeatPart ~= vehicleSeat then
-            task.wait(0.5)
             vehicleSeat:Sit(Humanoid)
         end
+    end
 
-        restoreVehicle()
+    -- Основная функция управления транспортом
+    VehicleExploit.ControlVehicle = function()
+        local vehicleName = VehicleExploit.Settings.SelectedVehicle.Value
+        if not vehicleName then
+            notify("Vehicle Exploit", "No vehicle selected!", true)
+            return
+        end
+        local vehicleSeat = findVehicleByName(vehicleName)
+        if not vehicleSeat then
+            notify("Vehicle Exploit", "Vehicle not found: " .. vehicleName, true)
+            return
+        end
+
+        local vehicle = vehicleSeat.Parent
+        local vehicleState = u11.class.get(vehicle)
+
+        -- Проверка состояния блокировки
+        if vehicleState and vehicleState.states.locked.get() then
+            notify("Vehicle Exploit", "Initiating lockpicking for: " .. vehicleName, true)
+            u5.send("initiate_lockpicking", vehicle)
+
+            -- Имитация взлома
+            simulateLockpicking(vehicle, vehicleSeat)
+
+            -- Ожидание ответа сервера (сервер должен сам разблокировать машину)
+            task.wait(0.5)
+        end
+
+        -- Проверка, разблокирована ли машина
+        if vehicleState and not vehicleState.states.locked.get() then
+            sitInVehicleSmoothly(vehicleSeat)
+            notify("Vehicle Exploit", "Successfully controlled vehicle: " .. vehicleName, true)
+        else
+            notify("Vehicle Exploit", "Failed to unlock vehicle: " .. vehicleName, true)
+        end
     end
 
     local function updateVehicleDropdownOptions()
@@ -532,7 +556,6 @@ function Vehicles.Init(UI, Core, notify)
         local newOptions = updateVehicleList()
         notify("Vehicle Exploit", "Refreshed vehicle list. Found " .. #newOptions .. " vehicles.", true)
 
-        -- Проверяем, изменился ли список опций
         local currentOptions = vehicleDropdown:GetOptions() or {}
         local optionsChanged = #newOptions ~= table.getn(currentOptions)
         if not optionsChanged then
@@ -546,7 +569,6 @@ function Vehicles.Init(UI, Core, notify)
             vehicleDropdown:InsertOptions(newOptions)
         end
 
-        -- Обновляем выбор
         local currentSelection = VehicleExploit.Settings.SelectedVehicle.Value
         if currentSelection and vehicleDropdown:IsOption(currentSelection) then
             vehicleDropdown:UpdateSelection(currentSelection)
@@ -556,26 +578,8 @@ function Vehicles.Init(UI, Core, notify)
     end
 
     VehicleExploit.RefreshVehicles = function()
-        VehicleExploit.State.LastUpdate = 0 -- Сброс кэша при ручном обновлении
+        VehicleExploit.State.LastUpdate = 0
         updateVehicleDropdownOptions()
-    end
-
-    VehicleExploit.ControlVehicle = function()
-        local vehicleName = VehicleExploit.Settings.SelectedVehicle.Value
-        if not vehicleName then
-            notify("Vehicle Exploit", "No vehicle selected!", true)
-            return
-        end
-        local vehicleSeat = findVehicleByName(vehicleName)
-        if not vehicleSeat then
-            notify("Vehicle Exploit", "Vehicle not found: " .. vehicleName, true)
-            return
-        end
-        u5.send("initiate_lockpicking", vehicleSeat.Parent)
-        task.wait(0.1)
-        u5.send("lockpick_success", vehicleSeat.Parent)
-        task.wait(0.1)
-        sitInVehicle(vehicleSeat)
     end
 
     -- Настройка UI для VehicleExploit
