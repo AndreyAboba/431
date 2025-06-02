@@ -1,4 +1,4 @@
--- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с новым обходом
+-- Модуль Vehicles: VehicleSpeed, VehicleFly и Vehicle Exploit с полным обходом
 local Vehicles = {
     VehicleSpeed = {
         Settings = {
@@ -403,7 +403,7 @@ function Vehicles.Init(UI, Core, notify)
         notify("VehicleFly", "FlySpeed set to: " .. newSpeed, false)
     end
 
-    -- Функции VehicleExploit с новым обходом
+    -- Функции VehicleExploit с полным обходом
     local vehicleDropdown -- Переменная для хранения dropdown
 
     local function updateVehicleList()
@@ -458,12 +458,27 @@ function Vehicles.Init(UI, Core, notify)
         end
     end
 
-    -- Новый метод посадки через телепортацию и триггер
-    local function enterVehicle(vehicleSeat)
+    -- Функция полного обхода для посадки
+    local function bypassAndSit(vehicleSeat)
         if not vehicleSeat or vehicleSeat.Occupant then return end
 
         local vehicle = vehicleSeat.Parent
         local vehicleState = u11.class.get(vehicle)
+
+        -- Подмена владельца на клиенте
+        local originalOwnerId = vehicle:GetAttribute("OwnerUserId")
+        vehicle:SetAttribute("OwnerUserId", LocalPlayer.UserId)
+
+        -- Разблокировка машины на клиенте
+        if vehicleState and vehicleState.states.locked.get() then
+            vehicleState.states.locked.set(false)
+        end
+
+        -- Отключение ProximityPrompt, чтобы избежать лишних проверок
+        local prompt = vehicleSeat:FindFirstChild("DrivePrompt", true) or vehicleSeat:FindFirstChild("PassengerPrompt", true)
+        if prompt then
+            prompt.Enabled = false
+        end
 
         -- Телепортация к месту посадки
         local seatPosition = vehicleSeat.Position + Vector3.new(0, 3, 0)
@@ -473,23 +488,24 @@ function Vehicles.Init(UI, Core, notify)
         -- Стабилизация транспорта
         stabilizeVehicle(vehicle)
 
-        -- Проверка и активация ProximityPrompt
-        local prompt = vehicleSeat:FindFirstChild("DrivePrompt", true) or vehicleSeat:FindFirstChild("PassengerPrompt", true)
-        if prompt and prompt:IsA("ProximityPrompt") then
-            prompt.Enabled = true
-            fireProximityPrompt(prompt, LocalPlayer)
-            task.wait(0.5) -- Ожидание серверного ответа
-        else
-            -- Альтернативный вызов серверной функции посадки
-            u5.send("request_vehicle_seat", vehicleSeat)
-            task.wait(0.3)
-        end
+        -- Прямая посадка
+        vehicleSeat:Sit(Humanoid)
+        task.wait(0.3)
 
         -- Проверка результата
         if Humanoid.SeatPart == vehicleSeat then
-            notify("Vehicle Exploit", "Successfully entered vehicle!", true)
+            notify("Vehicle Exploit", "Successfully controlled vehicle!", true)
         else
-            notify("Vehicle Exploit", "Failed to enter vehicle.", true)
+            -- Если сервер отклонил, пытаемся снова
+            vehicleSeat:Sit(Humanoid)
+            task.wait(0.5)
+            if Humanoid.SeatPart == vehicleSeat then
+                notify("Vehicle Exploit", "Successfully controlled vehicle on second attempt!", true)
+            else
+                notify("Vehicle Exploit", "Failed to control vehicle.", true)
+                -- Восстановление оригинального OwnerUserId
+                vehicle:SetAttribute("OwnerUserId", originalOwnerId)
+            end
         end
     end
 
@@ -506,7 +522,14 @@ function Vehicles.Init(UI, Core, notify)
             return
         end
 
-        enterVehicle(vehicleSeat)
+        -- Если игрок уже в машине, сначала выходим
+        local currentVehicle, currentSeat = getCurrentVehicle()
+        if currentVehicle and currentSeat then
+            Humanoid.Jump = true
+            task.wait(0.5)
+        end
+
+        bypassAndSit(vehicleSeat)
     end
 
     local function updateVehicleDropdownOptions()
