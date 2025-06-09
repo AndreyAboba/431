@@ -7,8 +7,8 @@ function AutoFinish.Init(UI, Core, notify)
 
     local AutoFinishConfig = {
         DistanceLimit = 30, -- Ограничение расстояния в 30 метров
-        CheckInterval = 0.5, -- Проверка каждые 0.5 секунды
-        HoldDuration = 0.65 -- Длительность удержания в секундах
+        CheckInterval = 0.75, -- Проверка каждые 0.75 секунды
+        DefaultHoldDuration = 0.65 -- Базовая длительность удержания
     }
 
     local lastCheck = 0
@@ -50,7 +50,7 @@ function AutoFinish.Init(UI, Core, notify)
         local distanceLimitSqr = AutoFinishConfig.DistanceLimit * AutoFinishConfig.DistanceLimit
 
         for player in pairs(activePlayers) do
-            -- Пропускаем, если уже удерживаем для этого игрока
+            -- Пропускаем, если уже удерживаем
             if holdingPrompts[player] then continue end
 
             -- Проверка на друга
@@ -74,31 +74,39 @@ function AutoFinish.Init(UI, Core, notify)
             end
 
             if humanoid.Health <= 0 then continue end
-            if not finishPrompt.Enabled then continue end -- Проверяем, что Prompt активен
+            if not finishPrompt.Enabled then
+                notify("AutoFinish", "Prompt disabled for " .. player.Name, true)
+                continue
+            end
 
             local targetPos = rootPart.Position
             local distanceSqr = (localPos - targetPos).Magnitude ^ 2
             if distanceSqr > distanceLimitSqr then continue end
 
-            -- Проверяем, что длительность удержания в игре позволяет завершить действие
-            if finishPrompt.HoldDuration > 0 and finishPrompt.HoldDuration < AutoFinishConfig.HoldDuration then
-                AutoFinishConfig.HoldDuration = finishPrompt.HoldDuration -- Адаптируемся к длительности игры
-            end
+            -- Определяем длительность удержания
+            local holdDuration = finishPrompt.HoldDuration > 0 and finishPrompt.HoldDuration or AutoFinishConfig.DefaultHoldDuration
+            -- Добавляем случайную микрозадержку (+/- 10%)
+            holdDuration = holdDuration * (1 + (math.random() - 0.5) * 0.2)
 
             -- Начинаем удержание
             holdingPrompts[player] = finishPrompt
-            finishPrompt:InputHoldBegin()
+            pcall(function()
+                finishPrompt:InputHoldBegin()
+            end)
 
             -- Планируем завершение удержания
             task.spawn(function()
-                task.wait(AutoFinishConfig.HoldDuration)
+                task.wait(holdDuration)
                 if holdingPrompts[player] == finishPrompt and finishPrompt.Parent then
-                    finishPrompt:InputHoldEnd()
-                    -- Дополнительно вызываем fireproximityprompt для завершения
                     pcall(function()
+                        finishPrompt:InputHoldEnd()
+                        -- Дополнительный вызов для завершения
                         fireproximityprompt(finishPrompt)
                     end)
                     holdingPrompts[player] = nil
+                    notify("AutoFinish", "Completed prompt for " .. player.Name, true)
+                else
+                    notify("AutoFinish", "Prompt invalid for " .. player.Name, true)
                 end
             end)
         end
