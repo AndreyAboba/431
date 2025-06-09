@@ -1,20 +1,19 @@
-local AutoFinish = {}
+local ManualFinish = {}
 
-function AutoFinish.Init(UI, Core, notify)
+function ManualFinish.Init(UI, Core, notify)
     local State = {
-        AutoFinishEnabled = false
+        ManualFinishEnabled = false
     }
 
-    local AutoFinishConfig = {
+    local ManualFinishConfig = {
         DistanceLimit = 30, -- Ограничение расстояния в 30 метров
-        CheckInterval = 0.75, -- Проверка каждые 0.75 секунды
-        DefaultHoldDuration = 0.65 -- Базовая длительность удержания
+        CheckInterval = 0.75 -- Проверка каждые 0.75 секунды
     }
 
     local lastCheck = 0
     local activePlayers = {}
     local playerFriendCache = {} -- Кэш для проверки друзей
-    local holdingPrompts = {} -- Хранит активные удержания
+    local attachedPrompts = {} -- Хранит привязанные ProximityPrompt
 
     local function processPlayer(player)
         if player == Core.PlayerData.LocalPlayer then return end
@@ -32,14 +31,30 @@ function AutoFinish.Init(UI, Core, notify)
     Core.Services.Players.PlayerRemoving:Connect(function(player)
         activePlayers[player] = nil
         playerFriendCache[player] = nil
-        holdingPrompts[player] = nil
+        -- Возвращаем Prompt в исходное место, если он был перемещён
+        if attachedPrompts[player] then
+            local prompt = attachedPrompts[player]
+            if prompt and prompt.Parent then
+                prompt.Parent = player.Character and player.Character:FindFirstChild("HumanoidRootPart") or nil
+            end
+            attachedPrompts[player] = nil
+        end
     end)
 
     Core.Services.RunService.RenderStepped:Connect(function(deltaTime)
-        if not State.AutoFinishEnabled then return end
+        if not State.ManualFinishEnabled then
+            -- Возвращаем все Prompt в исходное место, если функция отключена
+            for player, prompt in pairs(attachedPrompts) do
+                if prompt and prompt.Parent then
+                    prompt.Parent = player.Character and player.Character:FindFirstChild("HumanoidRootPart") or nil
+                end
+                attachedPrompts[player] = nil
+            end
+            return
+        end
 
         lastCheck = lastCheck + deltaTime
-        if lastCheck < AutoFinishConfig.CheckInterval then return end
+        if lastCheck < ManualFinishConfig.CheckInterval then return end
         lastCheck = 0
 
         local localChar = Core.PlayerData.LocalPlayer.Character
@@ -47,12 +62,9 @@ function AutoFinish.Init(UI, Core, notify)
         if not (localChar and localRoot) then return end
 
         local localPos = localRoot.Position
-        local distanceLimitSqr = AutoFinishConfig.DistanceLimit * AutoFinishConfig.DistanceLimit
+        local distanceLimitSqr = ManualFinishConfig.DistanceLimit * ManualFinishConfig.DistanceLimit
 
         for player in pairs(activePlayers) do
-            -- Пропускаем, если уже удерживаем
-            if holdingPrompts[player] then continue end
-
             -- Проверка на друга
             local isFriend = playerFriendCache[player]
             if isFriend == nil then
@@ -74,63 +86,48 @@ function AutoFinish.Init(UI, Core, notify)
             end
 
             if humanoid.Health <= 0 then continue end
-            if not finishPrompt.Enabled then
-                notify("AutoFinish", "Prompt disabled for " .. player.Name, true)
-                continue
-            end
+            if not finishPrompt.Enabled then continue end
 
             local targetPos = rootPart.Position
             local distanceSqr = (localPos - targetPos).Magnitude ^ 2
-            if distanceSqr > distanceLimitSqr then continue end
 
-            -- Определяем длительность удержания
-            local holdDuration = finishPrompt.HoldDuration > 0 and finishPrompt.HoldDuration or AutoFinishConfig.DefaultHoldDuration
-            -- Добавляем случайную микрозадержку (+/- 10%)
-            holdDuration = holdDuration * (1 + (math.random() - 0.5) * 0.2)
-
-            -- Начинаем удержание
-            holdingPrompts[player] = finishPrompt
-            pcall(function()
-                finishPrompt:InputHoldBegin()
-            end)
-
-            -- Планируем завершение удержания
-            task.spawn(function()
-                task.wait(holdDuration)
-                if holdingPrompts[player] == finishPrompt and finishPrompt.Parent then
-                    pcall(function()
-                        finishPrompt:InputHoldEnd()
-                        -- Дополнительный вызов для завершения
-                        fireproximityprompt(finishPrompt)
-                    end)
-                    holdingPrompts[player] = nil
-                    notify("AutoFinish", "Completed prompt for " .. player.Name, true)
-                else
-                    notify("AutoFinish", "Prompt invalid for " .. player.Name, true)
+            if distanceSqr <= distanceLimitSqr then
+                -- Если игрок в радиусе, перемещаем Prompt к локальному игроку
+                if not attachedPrompts[player] then
+                    finishPrompt.Parent = localRoot
+                    attachedPrompts[player] = finishPrompt
+                    notify("ManualFinish", "Prompt for " .. player.Name .. " attached to local player", true)
                 end
-            end)
+            else
+                -- Если игрок вышел из радиуса, возвращаем Prompt обратно
+                if attachedPrompts[player] then
+                    finishPrompt.Parent = rootPart
+                    attachedPrompts[player] = nil
+                    notify("ManualFinish", "Prompt for " .. player.Name .. " detached", true)
+                end
+            end
         end
     end)
 
     -- Создание новой секции в табе Auto
     if UI.Tabs and UI.Tabs.Auto then
-        local AutoFinishSection = UI.Tabs.Auto:Section({ Name = "AutoFinish", Side = "Left" })
-        if AutoFinishSection then
-            AutoFinishSection:Header({ Name = "AutoFinish Settings" })
-            AutoFinishSection:Toggle({
-                Name = "AutoFinish Enabled",
-                Default = State.AutoFinishEnabled,
+        local ManualFinishSection = UI.Tabs.Auto:Section({ Name = "ManualFinish", Side = "Left" })
+        if ManualFinishSection then
+            ManualFinishSection:Header({ Name = "ManualFinish Settings" })
+            ManualFinishSection:Toggle({
+                Name = "ManualFinish Enabled",
+                Default = State.ManualFinishEnabled,
                 Callback = function(value)
-                    State.AutoFinishEnabled = value
-                    notify("AutoFinish", "AutoFinish " .. (value and "Enabled" or "Disabled"), true)
+                    State.ManualFinishEnabled = value
+                    notify("ManualFinish", "ManualFinish " .. (value and "Enabled" or "Disabled"), true)
                 end
-            }, "AutoFinishEnabled")
+            }, "ManualFinishEnabled")
         else
-            warn("Failed to create AutoFinish section in Auto tab")
+            warn("Failed to create ManualFinish section in Auto tab")
         end
     else
         warn("Auto tab not found in UI.Tabs")
     end
 end
 
-return AutoFinish
+return ManualFinish
