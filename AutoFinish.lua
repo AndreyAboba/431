@@ -8,7 +8,7 @@ function AutoFinish.Init(UI, Core, notify)
     local AutoFinishConfig = {
         DistanceLimit = 30, -- Ограничение расстояния в 30 метров
         CheckInterval = 0.5, -- Проверка каждые 0.5 секунды
-        HoldDuration = 1.0 -- Длительность удержания в секундах
+        HoldDuration = 0.65 -- Длительность удержания в секундах
     }
 
     local lastCheck = 0
@@ -74,20 +74,30 @@ function AutoFinish.Init(UI, Core, notify)
             end
 
             if humanoid.Health <= 0 then continue end
+            if not finishPrompt.Enabled then continue end -- Проверяем, что Prompt активен
 
             local targetPos = rootPart.Position
             local distanceSqr = (localPos - targetPos).Magnitude ^ 2
             if distanceSqr > distanceLimitSqr then continue end
 
+            -- Проверяем, что длительность удержания в игре позволяет завершить действие
+            if finishPrompt.HoldDuration > 0 and finishPrompt.HoldDuration < AutoFinishConfig.HoldDuration then
+                AutoFinishConfig.HoldDuration = finishPrompt.HoldDuration -- Адаптируемся к длительности игры
+            end
+
             -- Начинаем удержание
             holdingPrompts[player] = finishPrompt
             finishPrompt:InputHoldBegin()
 
-            -- Планируем завершение удержания через 1 секунду
+            -- Планируем завершение удержания
             task.spawn(function()
                 task.wait(AutoFinishConfig.HoldDuration)
-                if holdingPrompts[player] == finishPrompt then
+                if holdingPrompts[player] == finishPrompt and finishPrompt.Parent then
                     finishPrompt:InputHoldEnd()
+                    -- Дополнительно вызываем fireproximityprompt для завершения
+                    pcall(function()
+                        fireproximityprompt(finishPrompt)
+                    end)
                     holdingPrompts[player] = nil
                 end
             end)
