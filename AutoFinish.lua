@@ -7,12 +7,14 @@ function AutoFinish.Init(UI, Core, notify)
 
     local AutoFinishConfig = {
         DistanceLimit = 30, -- Ограничение расстояния в 30 метров
-        CheckInterval = 0.5 -- Проверка каждые 0.5 секунды
+        CheckInterval = 0.5, -- Проверка каждые 0.5 секунды
+        HoldDuration = 1.0 -- Длительность удержания в секундах
     }
 
     local lastCheck = 0
     local activePlayers = {}
     local playerFriendCache = {} -- Кэш для проверки друзей
+    local holdingPrompts = {} -- Хранит активные удержания
 
     local function processPlayer(player)
         if player == Core.PlayerData.LocalPlayer then return end
@@ -30,6 +32,7 @@ function AutoFinish.Init(UI, Core, notify)
     Core.Services.Players.PlayerRemoving:Connect(function(player)
         activePlayers[player] = nil
         playerFriendCache[player] = nil
+        holdingPrompts[player] = nil
     end)
 
     Core.Services.RunService.RenderStepped:Connect(function(deltaTime)
@@ -47,6 +50,9 @@ function AutoFinish.Init(UI, Core, notify)
         local distanceLimitSqr = AutoFinishConfig.DistanceLimit * AutoFinishConfig.DistanceLimit
 
         for player in pairs(activePlayers) do
+            -- Пропускаем, если уже удерживаем для этого игрока
+            if holdingPrompts[player] then continue end
+
             -- Проверка на друга
             local isFriend = playerFriendCache[player]
             if isFriend == nil then
@@ -73,7 +79,18 @@ function AutoFinish.Init(UI, Core, notify)
             local distanceSqr = (localPos - targetPos).Magnitude ^ 2
             if distanceSqr > distanceLimitSqr then continue end
 
-            fireproximityprompt(finishPrompt)
+            -- Начинаем удержание
+            holdingPrompts[player] = finishPrompt
+            finishPrompt:InputHoldBegin()
+
+            -- Планируем завершение удержания через 1 секунду
+            task.spawn(function()
+                task.wait(AutoFinishConfig.HoldDuration)
+                if holdingPrompts[player] == finishPrompt then
+                    finishPrompt:InputHoldEnd()
+                    holdingPrompts[player] = nil
+                end
+            end)
         end
     end)
 
