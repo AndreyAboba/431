@@ -39,7 +39,7 @@ local GunSilent = {
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
         HitVisualMaterial = { Value = "Neon", Default = "Neon", Options = {"Neon", "ForceField", "Glass", "Metal", "Plastic", "SmoothPlastic"} },
-        HitNotifyEnabled = { Value = true, Default = true },
+        HitNotifyEnabled = { Value = false, Default = false }, -- Отключены уведомления
         HitNotifyDuration = { Value = 2, Default = 2 },
         HitNotifyPositionX = { Value = 0.5, Default = 0.5 },
         HitNotifyPositionY = { Value = 0.9, Default = 0.9 },
@@ -188,7 +188,7 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
         if not targetRoot then return nil end
 
         local rootPos = targetRoot.Position
-        local positionOffset = position - rootPos + Vector3.new(0, 2, 0) -- Сдвиг вверх на 2 единицы
+        local positionOffset = position - rootPos + Vector3.new(0, 2, 0)
 
         for _, partName in ipairs(parts) do
             local part = targetChar:FindFirstChild(partName)
@@ -312,84 +312,7 @@ local function spawnHitVisual(target, hitPosition)
 end
 
 local function showNotification(message)
-    if not GunSilent.Settings.HitNotifyEnabled.Value then return end
-    if GunSilent.State.Notification then GunSilent.State.Notification:Destroy() end
-
-    local screenGui = Instance.new("ScreenGui", CoreGui)
-    screenGui.ResetOnSpawn = false
-    screenGui.Name = "GunSilentNotify"
-
-    local frame = Instance.new("Frame", screenGui)
-    frame.Size = UDim2.new(0, 200, 0, 50)
-    frame.Position = UDim2.new(GunSilent.Settings.HitNotifyPositionX.Value, -100, GunSilent.Settings.HitNotifyPositionY.Value, -60)
-    frame.BackgroundTransparency = 1
-    frame.BorderSizePixel = 0
-    frame.Visible = false
-    frame.Parent = screenGui
-
-    local iconFrame = Instance.new("Frame", frame)
-    iconFrame.Size = UDim2.new(0, 40, 0, 40)
-    iconFrame.Position = UDim2.new(0, 5, 0, 5)
-    iconFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
-    iconFrame.BackgroundTransparency = 0.3
-    iconFrame.BorderSizePixel = 0
-    iconFrame.Parent = frame
-
-    local iconCorner = Instance.new("UICorner", iconFrame)
-    iconCorner.CornerRadius = UDim.new(0.5, 0)
-
-    local icon = Instance.new("ImageLabel", iconFrame)
-    icon.Size = UDim2.new(0, 30, 0, 30)
-    icon.Position = UDim2.new(0, 5, 0, 5)
-    icon.BackgroundTransparency = 1
-    icon.Image = "rbxassetid://5578470911"
-    icon.ImageColor3 = Color3.fromRGB(0, 255, 0)
-    icon.Parent = iconFrame
-
-    local textFrame = Instance.new("Frame", frame)
-    textFrame.Size = UDim2.new(0, 145, 0, 40)
-    textFrame.Position = UDim2.new(0, 50, 0, 5)
-    textFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
-    textFrame.BackgroundTransparency = 0.3
-    textFrame.BorderSizePixel = 0
-    textFrame.Parent = frame
-
-    local textCorner = Instance.new("UICorner", textFrame)
-    textCorner.CornerRadius = UDim.new(0.5, 0)
-
-    local textLabel = Instance.new("TextLabel", textFrame)
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = message
-    textLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextSize = 16
-    textLabel.TextXAlignment = Enum.TextXAlignment.Center
-    textLabel.TextTransparency = 1
-    textLabel.Parent = textFrame
-
-    GunSilent.State.Notification = frame
-
-    frame.Visible = true
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local appearTween = TweenService:Create(frame, tweenInfo, { Size = UDim2.new(0, 200, 0, 50) })
-    local textAppearTween = TweenService:Create(textLabel, tweenInfo, { TextTransparency = 0 })
-    appearTween:Play()
-    textAppearTween:Play()
-
-    task.delay(GunSilent.Settings.HitNotifyDuration.Value, function()
-        if frame and frame.Parent then
-            local fadeTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-            local fadeTween = TweenService:Create(frame, fadeTweenInfo, { BackgroundTransparency = 1 })
-            local textFadeTween = TweenService:Create(textLabel, fadeTweenInfo, { TextTransparency = 1 })
-            fadeTween:Play()
-            textFadeTween:Play()
-            fadeTween.Completed:Connect(function()
-                frame:Destroy()
-                GunSilent.State.Notification = nil
-            end)
-        end
-    end)
+    -- Удалена функция уведомлений
 end
 
 local function isGunTool(tool)
@@ -617,57 +540,66 @@ local function createHitDataGun(target)
     local hitData = {}
 
     local timestamp = tick()
-    for i = 1, numBullets do
-        hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos, Timestamp = timestamp}}
+    -- Создаём два попадания для MultiShot
+    for i = 1, numBullets * 2 do -- Удваиваем количество попаданий
+        local offset = Vector3.new(
+            (math.random() - 0.5) * 0.2, -- Случайное смещение ±0.1
+            (math.random() - 0.5) * 0.2,
+            (math.random() - 0.5) * 0.2
+        )
+        hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition + offset, Origin = startPos, Timestamp = timestamp + (i-1) * 0.01}}
     end
 
     if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and finalPosition then
-        local trail = safeCreateInstance("Beam", {
-            FaceCamera = true,
-            Width0 = 0.1,
-            Width1 = 0.1,
-            Transparency = NumberSequence.new(0),
-            Color = ColorSequence.new(GunSilent.Settings.BulletTrailsColor.Value),
-            Parent = Workspace
-        })
-        if trail then
-            local attachment0 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
-            local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
-            if attachment0 and attachment1 then
-                attachment0.Position = startPos
-                attachment1.Position = finalPosition
-                trail.Attachment0 = attachment0
-                trail.Attachment1 = attachment1
+        -- Создаём траектории для обоих попаданий
+        for i = 1, 2 do
+            local trail = safeCreateInstance("Beam", {
+                FaceCamera = true,
+                Width0 = 0.1,
+                Width1 = 0.1,
+                Transparency = NumberSequence.new(0),
+                Color = ColorSequence.new(GunSilent.Settings.BulletTrailsColor.Value),
+                Parent = Workspace
+            })
+            if trail then
+                local attachment0 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+                local attachment1 = safeCreateInstance("Attachment", { Parent = Workspace.Terrain })
+                if attachment0 and attachment1 then
+                    attachment0.Position = startPos
+                    attachment1.Position = finalPosition + Vector3.new((math.random() - 0.5) * 0.2, (math.random() - 0.5) * 0.2, (math.random() - 0.5) * 0.2)
+                    trail.Attachment0 = attachment0
+                    trail.Attachment1 = attachment1
 
-                table.insert(GunSilent.State.BulletTrails, { beam = trail, attachment0 = attachment0, attachment1 = attachment1 })
+                    table.insert(GunSilent.State.BulletTrails, { beam = trail, attachment0 = attachment0, attachment1 = attachment1 })
 
-                local fadeTime = GunSilent.Settings.BulletTrailsFadeTime.Value
-                local startTime = tick()
-                local fadeConnection
-                fadeConnection = RunService.RenderStepped:Connect(function()
-                    local elapsed = tick() - startTime
-                    local t = math.clamp(elapsed / fadeTime, 0, 1)
-                    if trail and trail.Parent then trail.Transparency = NumberSequence.new(t) end
-                    if t >= 1 then
-                        if trail then trail:Destroy() end
-                        if attachment0 then attachment0:Destroy() end
-                        if attachment1 then attachment1:Destroy() end
-                        if fadeConnection then fadeConnection:Disconnect() end
-                        for i, v in ipairs(GunSilent.State.BulletTrails) do
-                            if v.beam == trail then table.remove(GunSilent.State.BulletTrails, i) break end
+                    local fadeTime = GunSilent.Settings.BulletTrailsFadeTime.Value
+                    local startTime = tick()
+                    local fadeConnection
+                    fadeConnection = RunService.RenderStepped:Connect(function()
+                        local elapsed = tick() - startTime
+                        local t = math.clamp(elapsed / fadeTime, 0, 1)
+                        if trail and trail.Parent then trail.Transparency = NumberSequence.new(t) end
+                        if t >= 1 then
+                            if trail then trail:Destroy() end
+                            if attachment0 then attachment0:Destroy() end
+                            if attachment1 then attachment1:Destroy() end
+                            if fadeConnection then fadeConnection:Disconnect() end
+                            for i, v in ipairs(GunSilent.State.BulletTrails) do
+                                if v.beam == trail then table.remove(GunSilent.State.BulletTrails, i) break end
+                            end
+                            for i, conn in ipairs(GunSilent.State.TrailFadeConnections) do
+                                if conn == fadeConnection then table.remove(GunSilent.State.TrailFadeConnections, i) break end
+                            end
                         end
-                        for i, conn in ipairs(GunSilent.State.TrailFadeConnections) do
-                            if conn == fadeConnection then table.remove(GunSilent.State.TrailFadeConnections, i) break end
-                        end
+                    end)
+                    table.insert(GunSilent.State.TrailFadeConnections, fadeConnection)
+
+                    if #GunSilent.State.BulletTrails > 20 then
+                        local oldTrail = table.remove(GunSilent.State.BulletTrails, 1)
+                        if oldTrail.beam then oldTrail.beam:Destroy() end
+                        if oldTrail.attachment0 then oldTrail.attachment0:Destroy() end
+                        if oldTrail.attachment1 then oldTrail.attachment1:Destroy() end
                     end
-                end)
-                table.insert(GunSilent.State.TrailFadeConnections, fadeConnection)
-
-                if #GunSilent.State.BulletTrails > 20 then
-                    local oldTrail = table.remove(GunSilent.State.BulletTrails, 1)
-                    if oldTrail.beam then oldTrail.beam:Destroy() end
-                    if oldTrail.attachment0 then oldTrail.attachment0:Destroy() end
-                    if oldTrail.attachment1 then oldTrail.attachment1:Destroy() end
                 end
             end
         end
@@ -830,7 +762,6 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
-                showNotification("Success Hit!")
             end
             if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                 GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
@@ -910,9 +841,8 @@ local function initializeGunSilent()
     end)
 end
 
-local function Init(UI, Core, notify)
+local function Init(UI, Core)
     GunSilent.Core = Core
-    GunSilent.notify = notify
 
     local LocalPlayer = Core.PlayerData.LocalPlayer
     if LocalPlayer then
@@ -1000,7 +930,7 @@ local function Init(UI, Core, notify)
     if UI.Tabs.Combat then
         local combatSection = UI.Tabs.Combat:Section({ Side = "Right", Name = "GunSilent" })
         if combatSection then
-            combatSection:Header({ Name = "GunSilent" })
+            combatSection:Header({ Name = "GunSilent MultiShot" })
             CombatElements.GSEnabled = {
                 element = combatSection:Toggle({
                     Name = "Enabled",
@@ -1453,7 +1383,7 @@ local function Init(UI, Core, notify)
     local gunconfigSection
     if UI.Tabs.Config then
         gunconfigSection = UI.Tabs.Config:Section({ Name = "GunSilent Sync", Side = "Right" })
-        gunconfigSection:Header({ Name = "GunSilent Settings Sync" })
+        gunconfigSection:Header({ Name = "GunSilent MultiShot Sync" })
         gunconfigSection:Button({
             Name = "Sync Settings",
             Callback = function()
