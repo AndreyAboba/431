@@ -26,7 +26,6 @@ local GunSilent = {
         SortMethod = { Value = "Mouse&Distance", Default = "Mouse&Distance" },
         ShotgunSupport = { Value = false, Default = false },
         GenBullet = { Value = 4, Default = 4 },
-        MultiShot = { Value = true, Default = true }, -- Новая настройка MultiShot
         HitParticlesEnabled = { Value = false, Default = false },
         HitParticlesMode = { Value = "Orbs", Default = "Orbs", Options = {"Orbs", "Sparks"} },
         HitParticlesCount = { Value = 30, Default = 30 },
@@ -40,7 +39,7 @@ local GunSilent = {
         HitVisualColor = { Value = Color3.fromRGB(147, 112, 219), Default = Color3.fromRGB(147, 112, 219) },
         HitVisualTransparency = { Value = 0.5, Default = 0.5 },
         HitVisualMaterial = { Value = "Neon", Default = "Neon", Options = {"Neon", "ForceField", "Glass", "Metal", "Plastic", "SmoothPlastic"} },
-        HitNotifyEnabled = { Value = false, Default = false }, -- Отключено по умолчанию
+        HitNotifyEnabled = { Value = true, Default = true },
         HitNotifyDuration = { Value = 2, Default = 2 },
         HitNotifyPositionX = { Value = 0.5, Default = 0.5 },
         HitNotifyPositionY = { Value = 0.9, Default = 0.9 },
@@ -189,7 +188,7 @@ local function createPredictVisual(position, mode, material, targetChar, hitboxC
         if not targetRoot then return nil end
 
         local rootPos = targetRoot.Position
-        local positionOffset = position - rootPos + Vector3.new(0, 2, 0)
+        local positionOffset = position - rootPos + Vector3.new(0, 2, 0) -- Сдвиг вверх на 2 единицы
 
         for _, partName in ipairs(parts) do
             local part = targetChar:FindFirstChild(partName)
@@ -313,7 +312,84 @@ local function spawnHitVisual(target, hitPosition)
 end
 
 local function showNotification(message)
-    -- Убрана функциональность уведомлений
+    if not GunSilent.Settings.HitNotifyEnabled.Value then return end
+    if GunSilent.State.Notification then GunSilent.State.Notification:Destroy() end
+
+    local screenGui = Instance.new("ScreenGui", CoreGui)
+    screenGui.ResetOnSpawn = false
+    screenGui.Name = "GunSilentNotify"
+
+    local frame = Instance.new("Frame", screenGui)
+    frame.Size = UDim2.new(0, 200, 0, 50)
+    frame.Position = UDim2.new(GunSilent.Settings.HitNotifyPositionX.Value, -100, GunSilent.Settings.HitNotifyPositionY.Value, -60)
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    frame.Visible = false
+    frame.Parent = screenGui
+
+    local iconFrame = Instance.new("Frame", frame)
+    iconFrame.Size = UDim2.new(0, 40, 0, 40)
+    iconFrame.Position = UDim2.new(0, 5, 0, 5)
+    iconFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+    iconFrame.BackgroundTransparency = 0.3
+    iconFrame.BorderSizePixel = 0
+    iconFrame.Parent = frame
+
+    local iconCorner = Instance.new("UICorner", iconFrame)
+    iconCorner.CornerRadius = UDim.new(0.5, 0)
+
+    local icon = Instance.new("ImageLabel", iconFrame)
+    icon.Size = UDim2.new(0, 30, 0, 30)
+    icon.Position = UDim2.new(0, 5, 0, 5)
+    icon.BackgroundTransparency = 1
+    icon.Image = "rbxassetid://5578470911"
+    icon.ImageColor3 = Color3.fromRGB(0, 255, 0)
+    icon.Parent = iconFrame
+
+    local textFrame = Instance.new("Frame", frame)
+    textFrame.Size = UDim2.new(0, 145, 0, 40)
+    textFrame.Position = UDim2.new(0, 50, 0, 5)
+    textFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+    textFrame.BackgroundTransparency = 0.3
+    textFrame.BorderSizePixel = 0
+    textFrame.Parent = frame
+
+    local textCorner = Instance.new("UICorner", textFrame)
+    textCorner.CornerRadius = UDim.new(0.5, 0)
+
+    local textLabel = Instance.new("TextLabel", textFrame)
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = message
+    textLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextSize = 16
+    textLabel.TextXAlignment = Enum.TextXAlignment.Center
+    textLabel.TextTransparency = 1
+    textLabel.Parent = textFrame
+
+    GunSilent.State.Notification = frame
+
+    frame.Visible = true
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local appearTween = TweenService:Create(frame, tweenInfo, { Size = UDim2.new(0, 200, 0, 50) })
+    local textAppearTween = TweenService:Create(textLabel, tweenInfo, { TextTransparency = 0 })
+    appearTween:Play()
+    textAppearTween:Play()
+
+    task.delay(GunSilent.Settings.HitNotifyDuration.Value, function()
+        if frame and frame.Parent then
+            local fadeTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            local fadeTween = TweenService:Create(frame, fadeTweenInfo, { BackgroundTransparency = 1 })
+            local textFadeTween = TweenService:Create(textLabel, fadeTweenInfo, { TextTransparency = 1 })
+            fadeTween:Play()
+            textFadeTween:Play()
+            fadeTween.Completed:Connect(function()
+                frame:Destroy()
+                GunSilent.State.Notification = nil
+            end)
+        end
+    end)
 end
 
 local function isGunTool(tool)
@@ -540,16 +616,9 @@ local function createHitDataGun(target)
     local numBullets = isShotgunWeapon and GunSilent.Settings.GenBullet.Value or 1
     local hitData = {}
 
-    -- Создаём два набора hitData для MultiShot
     local timestamp = tick()
-    for shot = 1, 2 do -- Два выстрела
-        local shotData = {}
-        local shotTimestamp = timestamp + (shot - 1) * 0.01 -- Небольшое смещение времени для второго выстрела
-        local positionOffset = shot == 2 and Vector3.new(math.random(-0.1, 0.1), math.random(-0.1, 0.1), math.random(-0.1, 0.1)) or Vector3.new(0, 0, 0) -- Небольшое смещение позиции
-        for i = 1, numBullets do
-            shotData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition + positionOffset, Origin = startPos, Timestamp = shotTimestamp}}
-        end
-        hitData[shot] = shotData
+    for i = 1, numBullets do
+        hitData[i] = {{Normal = prediction.direction, Instance = hitPart, Position = finalPosition, Origin = startPos, Timestamp = timestamp}}
     end
 
     if GunSilent.Settings.BulletTrailsEnabled.Value and localRoot and finalPosition then
@@ -761,6 +830,7 @@ local function initializeGunSilent()
             if pendingHit.target and (headshot or kill) then
                 spawnHitParticles(pendingHit.target, pendingHit.position)
                 spawnHitVisual(pendingHit.target, pendingHit.position)
+                showNotification("Success Hit!")
             end
             if GunSilent.State.PendingHits[GunSilent.State.LastEventId] then
                 GunSilent.State.PendingHits[GunSilent.State.LastEventId] = nil
@@ -783,26 +853,11 @@ local function initializeGunSilent()
                         local aimCFrame = getAimCFrameGun(nearestPlayer)
                         local hitData = createHitDataGun(nearestPlayer)
                         if aimCFrame and hitData then
-                            if GunSilent.Settings.MultiShot.Value then
-                                -- Отправляем два набора hitData
-                                for _, shotData in ipairs(hitData) do
-                                    modifiedArgs = {args[1] + math.random(1, 1000) / 10000, args[2], equippedTool, aimCFrame, shotData}
-                                    GunSilent.State.PendingHits[modifiedArgs[1]] = {
-                                        target = nearestPlayer,
-                                        position = GunSilent.State.LastHitPosition
-                                    }
-                                    pcall(function()
-                                        GunSilent.State.OldFireServer(self, unpack(modifiedArgs))
-                                    end)
-                                end
-                                return
-                            else
-                                modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData[1]}
-                                GunSilent.State.PendingHits[args[1]] = {
-                                    target = nearestPlayer,
-                                    position = GunSilent.State.LastHitPosition
-                                }
-                            end
+                            modifiedArgs = {args[1], args[2], equippedTool, aimCFrame, hitData}
+                            GunSilent.State.PendingHits[args[1]] = {
+                                target = nearestPlayer,
+                                position = GunSilent.State.LastHitPosition
+                            }
                         end
                     end
                 end
@@ -1012,14 +1067,6 @@ local function Init(UI, Core, notify)
                     Callback = function(value) GunSilent.Settings.GenBullet.Value = value end
                 }, 'GenerateBullets'),
                 callback = function(value) GunSilent.Settings.GenBullet.Value = value end
-            }
-            CombatElements.MultiShot = {
-                element = combatSection:Toggle({
-                    Name = "MultiShot",
-                    Default = GunSilent.Settings.MultiShot.Value,
-                    Callback = function(value) GunSilent.Settings.MultiShot.Value = value end
-                }, 'MultiShot'),
-                callback = function(value) GunSilent.Settings.MultiShot.Value = value end
             }
             CombatElements.SortMethod = {
                 element = combatSection:Dropdown({
@@ -1418,7 +1465,6 @@ local function Init(UI, Core, notify)
                 end
                 CombatElements.ShotgunSupport.callback(CombatElements.ShotgunSupport.element:GetState())
                 CombatElements.GenerateBullets.callback(CombatElements.GenerateBullets.element:GetValue())
-                CombatElements.MultiShot.callback(CombatElements.MultiShot.element:GetState())
                 local sortMethodOptions = CombatElements.SortMethod.element:GetOptions()
                 for option, selected in pairs(sortMethodOptions) do
                     if selected then CombatElements.SortMethod.callback(option) break end
