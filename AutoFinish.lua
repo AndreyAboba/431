@@ -6,7 +6,7 @@ function ManualFinish.Init(UI, Core, notify)
     }
 
     local ManualFinishConfig = {
-        DistanceLimit = 30, -- Ограничение расстояния в 30 метров
+        DistanceLimit = 35, -- Ограничение расстояния в 30 метров
         CheckInterval = 0.75 -- Проверка каждые 0.75 секунды
     }
 
@@ -96,14 +96,12 @@ function ManualFinish.Init(UI, Core, notify)
                 if not attachedPrompts[player] then
                     finishPrompt.Parent = localRoot
                     attachedPrompts[player] = finishPrompt
-                    notify("ManualFinish", "Prompt for " .. player.Name .. " attached to local player", true)
                 end
             else
                 -- Если игрок вышел из радиуса, возвращаем Prompt обратно
                 if attachedPrompts[player] then
                     finishPrompt.Parent = rootPart
                     attachedPrompts[player] = nil
-                    notify("ManualFinish", "Prompt for " .. player.Name .. " detached", true)
                 end
             end
         end
@@ -113,20 +111,15 @@ function ManualFinish.Init(UI, Core, notify)
     if UI.Tabs and UI.Tabs.Auto then
         local ManualFinishSection = UI.Tabs.Auto:Section({ Name = "ManualFinish", Side = "Left" })
         if ManualFinishSection then
-            ManualFinishSection:Header({ Name = "ManualFinish Settings" })
+            ManualFinishSection:Header({ Name = "BringFinishPrompt" })
             ManualFinishSection:Toggle({
-                Name = "ManualFinish Enabled",
+                Name = "Enabled",
                 Default = State.ManualFinishEnabled,
                 Callback = function(value)
                     State.ManualFinishEnabled = value
-                    notify("ManualFinish", "ManualFinish " .. (value and "Enabled" or "Disabled"), true)
                 end
-            }, "ManualFinishEnabled")
-        else
-            warn("Failed to create ManualFinish section in Auto tab")
+            }, "ManualFinish")
         end
-    else
-        warn("Auto tab not found in UI.Tabs")
     end
 end
 
