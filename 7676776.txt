@@ -286,9 +286,9 @@ return {
         Section:Slider({
             Name = "BacktrackDelay",
             Default = BacktrackDelay,
-            Minimum = 1,
+            Minimum = 0.5,
             Maximum = 10,
-            Precision = 1,
+            Precision = 2,
             Callback = function(value)
                 BacktrackDelay = value
             end
