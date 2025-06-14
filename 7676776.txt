@@ -16,12 +16,13 @@ local DesyncMethod = "Underground"
 local Keybind = nil
 local LastHitboxRoll = 0
 local LastServerUpdate = 0
+local LastUndergroundV2 = 0
 local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
-local UndergroundVelocityZ = -50 -- Новое значение для UndergroundV2
+local UndergroundVelocityZ = -50 -- Значение для UndergroundV2
 local HitboxRollDistance = 300
 local HitboxRollInterval = 0.0012
 local HitboxReturnSpeed = 25
@@ -82,15 +83,12 @@ RunService.Heartbeat:Connect(function(deltaTime)
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
-            -- Прямое изменение Velocity.Z с возвращением
-            local targetVelocityZ = UndergroundVelocityZ
-            RootPart.Velocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, targetVelocityZ)
-            if math.abs(RootPart.Velocity.Z - DesyncTypes[2].Z) > 0.1 then
-                RootPart.Velocity = Vector3.new(
-                    RootPart.Velocity.X,
-                    RootPart.Velocity.Y,
-                    DesyncTypes[2].Z + (targetVelocityZ - DesyncTypes[2].Z) * (1 - deltaTime * 2) -- Сглаженное возвращение
-                )
+            -- Резкий спуф Velocity
+            if currentTime - LastUndergroundV2 >= 0.5 then -- Интервал в 0.5 секунды
+                RootPart.Velocity = DesyncTypes[2] -- Установка исходного Velocity
+                LastUndergroundV2 = currentTime
+            else
+                RootPart.Velocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ) -- Резкий спуф Z
             end
         elseif DesyncMethod == "HitboxRoll" then
             if currentTime - LastHitboxRoll >= HitboxRollInterval then
@@ -109,11 +107,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 end
             end
         elseif DesyncMethod == "TPTarget" then
-            local target = Core.GunSilentTarget.CurrentTarget
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0) -- Телепортация над целью
-                desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
-                RootPart.Velocity = Vector3.new(1000, 1000, 1000)
+            if Core and Core.GunSilentTarget and Core.GunSilentTarget.CurrentTarget then
+                local target = Core.GunSilentTarget.CurrentTarget
+                if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                    SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0) -- Телепортация над целью
+                    desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
+                    RootPart.Velocity = Vector3.new(1000, 1000, 1000)
+                end
             end
         end
 
@@ -197,6 +197,7 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     PositionHistory = {}
     LastServerUpdate = 0
     LastHitboxRoll = 0
+    LastUndergroundV2 = 0
     setsimulationradius(SimulationRadius)
 end)
 
@@ -207,7 +208,7 @@ if LocalPlayer.Character then
         Humanoid.AutoRotate = true
         setsimulationradius(SimulationRadius)
     end
-end
+end)
 
 return {
     Init = function(UI, CoreProxy, notify)
