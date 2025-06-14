@@ -26,6 +26,10 @@ local HitboxRollInterval = 0.0012
 local HitboxReturnSpeed = 25
 local FakeRotationSpeed = 300
 local ResolverNoise = 7
+local RandomVectorEnabled = false
+local RandomVectorSpeed = 10
+local RandomVectorDistance = 5
+local LagSimulationDelay = 0.05
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -80,6 +84,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
 
         if DesyncMethod == "Underground" then
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
+        elseif DesyncMethod == "UndergroundV2" then
+            desyncAssemblyVelocity = Vector3.new(
+                DesyncTypes[2].X + RandomNumberRange(5),
+                UndergroundVelocityY,
+                DesyncTypes[2].Z + RandomNumberRange(5)
+            )
+            RootPart.Velocity = desyncAssemblyVelocity * RandomVectorSpeed
         elseif DesyncMethod == "Backtrack" then
             local targetTime = currentTime - BacktrackDelay
             if #PositionHistory > 1 then
@@ -120,6 +131,29 @@ RunService.Heartbeat:Connect(function(deltaTime)
         elseif DesyncMethod == "FakeRotation" then
             SpoofThis = GetFakeRotationCFrame(RootPart.CFrame, deltaTime)
             desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(RandomNumberRange(ResolverNoise / 2), 0, RandomNumberRange(ResolverNoise / 2))
+        elseif DesyncMethod == "RandomJitter" then
+            local jitterOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance),
+                RandomNumberRange(RandomVectorDistance / 2),
+                RandomNumberRange(RandomVectorDistance)
+            )
+            SpoofThis = RootPart.CFrame + jitterOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + jitterOffset * RandomVectorSpeed
+        elseif DesyncMethod == "LagSimulation" then
+            if currentTime - LastServerUpdate >= LagSimulationDelay then
+                SpoofThis = RootPart.CFrame + Vector3.new(RandomNumberRange(10), RandomNumberRange(5), RandomNumberRange(10))
+                LastServerUpdate = currentTime
+            end
+        end
+
+        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
+            local randomOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance),
+                RandomNumberRange(RandomVectorDistance / 2),
+                RandomNumberRange(RandomVectorDistance)
+            )
+            SpoofThis = SpoofThis + randomOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
         end
 
         if AntiResolverEnabled then
@@ -136,7 +170,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             math.rad(RandomNumberRange(180))
         )
 
-        if not ServerSync then
+        if ServerSync == "proxy" then
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 RootPart.CFrame = SpoofThis
@@ -144,7 +178,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
                     RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
                 end
             end
-        else
+        elseif ServerSync == "v1" then
             RootPart.CFrame = SpoofThis
             if desyncAssemblyVelocity then
                 RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
@@ -166,7 +200,7 @@ local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() then
         if key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0 then
-            if not ServerSync then
+            if ServerSync == "proxy" then
                 local callingScript = getcallingscript()
                 if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                     if self == LocalPlayer.Character.HumanoidRootPart then
@@ -175,7 +209,7 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                         return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
                     end
                 end
-            else
+            elseif ServerSync == "v1" then
                 if self == LocalPlayer.Character.HumanoidRootPart then
                     return DesyncTypes[1] or CFrame.new()
                 elseif self == LocalPlayer.Character.Head then
@@ -208,7 +242,7 @@ if LocalPlayer.Character then
         Humanoid.AutoRotate = true
         setsimulationradius(SimulationRadius)
     end
-end
+end)
 
 return {
     Init = function(UI, CoreProxy, notify)
@@ -233,11 +267,28 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "Backtrack", "HitboxRoll", "FakeRotation"},
+            Options = {"Underground", "UndergroundV2", "Backtrack", "HitboxRoll", "FakeRotation", "RandomJitter", "LagSimulation"},
             Callback = function(value)
                 DesyncMethod = value
             end
         }, 'DesyncMethod')
+
+        Section:Dropdown({
+            Name = "ServerSync",
+            Default = ServerSync,
+            Options = {"v1", "proxy"},
+            Callback = function(value)
+                ServerSync = value
+            end
+        }, 'ServerSync')
+
+        Section:Toggle({
+            Name = "RandomVector",
+            Default = RandomVectorEnabled,
+            Callback = function(value)
+                RandomVectorEnabled = value
+            end
+        }, 'RandomVectorEnabled')
 
         Section:Slider({
             Name = "HitboxRollDistance",
@@ -297,8 +348,8 @@ return {
         Section:Slider({
             Name = "VelocityY",
             Default = UndergroundVelocityY,
-            Minimum = 500,
-            Maximum = -500,
+            Minimum = -500,
+            Maximum = 500,
             Precision = 0,
             Callback = function(value)
                 UndergroundVelocityY = value
@@ -315,6 +366,39 @@ return {
                 ResolverNoise = value
             end
         }, 'ResolverNoise')
+
+        Section:Slider({
+            Name = "RandomVectorDistance",
+            Default = RandomVectorDistance,
+            Minimum = 1,
+            Maximum = 20,
+            Precision = 1,
+            Callback = function(value)
+                RandomVectorDistance = value
+            end
+        }, 'RandomVectorDistance')
+
+        Section:Slider({
+            Name = "RandomVectorSpeed",
+            Default = RandomVectorSpeed,
+            Minimum = 5,
+            Maximum = 50,
+            Precision = 0,
+            Callback = function(value)
+                RandomVectorSpeed = value
+            end
+        }, 'RandomVectorSpeed')
+
+        Section:Slider({
+            Name = "LagSimulationDelay",
+            Default = LagSimulationDelay,
+            Minimum = 0.01,
+            Maximum = 0.5,
+            Precision = 2,
+            Callback = function(value)
+                LagSimulationDelay = value
+            end
+        }, 'LagSimulationDelay')
 
         Section:Keybind({
             Name = "Keybind",
