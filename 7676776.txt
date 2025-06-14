@@ -108,14 +108,14 @@ RunService.Heartbeat:Connect(function(deltaTime)
             end
         elseif DesyncMethod == "TPTarget" then
             local target = Core and Core.GunSilentTarget and Core.GunSilentTarget.CurrentTarget
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 10, 0) -- Телепортация выше цели на +10
-                desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
-                RootPart.Velocity = Vector3.new(1000, 1000, 1000)
-                print("Target: ", target.Name, "Position: ", target.Character.HumanoidRootPart.Position) -- Логирование таргета
-            else
-                print("No valid target found in Core.GunSilentTarget.CurrentTarget") -- Логирование отсутствия цели
+            if not target or not target.Character or not target.Character:FindFirstChild("Humanoid") or target.Character.Humanoid.Health <= 0 then
+                print("No valid target found in Core.GunSilentTarget.CurrentTarget, value: ", tostring(target))
+                return
             end
+            SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 10, 0) -- Телепортация выше цели на +10
+            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
+            RootPart.Velocity = Vector3.new(1000, 1000, 1000)
+            print("Target locked: ", target.Name, "Position: ", target.Character.HumanoidRootPart.Position)
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
