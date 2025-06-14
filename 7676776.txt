@@ -293,7 +293,7 @@ return {
         Section:Slider({
             Name = "HitboxRollDistance",
             Default = HitboxRollDistance,
-            Minimum = 50,
+            Minimum = 10,
             Maximum = 350,
             Precision = 0,
             Callback = function(value)
@@ -305,7 +305,7 @@ return {
             Name = "HitboxRollInterval",
             Default = HitboxRollInterval,
             Minimum = 0.001,
-            Maximum = 0.3,
+            Maximum = 0.5,
             Precision = 4,
             Callback = function(value)
                 HitboxRollInterval = value
@@ -315,8 +315,8 @@ return {
         Section:Slider({
             Name = "HitboxReturnSpeed",
             Default = HitboxReturnSpeed,
-            Minimum = 10,
-            Maximum = 150,
+            Minimum = 1,
+            Maximum = 200,
             Precision = 0,
             Callback = function(value)
                 HitboxReturnSpeed = value
@@ -326,8 +326,8 @@ return {
         Section:Slider({
             Name = "FakeRotationSpeed",
             Default = FakeRotationSpeed,
-            Minimum = 100,
-            Maximum = 1000,
+            Minimum = 10000,
+            Maximum = 100000,
             Precision = 0,
             Callback = function(value)
                 FakeRotationSpeed = value
@@ -371,7 +371,7 @@ return {
             Name = "RandomVectorDistance",
             Default = RandomVectorDistance,
             Minimum = 1,
-            Maximum = 20,
+            Maximum = 5,
             Precision = 1,
             Callback = function(value)
                 RandomVectorDistance = value
@@ -382,7 +382,7 @@ return {
             Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
             Minimum = 5,
-            Maximum = 50,
+            Maximum = 500,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
