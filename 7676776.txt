@@ -64,6 +64,31 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
+local function getNearestPlayer()
+    local localPlayer = LocalPlayer
+    local localCharacter = localPlayer.Character
+    if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return nil end
+    local localPos = localCharacter.HumanoidRootPart.Position
+    local camera = workspace.CurrentCamera
+    local currentMousePos = UserInputService:GetMouseLocation()
+    local referencePos = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2) -- Используем центр экрана
+    local nearestPlayer, minDist = nil, math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and
+           player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local targetPos = player.Character.HumanoidRootPart.Position
+            local screenPos = camera:WorldToScreenPoint(targetPos)
+            local distSq = (Vector2.new(screenPos.X, screenPos.Y) - referencePos).Magnitude
+            local worldDist = (localPos - targetPos).Magnitude
+            if distSq < minDist then
+                minDist = distSq
+                nearestPlayer = player
+            end
+        end
+    end
+    return nearestPlayer
+end
+
 RunService.Heartbeat:Connect(function(deltaTime)
     if PastedSources then
         local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -107,9 +132,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 end
             end
         elseif DesyncMethod == "TPTarget" then
-            local target = Core and Core.GunSilentTarget and Core.GunSilentTarget.CurrentTarget
+            local target = getNearestPlayer()
             if not target or not target.Character or not target.Character:FindFirstChild("Humanoid") or target.Character.Humanoid.Health <= 0 then
-                print("No valid target found in Core.GunSilentTarget.CurrentTarget, value: ", tostring(target))
+                print("No valid target found, value: ", tostring(target))
                 return
             end
             SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 10, 0) -- Телепортация выше цели на +10
