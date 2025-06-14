@@ -89,29 +89,26 @@ RunService.Heartbeat:Connect(function(deltaTime)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "HitboxRoll" then
             if currentTime - LastHitboxRoll >= HitboxRollInterval then
-                -- Сильное изменение физики
                 desyncAssemblyVelocity = Vector3.new(
-                    RandomNumberRange(HitboxRollDistance * 10),
-                    RandomNumberRange(HitboxRollDistance * 5),
-                    RandomNumberRange(HitboxRollDistance * 10)
-                ) * 100 -- Усиленная скорость
+                    RandomNumberRange(HitboxRollDistance),
+                    RandomNumberRange(HitboxRollDistance / 2),
+                    RandomNumberRange(HitboxRollDistance)
+                ) * 10
                 SpoofThis = RootPart.CFrame + desyncAssemblyVelocity.Unit * HitboxRollDistance
-                RootPart.Velocity = Vector3.new(1000, 1000, 1000) + desyncAssemblyVelocity -- Спуф с усилением
                 LastHitboxRoll = currentTime
             else
-                -- Постепенное возвращение с синхронизацией сервера
                 local distanceToReturn = (DesyncTypes[1].Position - SpoofThis.Position).Magnitude
                 if distanceToReturn > 1 then
                     local returnVector = (DesyncTypes[1].Position - SpoofThis.Position).Unit * math.min(HitboxReturnSpeed * deltaTime, distanceToReturn)
                     SpoofThis = SpoofThis + returnVector
-                    desyncAssemblyVelocity = desyncAssemblyVelocity:Lerp(Vector3.new(0, 0, 0), deltaTime * 5) -- Сглаженное возвращение
-                    RootPart.Velocity = Vector3.new(1000, 1000, 1000):Lerp(DesyncTypes[2], deltaTime * 5) -- Сглаженное возвращение Velocity
                 end
-                -- Синхронизация с сервером для изменения позиции
-                if distanceToReturn < 0.1 then
-                    RootPart.CFrame = DesyncTypes[1]
-                    RootPart.Velocity = DesyncTypes[2]
-                end
+            end
+        elseif DesyncMethod == "TPTarget" then
+            local target = Core.GunSilentTarget.CurrentTarget
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0) -- Телепортация над целью
+                desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
+                RootPart.Velocity = Vector3.new(1000, 1000, 1000)
             end
         end
 
@@ -230,7 +227,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "UndergroundV2", "HitboxRoll"},
+            Options = {"Underground", "UndergroundV2", "HitboxRoll", "TPTarget"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -324,8 +321,8 @@ return {
         Section:Slider({
             Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
-            Minimum = 5,
-            Maximum = 100000000000,
+            Minimum = 1,
+            Maximum = 100,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
