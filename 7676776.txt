@@ -14,7 +14,6 @@ local Mouse = LocalPlayer:GetMouse()
 local PastedSources = false
 local DesyncMethod = "Underground"
 local Keybind = nil
-local LastHitboxRoll = 0
 local LastServerUpdate = 0
 local LastUndergroundV2 = 0
 local SimulationRadius = math.huge
@@ -22,15 +21,13 @@ local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
-local UndergroundVelocityZ = -50 -- Значение для UndergroundV2
-local HitboxRollDistance = 300
-local HitboxRollInterval = 0.0012
-local HitboxReturnSpeed = 25
+local UndergroundVelocityZ = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
+local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -64,31 +61,6 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
-local function getNearestPlayer()
-    local localPlayer = LocalPlayer
-    local localCharacter = localPlayer.Character
-    if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return nil end
-    local localPos = localCharacter.HumanoidRootPart.Position
-    local camera = workspace.CurrentCamera
-    local currentMousePos = UserInputService:GetMouseLocation()
-    local referencePos = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2) -- Используем центр экрана
-    local nearestPlayer, minDist = nil, math.huge
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and
-           player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            local targetPos = player.Character.HumanoidRootPart.Position
-            local screenPos = camera:WorldToScreenPoint(targetPos)
-            local distSq = (Vector2.new(screenPos.X, screenPos.Y) - referencePos).Magnitude
-            local worldDist = (localPos - targetPos).Magnitude
-            if distSq < minDist then
-                minDist = distSq
-                nearestPlayer = player
-            end
-        end
-    end
-    return nearestPlayer
-end
-
 RunService.Heartbeat:Connect(function(deltaTime)
     if PastedSources then
         local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -108,39 +80,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
-            -- Резкий спуф Velocity
-            if currentTime - LastUndergroundV2 >= 0.5 then -- Интервал в 0.5 секунды
-                RootPart.Velocity = DesyncTypes[2] -- Установка исходного Velocity
-                LastUndergroundV2 = currentTime
-            else
-                RootPart.Velocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ) -- Резкий спуф Z
-            end
-        elseif DesyncMethod == "HitboxRoll" then
-            if currentTime - LastHitboxRoll >= HitboxRollInterval then
-                desyncAssemblyVelocity = Vector3.new(
-                    RandomNumberRange(HitboxRollDistance),
-                    RandomNumberRange(HitboxRollDistance / 2),
-                    RandomNumberRange(HitboxRollDistance)
-                ) * 10
-                SpoofThis = RootPart.CFrame + desyncAssemblyVelocity.Unit * HitboxRollDistance
-                LastHitboxRoll = currentTime
-            else
-                local distanceToReturn = (DesyncTypes[1].Position - SpoofThis.Position).Magnitude
-                if distanceToReturn > 1 then
-                    local returnVector = (DesyncTypes[1].Position - SpoofThis.Position).Unit * math.min(HitboxReturnSpeed * deltaTime, distanceToReturn)
-                    SpoofThis = SpoofThis + returnVector
-                end
-            end
-        elseif DesyncMethod == "TPTarget" then
-            local target = getNearestPlayer()
-            if not target or not target.Character or not target.Character:FindFirstChild("Humanoid") or target.Character.Humanoid.Health <= 0 then
-                print("No valid target found, value: ", tostring(target))
-                return
-            end
-            SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 10, 0) -- Телепортация выше цели на +10
-            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
-            RootPart.Velocity = Vector3.new(1000, 1000, 1000)
-            print("Target locked: ", target.Name, "Position: ", target.Character.HumanoidRootPart.Position)
+            -- Постоянное обновление Velocity с реальным значением и отрицательным Z
+            local realVelocity = RootPart.Velocity
+            RootPart.Velocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+        elseif DesyncMethod == "SpinAA" then
+            -- Вращение вокруг оси Y
+            local spinAngle = SpinAASpeed * currentTime
+            SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -222,7 +168,6 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     Humanoid.AutoRotate = true
     PositionHistory = {}
     LastServerUpdate = 0
-    LastHitboxRoll = 0
     LastUndergroundV2 = 0
     setsimulationradius(SimulationRadius)
 end)
@@ -259,7 +204,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "UndergroundV2", "HitboxRoll", "TPTarget"},
+            Options = {"Underground", "UndergroundV2", "SpinAA"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -273,39 +218,6 @@ return {
                 ServerSync = value
             end
         }, 'ServerSync')
-
-        Section:Slider({
-            Name = "HitboxRollDistance",
-            Default = HitboxRollDistance,
-            Minimum = 2,
-            Maximum = 350,
-            Precision = 0,
-            Callback = function(value)
-                HitboxRollDistance = value
-            end
-        }, 'HitboxRollDistance')
-
-        Section:Slider({
-            Name = "HitboxRollInterval",
-            Default = HitboxRollInterval,
-            Minimum = 0.001,
-            Maximum = 0.3,
-            Precision = 4,
-            Callback = function(value)
-                HitboxRollInterval = value
-            end
-        }, 'HitboxRollInterval')
-
-        Section:Slider({
-            Name = "HitboxReturnSpeed",
-            Default = HitboxReturnSpeed,
-            Minimum = 10,
-            Maximum = 150,
-            Precision = 0,
-            Callback = function(value)
-                HitboxReturnSpeed = value
-            end
-        }, 'HitboxReturnSpeed')
 
         Section:Slider({
             Name = "UndergroundY",
@@ -328,6 +240,17 @@ return {
                 UndergroundVelocityZ = value
             end
         }, 'UndergroundVelocityZ')
+
+        Section:Slider({
+            Name = "SpinAASpeed",
+            Default = SpinAASpeed,
+            Minimum = 1,
+            Maximum = 20,
+            Precision = 1,
+            Callback = function(value)
+                SpinAASpeed = value
+            end
+        }, 'SpinAASpeed')
 
         Section:Slider({
             Name = "ResolverNoise",
