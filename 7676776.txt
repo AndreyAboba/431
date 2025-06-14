@@ -6,6 +6,10 @@ local DesyncEnabled = false
 local DesyncMethod = "Underground"
 local Keybind = nil
 local LastHitboxRoll = 0
+local FakeRotationSpeed = 10
+local BacktrackDelay = 3
+local UndergroundVelocityY = -50
+local ResolverNoise = 7
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -104,7 +108,15 @@ end)
 
 return {
     Init = function(UI, CoreProxy, notify)
-        local Tab = UI.Tabs.LocalPlayer:Tab({ Name = "Desync", Image = "rbxassetid://7992557358" })
+        -- Проверяем и используем TabGroup для создания вкладки
+        if not UI.TabGroups or not UI.TabGroups.Main then
+            warn("TabGroup 'Main' not found, creating default tab.")
+            UI.TabGroups = { Main = UI.Window:TabGroup() }
+        end
+
+        local Tab = UI.TabGroups.Main:Tab({ Name = "Desync", Image = "rbxassetid://7992557358" })
+        UI.Tabs.Desync = Tab -- Сохраняем ссылку на вкладку
+
         local Section = Tab:Section({ Name = "Desync Settings", Side = "Left" })
 
         Section:Toggle({
