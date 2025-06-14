@@ -217,7 +217,7 @@ return {
             return
         end
 
-        local Section = UI.Tabs.LocalPlayer:Section({ Name = "Desync Settings", Side = "Left" })
+        local Section = UI.Tabs.LocalPlayer:Section({ Name = "Desync Settings", Side = "Right" })
 
         Section:Header({ Name = 'Desync' })
 
@@ -243,7 +243,7 @@ return {
             Name = "HitboxRollDistance",
             Default = HitboxRollDistance,
             Minimum = 100,
-            Maximum = 500,
+            Maximum = 5000,
             Precision = 0,
             Callback = function(value)
                 HitboxRollDistance = value
@@ -254,7 +254,7 @@ return {
             Name = "HitboxRollInterval",
             Default = HitboxRollInterval,
             Minimum = 0.001,
-            Maximum = 0.01,
+            Maximum = 0.2,
             Precision = 4,
             Callback = function(value)
                 HitboxRollInterval = value
@@ -265,7 +265,7 @@ return {
             Name = "HitboxReturnSpeed",
             Default = HitboxReturnSpeed,
             Minimum = 10,
-            Maximum = 50,
+            Maximum = 5000,
             Precision = 0,
             Callback = function(value)
                 HitboxReturnSpeed = value
@@ -276,7 +276,7 @@ return {
             Name = "FakeRotationSpeed",
             Default = FakeRotationSpeed,
             Minimum = 100,
-            Maximum = 500,
+            Maximum = 1000,
             Precision = 0,
             Callback = function(value)
                 FakeRotationSpeed = value
@@ -287,7 +287,7 @@ return {
             Name = "BacktrackDelay",
             Default = BacktrackDelay,
             Minimum = 1,
-            Maximum = 5,
+            Maximum = 10,
             Precision = 1,
             Callback = function(value)
                 BacktrackDelay = value
@@ -295,10 +295,10 @@ return {
         }, 'BacktrackDelay')
 
         Section:Slider({
-            Name = "UndergroundVelocityY",
+            Name = "VelocityY",
             Default = UndergroundVelocityY,
-            Minimum = -100,
-            Maximum = 0,
+            Minimum = 500,
+            Maximum = -500,
             Precision = 0,
             Callback = function(value)
                 UndergroundVelocityY = value
@@ -309,7 +309,7 @@ return {
             Name = "ResolverNoise",
             Default = ResolverNoise,
             Minimum = 3,
-            Maximum = 10,
+            Maximum = 50,
             Precision = 1,
             Callback = function(value)
                 ResolverNoise = value
