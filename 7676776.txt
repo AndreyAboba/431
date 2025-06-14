@@ -64,23 +64,6 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
-local function GetNearestPlayer()
-    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return nil end
-    local nearestPlayer, minDistance = nil, math.huge
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local targetRoot = player.Character.HumanoidRootPart
-            local distance = (localRoot.Position - targetRoot.Position).Magnitude
-            if distance < minDistance then
-                minDistance = distance
-                nearestPlayer = player
-            end
-        end
-    end
-    return nearestPlayer
-end
-
 RunService.Heartbeat:Connect(function(deltaTime)
     if PastedSources then
         local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -124,13 +107,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 end
             end
         elseif DesyncMethod == "TPTarget" then
-            local target = nil
-            if Core and Core.GunSilentTarget and Core.GunSilentTarget.CurrentTarget then
-                target = Core.GunSilentTarget.CurrentTarget
-            end
-            if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
-                target = GetNearestPlayer()
-            end
+            local target = Core and Core.GunSilentTarget and Core.GunSilentTarget.CurrentTarget
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                 SpoofThis = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0) -- Постоянная телепортация над целью
                 desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Спуф для синхронизации
