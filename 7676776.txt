@@ -208,7 +208,7 @@ if LocalPlayer.Character then
         Humanoid.AutoRotate = true
         setsimulationradius(SimulationRadius)
     end
-end)
+end
 
 return {
     Init = function(UI, CoreProxy, notify)
