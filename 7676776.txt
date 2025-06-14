@@ -1,0 +1,208 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local DesyncEnabled = false
+local DesyncMethod = "Underground"
+local Keybind = nil
+local LastHitboxRoll = 0
+
+local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
+local PositionHistory = {}
+local LastServerUpdate = 0
+
+local function RandomNumberRange(a)
+    return math.random(-a * 100, a * 100) / 100
+end
+
+local function InterpolateCFrame(cframe1, cframe2, t)
+    local pos1 = cframe1.Position
+    local pos2 = cframe2.Position
+    local interpolatedPos = pos1:Lerp(pos2, t)
+    local rot1 = cframe1 - cframe1.Position
+    local rot2 = cframe2 - cframe2.Position
+    local interpolatedRot = rot1:Lerp(rot2, t)
+    return CFrame.new(interpolatedPos) * interpolatedRot
+end
+
+local function GetFakeRotationCFrame(currentCFrame, deltaTime)
+    local rotationAngle = tick() * FakeRotationSpeed
+    return currentCFrame * CFrame.Angles(
+        math.rad(math.sin(rotationAngle) * 180),
+        math.rad(math.cos(rotationAngle) * 180),
+        math.rad(math.sin(rotationAngle * 0.5) * 180)
+    )
+end
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    if DesyncEnabled then
+        local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
+
+        table.insert(PositionHistory, {Time = tick(), CFrame = RootPart.CFrame})
+        DesyncTypes[1] = RootPart.CFrame
+        DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
+
+        local SpoofThis = RootPart.CFrame
+        local desyncVelocity = DesyncTypes[2]
+
+        if DesyncMethod == "Underground" then
+            desyncVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
+        elseif DesyncMethod == "Backtrack" then
+            local targetTime = tick() - BacktrackDelay
+            if #PositionHistory > 1 then
+                local closestBefore, closestAfter
+                for i = 1, #PositionHistory do
+                    local entry = PositionHistory[i]
+                    if entry.Time <= targetTime then
+                        closestBefore = entry
+                    elseif entry.Time > targetTime then
+                        closestAfter = entry
+                        break
+                    end
+                end
+                if closestBefore and closestAfter then
+                    local timeDiff = closestAfter.Time - closestBefore.Time
+                    local t = (targetTime - closestBefore.Time) / timeDiff
+                    SpoofThis = InterpolateCFrame(closestBefore.CFrame, closestAfter.CFrame, t)
+                elseif closestBefore then
+                    SpoofThis = closestBefore.CFrame
+                end
+            end
+        elseif DesyncMethod == "HitboxRoll" then
+            if tick() - LastHitboxRoll >= 0.2 then
+                desyncVelocity = Vector3.new(
+                    RandomNumberRange(75),
+                    RandomNumberRange(37.5),
+                    RandomNumberRange(75)
+                ) * 10
+                SpoofThis = RootPart.CFrame + desyncVelocity.Unit * 75
+                LastHitboxRoll = tick()
+            else
+                local distance = (DesyncTypes[1].Position - SpoofThis.Position).Magnitude
+                if distance > 1 then
+                    local returnVector = (DesyncTypes[1].Position - SpoofThis.Position).Unit * math.min(50 * deltaTime, distance)
+                    SpoofThis = SpoofThis + returnVector
+                end
+            end
+        elseif DesyncMethod == "FakeRotation" then
+            SpoofThis = GetFakeRotationCFrame(RootPart.CFrame, deltaTime)
+            desyncVelocity = desyncVelocity + Vector3.new(RandomNumberRange(ResolverNoise / 2), 0, RandomNumberRange(ResolverNoise / 2))
+        end
+
+        if desyncVelocity then
+            RootPart.CFrame = SpoofThis
+            RootPart.AssemblyLinearVelocity = desyncVelocity
+        end
+
+        RunService.RenderStepped:Wait()
+        RootPart.CFrame = DesyncTypes[1]
+        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+    end
+end)
+
+return {
+    Init = function(UI, CoreProxy, notify)
+        local Tab = UI.Tabs.LocalPlayer:Tab({ Name = "Desync", Image = "rbxassetid://7992557358" })
+        local Section = Tab:Section({ Name = "Desync Settings", Side = "Left" })
+
+        Section:Toggle({
+            Name = "Enabled",
+            Default = DesyncEnabled,
+            Callback = function(value)
+                DesyncEnabled = value
+                notify("Desync", "Desync " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'DesyncEnabled')
+
+        Section:Dropdown({
+            Name = "Method",
+            Default = DesyncMethod,
+            Options = {"Underground", "Backtrack", "HitboxRoll", "FakeRotation"},
+            Callback = function(value)
+                DesyncMethod = value
+            end
+        }, 'DesyncMethod')
+
+        Section:Slider({
+            Name = "HDistance",
+            Minimum = 25,
+            Maximum = 100,
+            Default = 75,
+            Callback = function(value)
+                -- Хранит значение для HitboxRollDistance
+            end
+        }, 'HDistance')
+
+        Section:Slider({
+            Name = "HInterval",
+            Minimum = 0.1,
+            Maximum = 0.5,
+            Default = 0.2,
+            Callback = function(value)
+                -- Хранит значение для HitboxRollInterval
+            end
+        }, 'HInterval')
+
+        Section:Slider({
+            Name = "HReturn",
+            Minimum = 25,
+            Maximum = 75,
+            Default = 50,
+            Callback = function(value)
+                -- Хранит значение для HitboxReturnSpeed
+            end
+        }, 'HReturn')
+
+        Section:Slider({
+            Name = "FRotation",
+            Minimum = 5,
+            Maximum = 20,
+            Default = 10,
+            Callback = function(value)
+                FakeRotationSpeed = value
+            end
+        }, 'FRotation')
+
+        Section:Slider({
+            Name = "BDelay",
+            Minimum = 1,
+            Maximum = 5,
+            Default = 3,
+            Callback = function(value)
+                BacktrackDelay = value
+            end
+        }, 'BDelay')
+
+        Section:Slider({
+            Name = "UVelocity",
+            Minimum = -100,
+            Maximum = 0,
+            Default = -50,
+            Callback = function(value)
+                UndergroundVelocityY = value
+            end
+        }, 'UVelocity')
+
+        Section:Slider({
+            Name = "RNoise",
+            Minimum = 3,
+            Maximum = 10,
+            Default = 7,
+            Callback = function(value)
+                ResolverNoise = value
+            end
+        }, 'RNoise')
+
+        Section:Keybind({
+            Name = "Keybind",
+            Default = Keybind,
+            Callback = function(key)
+                Keybind = key
+                DesyncEnabled = not DesyncEnabled
+                notify("Desync", "Desync " .. (DesyncEnabled and "Enabled" or "Disabled") .. " via Keybind", true)
+            end
+        }, 'DesyncKeybind')
+    end
+}
