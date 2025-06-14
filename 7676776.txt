@@ -28,22 +28,15 @@ local ResolverNoise = 7
 local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
-local RandomVectorDelay = 0.1
 local RandomVectorAmplitude = 2
-local VelocitySpoofX = 0
-local VelocitySpoofY = 0
-local VelocitySpoofZ = 0
-local AssemblyLinearVelocitySpoofX = 0
-local AssemblyLinearVelocitySpoofY = 0
-local AssemblyLinearVelocitySpoofZ = 0
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
 
 -- Установка Fast Flags для усиления десинхронизации
-setfflag("FInt_MaxPhysicsStepsPerFrame", "100") -- Увеличение шагов физики
-setfflag("FInt_SimulationSyncInterval", "0.01") -- Ускорение синхронизации
-setfflag("FInt_MaxSimulationSteps", "500") -- Максимальное количество шагов симуляции
+setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
+setfflag("FInt_SimulationSyncInterval", "0.01")
+setfflag("FInt_MaxSimulationSteps", "500")
 
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
@@ -82,68 +75,47 @@ RunService.Heartbeat:Connect(function(deltaTime)
         DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
-        local desyncAssemblyVelocity = Vector3.new(
-            AssemblyLinearVelocitySpoofX,
-            AssemblyLinearVelocitySpoofY,
-            AssemblyLinearVelocitySpoofZ
-        )
+        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
 
         if DesyncMethod == "Underground" then
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
+            RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
             desyncAssemblyVelocity = Vector3.new(
                 DesyncTypes[2].X + RandomNumberRange(5),
                 UndergroundVelocityY,
                 DesyncTypes[2].Z + RandomNumberRange(5)
             )
-            RootPart.Velocity = Vector3.new(
-                VelocitySpoofX,
-                VelocitySpoofY,
-                VelocitySpoofZ
-            ) + desyncAssemblyVelocity * RandomVectorSpeed
+            RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "HitboxRoll" then
             if currentTime - LastHitboxRoll >= HitboxRollInterval then
+                -- Сильное изменение физики
                 desyncAssemblyVelocity = Vector3.new(
-                    RandomNumberRange(HitboxRollDistance),
-                    RandomNumberRange(HitboxRollDistance / 2),
-                    RandomNumberRange(HitboxRollDistance)
-                ) * 10
+                    RandomNumberRange(HitboxRollDistance * 10),
+                    RandomNumberRange(HitboxRollDistance * 5),
+                    RandomNumberRange(HitboxRollDistance * 10)
+                ) * 100 -- Усиленная скорость
                 SpoofThis = RootPart.CFrame + desyncAssemblyVelocity.Unit * HitboxRollDistance
+                RootPart.Velocity = Vector3.new(1000, 1000, 1000) + desyncAssemblyVelocity -- Спуф с усилением
                 LastHitboxRoll = currentTime
             else
+                -- Постепенное возвращение с синхронизацией сервера
                 local distanceToReturn = (DesyncTypes[1].Position - SpoofThis.Position).Magnitude
                 if distanceToReturn > 1 then
                     local returnVector = (DesyncTypes[1].Position - SpoofThis.Position).Unit * math.min(HitboxReturnSpeed * deltaTime, distanceToReturn)
                     SpoofThis = SpoofThis + returnVector
+                    desyncAssemblyVelocity = desyncAssemblyVelocity:Lerp(Vector3.new(0, 0, 0), deltaTime * 5) -- Сглаженное возвращение
+                    RootPart.Velocity = Vector3.new(1000, 1000, 1000):Lerp(DesyncTypes[2], deltaTime * 5) -- Сглаженное возвращение Velocity
+                end
+                -- Синхронизация с сервером для изменения позиции
+                if distanceToReturn < 0.1 then
+                    RootPart.CFrame = DesyncTypes[1]
+                    RootPart.Velocity = DesyncTypes[2]
                 end
             end
-        elseif DesyncMethod == "TeleportDesync" then
-            local teleportOffset = Vector3.new(
-                RandomNumberRange(1000),
-                RandomNumberRange(500),
-                RandomNumberRange(1000)
-            )
-            SpoofThis = RootPart.CFrame + teleportOffset
-            desyncAssemblyVelocity = Vector3.new(
-                AssemblyLinearVelocitySpoofX + RandomNumberRange(500),
-                AssemblyLinearVelocitySpoofY + RandomNumberRange(250),
-                AssemblyLinearVelocitySpoofZ + RandomNumberRange(500)
-            )
-        elseif DesyncMethod == "ChaosDesync" then
-            local chaosOffset = Vector3.new(
-                RandomNumberRange(2000),
-                RandomNumberRange(1000),
-                RandomNumberRange(2000)
-            )
-            SpoofThis = RootPart.CFrame + chaosOffset
-            desyncAssemblyVelocity = Vector3.new(
-                AssemblyLinearVelocitySpoofX + RandomNumberRange(1000),
-                AssemblyLinearVelocitySpoofY + RandomNumberRange(500),
-                AssemblyLinearVelocitySpoofZ + RandomNumberRange(1000)
-            )
         end
 
-        if RandomVectorEnabled and currentTime % RandomVectorDelay < deltaTime and DesyncMethod ~= "UndergroundV2" then
+        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
             local randomOffset = Vector3.new(
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
@@ -258,7 +230,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "UndergroundV2", "HitboxRoll", "TeleportDesync", "ChaosDesync"},
+            Options = {"Underground", "UndergroundV2", "HitboxRoll"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -277,7 +249,7 @@ return {
             Name = "HitboxRollDistance",
             Default = HitboxRollDistance,
             Minimum = 2,
-            Maximum = 10,
+            Maximum = 350,
             Precision = 0,
             Callback = function(value)
                 HitboxRollDistance = value
@@ -307,7 +279,7 @@ return {
         }, 'HitboxReturnSpeed')
 
         Section:Slider({
-            Name = "UVelocityY",
+            Name = "UndergroundY",
             Default = UndergroundVelocityY,
             Minimum = -500,
             Maximum = 500,
@@ -353,23 +325,12 @@ return {
             Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
             Minimum = 5,
-            Maximum = 10000000,
+            Maximum = 100000000000,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
             end
         }, 'RandomVectorSpeed')
-
-        Section:Slider({
-            Name = "RandomVectorDelay",
-            Default = RandomVectorDelay,
-            Minimum = 0.01,
-            Maximum = 1,
-            Precision = 2,
-            Callback = function(value)
-                RandomVectorDelay = value
-            end
-        }, 'RandomVectorDelay')
 
         Section:Slider({
             Name = "RandomVectorAmplitude",
@@ -381,74 +342,6 @@ return {
                 RandomVectorAmplitude = value
             end
         }, 'RandomVectorAmplitude')
-
-        Section:Header({ Name = 'Velocity Spoofing' })
-
-        Section:Slider({
-            Name = "VelocitySpoofX",
-            Default = VelocitySpoofX,
-            Minimum = -1000,
-            Maximum = 1000,
-            Precision = 0,
-            Callback = function(value)
-                VelocitySpoofX = value
-            end
-        }, 'VelocitySpoofX')
-
-        Section:Slider({
-            Name = "VelocitySpoofY",
-            Default = VelocitySpoofY,
-            Minimum = -1000,
-            Maximum = 1000,
-            Precision = 0,
-            Callback = function(value)
-                VelocitySpoofY = value
-            end
-        }, 'VelocitySpoofY')
-
-        Section:Slider({
-            Name = "VelocitySpoofZ",
-            Default = VelocitySpoofZ,
-            Minimum = -1000,
-            Maximum = 1000,
-            Precision = 0,
-            Callback = function(value)
-                VelocitySpoofZ = value
-            end
-        }, 'VelocitySpoofZ')
-
-        Section:Slider({
-            Name = "AssemblyLinearVelocitySpoofX",
-            Default = AssemblyLinearVelocitySpoofX,
-            Minimum = -1000,
-            Maximum = 1000,
-            Precision = 0,
-            Callback = function(value)
-                AssemblyLinearVelocitySpoofX = value
-            end
-        }, 'AssemblyLinearVelocitySpoofX')
-
-        Section:Slider({
-            Name = "AssemblyLinearVelocitySpoofY",
-            Default = AssemblyLinearVelocitySpoofY,
-            Minimum = -1000,
-            Maximum = 1000,
-            Precision = 0,
-            Callback = function(value)
-                AssemblyLinearVelocitySpoofY = value
-            end
-        }, 'AssemblyLinearVelocitySpoofY')
-
-        Section:Slider({
-            Name = "AssemblyLinearVelocitySpoofZ",
-            Default = AssemblyLinearVelocitySpoofZ,
-            Minimum = -1000,
-            Maximum = 1000,
-            Precision = 0,
-            Callback = function(value)
-                AssemblyLinearVelocitySpoofZ = value
-            end
-        }, 'AssemblyLinearVelocitySpoofZ')
 
         Section:Keybind({
             Name = "Keybind",
