@@ -21,6 +21,7 @@ local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
+local UndergroundVelocityZ = -50 -- Новое значение для UndergroundV2
 local HitboxRollDistance = 300
 local HitboxRollInterval = 0.0012
 local HitboxReturnSpeed = 25
@@ -81,12 +82,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
-            desyncAssemblyVelocity = Vector3.new(
-                DesyncTypes[2].X + RandomNumberRange(5),
-                UndergroundVelocityY,
-                DesyncTypes[2].Z + RandomNumberRange(5)
-            )
-            RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
+            -- Прямое изменение Velocity.Z с возвращением
+            local targetVelocityZ = UndergroundVelocityZ
+            RootPart.Velocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, targetVelocityZ)
+            if math.abs(RootPart.Velocity.Z - DesyncTypes[2].Z) > 0.1 then
+                RootPart.Velocity = Vector3.new(
+                    RootPart.Velocity.X,
+                    RootPart.Velocity.Y,
+                    DesyncTypes[2].Z + (targetVelocityZ - DesyncTypes[2].Z) * (1 - deltaTime * 2) -- Сглаженное возвращение
+                )
+            end
         elseif DesyncMethod == "HitboxRoll" then
             if currentTime - LastHitboxRoll >= HitboxRollInterval then
                 desyncAssemblyVelocity = Vector3.new(
@@ -202,7 +207,7 @@ if LocalPlayer.Character then
         Humanoid.AutoRotate = true
         setsimulationradius(SimulationRadius)
     end
-end
+end)
 
 return {
     Init = function(UI, CoreProxy, notify)
@@ -287,6 +292,17 @@ return {
         }, 'UndergroundVelocityY')
 
         Section:Slider({
+            Name = "UndergroundZ",
+            Default = UndergroundVelocityZ,
+            Minimum = -500,
+            Maximum = 500,
+            Precision = 0,
+            Callback = function(value)
+                UndergroundVelocityZ = value
+            end
+        }, 'UndergroundVelocityZ')
+
+        Section:Slider({
             Name = "ResolverNoise",
             Default = ResolverNoise,
             Minimum = 3,
@@ -321,8 +337,8 @@ return {
         Section:Slider({
             Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
-            Minimum = 1,
-            Maximum = 100,
+            Minimum = 5,
+            Maximum = 100000000000,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
