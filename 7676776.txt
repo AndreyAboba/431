@@ -194,7 +194,7 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
         Humanoid = Character:FindFirstChild("Humanoid")
         wait(0.1)
     until RootPart and Humanoid
-    Humanoid.AutoRotate = false
+    Humanoid.AutoRotate = true
     PositionHistory = {}
     LastServerUpdate = 0
     LastHitboxRoll = 0
@@ -205,10 +205,10 @@ if LocalPlayer.Character then
     local RootPart = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local Humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
     if RootPart and Humanoid then
-        Humanoid.AutoRotate = false
+        Humanoid.AutoRotate = true
         setsimulationradius(SimulationRadius)
     end
-end)
+end
 
 return {
     Init = function(UI, CoreProxy, notify)
