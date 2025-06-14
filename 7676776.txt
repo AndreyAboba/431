@@ -258,7 +258,7 @@ if LocalPlayer.Character then
         Humanoid.AutoRotate = true
         setsimulationradius(SimulationRadius)
     end
-end)
+end
 
 return {
     Init = function(UI, CoreProxy, notify)
@@ -301,8 +301,8 @@ return {
         Section:Slider({
             Name = "HitboxRollDistance",
             Default = HitboxRollDistance,
-            Minimum = 50,
-            Maximum = 350,
+            Minimum = 5,
+            Maximum = 10,
             Precision = 0,
             Callback = function(value)
                 HitboxRollDistance = value
@@ -313,7 +313,7 @@ return {
             Name = "HitboxRollInterval",
             Default = HitboxRollInterval,
             Minimum = 0.001,
-            Maximum = 0.3,
+            Maximum = 0.4,
             Precision = 4,
             Callback = function(value)
                 HitboxRollInterval = value
@@ -334,7 +334,7 @@ return {
         Section:Slider({
             Name = "BacktrackDelay",
             Default = BacktrackDelay,
-            Minimum = 0.5,
+            Minimum = 0.2,
             Maximum = 10,
             Precision = 2,
             Callback = function(value)
@@ -365,7 +365,7 @@ return {
         }, 'ResolverNoise')
 
         Section:Slider({
-            Name = "SpinDesyncSpeed",
+            Name = "SpinSpeed",
             Default = SpinDesyncSpeed,
             Minimum = 50,
             Maximum = 500,
