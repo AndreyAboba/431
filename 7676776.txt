@@ -242,8 +242,8 @@ return {
         Section:Slider({
             Name = "HitboxRollDistance",
             Default = HitboxRollDistance,
-            Minimum = 100,
-            Maximum = 5000,
+            Minimum = 50,
+            Maximum = 350,
             Precision = 0,
             Callback = function(value)
                 HitboxRollDistance = value
@@ -254,7 +254,7 @@ return {
             Name = "HitboxRollInterval",
             Default = HitboxRollInterval,
             Minimum = 0.001,
-            Maximum = 0.2,
+            Maximum = 0.3,
             Precision = 4,
             Callback = function(value)
                 HitboxRollInterval = value
@@ -265,7 +265,7 @@ return {
             Name = "HitboxReturnSpeed",
             Default = HitboxReturnSpeed,
             Minimum = 10,
-            Maximum = 5000,
+            Maximum = 150,
             Precision = 0,
             Callback = function(value)
                 HitboxReturnSpeed = value
