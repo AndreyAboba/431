@@ -1,6 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox с исправленным UndergroundV2]
--- [Автор: Grok в режиме тестирования]
--- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
+print('1')
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -25,10 +23,6 @@ local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
 local ResolverNoise = 7
-local RandomVectorEnabled = false
-local RandomVectorDistance = 5
-local RandomVectorSpeed = 10
-local RandomVectorAmplitude = 2
 local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
 
 local DesyncTypes = {CFrame = CFrame.new(), Velocity = Vector3.new()}
@@ -41,10 +35,6 @@ setfflag("FInt_MaxSimulationSteps", "500")
 
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
-
-local function RandomNumberRange(a)
-    return math.random(-a * 100, a * 100) / 100
-end
 
 local function InterpolateCFrame(cframe1, cframe2, t)
     local pos1 = cframe1.Position
@@ -62,16 +52,10 @@ local function ApplyUndergroundV2()
         local hrp = char.HumanoidRootPart
         local originalVelocity = hrp.Velocity
 
-        -- Применяем падение вниз
-        hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityY, originalVelocity.Z)
-        if RandomVectorEnabled then
-            local randomOffset = Vector3.new(
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-            ) * RandomVectorSpeed
-            hrp.Velocity = hrp.Velocity + randomOffset
-        end
+        -- Применяем падение вниз, сохраняя движение
+        local moveDirection = char.Humanoid.MoveDirection
+        local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16) -- Сохраняем ходьбу
+        hrp.Velocity = baseVelocity
         task.wait(0.006) -- Короткий интервал
 
         -- Возвращаем оригинальную скорость
@@ -100,16 +84,6 @@ RunService.Heartbeat:Connect(function(deltaTime)
         elseif DesyncMethod == "SpinAA" then
             local spinAngle = SpinAASpeed * currentTime
             SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
-        end
-
-        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
-            local randomOffset = Vector3.new(
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-            )
-            SpoofThis = SpoofThis + randomOffset
-            desyncVelocity = desyncVelocity + randomOffset * RandomVectorSpeed
         end
 
         if AntiResolverEnabled then
@@ -263,49 +237,6 @@ return {
                 ResolverNoise = value
             end
         }, 'ResolverNoise')
-
-        Section:Header({ Name = 'RandomVector' })
-
-        Section:Toggle({
-            Name = "Enabled",
-            Default = RandomVectorEnabled,
-            Callback = function(value)
-                RandomVectorEnabled = value
-            end
-        }, 'RandomVectorEnabled')
-
-        Section:Slider({
-            Name = "Distance",
-            Default = RandomVectorDistance,
-            Minimum = 1,
-            Maximum = 5,
-            Precision = 1,
-            Callback = function(value)
-                RandomVectorDistance = value
-            end
-        }, 'RandomVectorDistance')
-
-        Section:Slider({
-            Name = "Speed",
-            Default = RandomVectorSpeed,
-            Minimum = 1,
-            Maximum = 10,
-            Precision = 0,
-            Callback = function(value)
-                RandomVectorSpeed = value
-            end
-        }, 'RandomVectorSpeed')
-
-        Section:Slider({
-            Name = "Amplitude",
-            Default = RandomVectorAmplitude,
-            Minimum = 1,
-            Maximum = 10,
-            Precision = 1,
-            Callback = function(value)
-                RandomVectorAmplitude = value
-            end
-        }, 'RandomVectorAmplitude')
 
         Section:Keybind({
             Name = "Keybind",
