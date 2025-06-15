@@ -1,7 +1,7 @@
--- [Скрипт для Underground Anti-Aim в Roblox с переписанным UndergroundV2]
+-- [Скрипт для Underground Anti-Aim в Roblox с исправленным UndergroundV2]
 -- [Автор: Grok в режиме тестирования]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-print('2')
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -31,7 +31,7 @@ local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
 
-local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
+local DesyncTypes = {CFrame = CFrame.new(), Velocity = Vector3.new()}
 local PositionHistory = {}
 
 -- Установка Fast Flags для усиления десинхронизации
@@ -41,13 +41,6 @@ setfflag("FInt_MaxSimulationSteps", "500")
 
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
-
--- Toggles
-Mouse.KeyDown:Connect(function(key)
-    if key == string.lower("b") then
-        PastedSources = not PastedSources
-    end
-end)
 
 local function RandomNumberRange(a)
     return math.random(-a * 100, a * 100) / 100
@@ -73,40 +66,33 @@ RunService.Heartbeat:Connect(function(deltaTime)
         table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
 
         DesyncTypes[1] = RootPart.CFrame
-        DesyncTypes[2] = RootPart.Velocity or Vector3.new() -- Используем Velocity вместо AssemblyLinearVelocity
+        DesyncTypes[2] = RootPart.Velocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
         local desyncVelocity = Vector3.new(0, 0, 0)
 
         if DesyncMethod == "UndergroundV2" then
-            -- Сохранение оригинальной скорости
-            local realVelocity = RootPart.Velocity
-            local undergroundVelocity = Vector3.new(realVelocity.X, UndergroundVelocityY, realVelocity.Z)
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                local originalVelocity = hrp.Velocity
 
-            -- Применяем падение вниз
-            RootPart.Velocity = undergroundVelocity
+                -- Применяем падение вниз
+                hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityY, originalVelocity.Z)
+                if RandomVectorEnabled then
+                    local randomOffset = Vector3.new(
+                        RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                        RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
+                        RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+                    ) * RandomVectorSpeed
+                    hrp.Velocity = hrp.Velocity + randomOffset
+                end
+                task.wait(0.006) -- Короткий интервал
 
-            -- Добавляем RandomVector, если включен
-            if RandomVectorEnabled then
-                local randomOffset = Vector3.new(
-                    RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                    RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                    RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-                )
-                RootPart.Velocity = RootPart.Velocity + randomOffset * RandomVectorSpeed
+                -- Возвращаем оригинальную скорость
+                hrp.Velocity = originalVelocity
             end
-
-            -- Плавное возвращение через интерполяцию
-            task.wait(0.006)
-            local t = 0
-            while t < 1 do
-                t = t + deltaTime * 5 -- Скорость возвращения
-                RootPart.Velocity = realVelocity:Lerp(undergroundVelocity, 1 - t)
-                RunService.RenderStepped:Wait()
-            end
-            RootPart.Velocity = realVelocity
         elseif DesyncMethod == "SpinAA" then
-            -- Вращение вокруг оси Y
             local spinAngle = SpinAASpeed * currentTime
             SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
         end
