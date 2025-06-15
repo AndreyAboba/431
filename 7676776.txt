@@ -30,7 +30,8 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
-local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
+local HitboxRollAngle = 0
+local VisualizationEnabled = true
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -92,9 +93,10 @@ RunService.Heartbeat:Connect(function(deltaTime)
         elseif DesyncMethod == "UndergroundV2" then
             local realVelocity = RootPart.Velocity
             RootPart.Velocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
-        elseif DesyncMethod == "SpinAA" then
-            local spinAngle = SpinAASpeed * currentTime
-            SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
+        elseif DesyncMethod == "HitboxRoll" then
+            HitboxRollAngle = HitboxRollAngle + 45 -- Резкое изменение угла для косого смещения
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(5, 0, 0)
+            SpoofThis = SpoofThis + rollOffset
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -116,7 +118,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         end
 
         -- Визуализация серверного положения
-        if RootPart and DesyncTypes[1] then
+        if VisualizationEnabled and RootPart and DesyncTypes[1] then
             local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
             ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
             ServerVisualization.Visible = true
@@ -227,7 +229,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "UndergroundV2", "SpinAA"},
+            Options = {"Underground", "UndergroundV2", "HitboxRoll"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -254,17 +256,6 @@ return {
         }, 'UndergroundZ')
 
         Section:Slider({
-            Name = "SpinAASpeed",
-            Default = SpinAASpeed,
-            Minimum = 1,
-            Maximum = 20,
-            Precision = 1,
-            Callback = function(value)
-                SpinAASpeed = value
-            end
-        }, 'SpinAASpeed')
-
-        Section:Slider({
             Name = "ResolverNoise",
             Default = ResolverNoise,
             Minimum = 3,
@@ -274,6 +265,14 @@ return {
                 ResolverNoise = value
             end
         }, 'ResolverNoise')
+
+        Section:Toggle({
+            Name = "Visualization",
+            Default = VisualizationEnabled,
+            Callback = function(value)
+                VisualizationEnabled = value
+            end
+        }, 'VisualizationEnabled')
 
         Section:Header({ Name = 'RandomVector' })
 
@@ -289,7 +288,7 @@ return {
             Name = "RandomVectorDistance",
             Default = RandomVectorDistance,
             Minimum = 1,
-            Maximum = 4,
+            Maximum = 20,
             Precision = 1,
             Callback = function(value)
                 RandomVectorDistance = value
@@ -300,7 +299,7 @@ return {
             Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
             Minimum = 5,
-            Maximum = 10,
+            Maximum = 100000000000,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
@@ -311,7 +310,7 @@ return {
             Name = "RandomVectorAmplitude",
             Default = RandomVectorAmplitude,
             Minimum = 1,
-            Maximum = 4,
+            Maximum = 10,
             Precision = 1,
             Callback = function(value)
                 RandomVectorAmplitude = value
