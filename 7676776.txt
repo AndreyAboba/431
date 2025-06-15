@@ -56,6 +56,29 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
+local function ApplyUndergroundV2()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        local originalVelocity = hrp.Velocity
+
+        -- Применяем падение вниз
+        hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityY, originalVelocity.Z)
+        if RandomVectorEnabled then
+            local randomOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+            ) * RandomVectorSpeed
+            hrp.Velocity = hrp.Velocity + randomOffset
+        end
+        task.wait(0.006) -- Короткий интервал
+
+        -- Возвращаем оригинальную скорость
+        hrp.Velocity = originalVelocity
+    end
+end
+
 RunService.Heartbeat:Connect(function(deltaTime)
     if PastedSources then
         local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -72,26 +95,8 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local desyncVelocity = Vector3.new(0, 0, 0)
 
         if DesyncMethod == "UndergroundV2" then
-            local char = LocalPlayer.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                local hrp = char.HumanoidRootPart
-                local originalVelocity = hrp.Velocity
-
-                -- Применяем падение вниз
-                hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityY, originalVelocity.Z)
-                if RandomVectorEnabled then
-                    local randomOffset = Vector3.new(
-                        RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                        RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                        RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-                    ) * RandomVectorSpeed
-                    hrp.Velocity = hrp.Velocity + randomOffset
-                end
-                task.wait(0.006) -- Короткий интервал
-
-                -- Возвращаем оригинальную скорость
-                hrp.Velocity = originalVelocity
-            end
+            ApplyUndergroundV2()
+            task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
         elseif DesyncMethod == "SpinAA" then
             local spinAngle = SpinAASpeed * currentTime
             SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
