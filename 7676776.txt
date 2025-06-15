@@ -1,4 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox с интеграцией]
+-- [Скрипт для Underground Anti-Aim в Roblox с переписанным UndergroundV2]
 -- [Автор: Grok в режиме тестирования]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -19,7 +19,6 @@ local PastedSources = false
 local DesyncMethod = "UndergroundV2"
 local Keybind = nil
 local LastServerUpdate = 0
-local LastUndergroundV2 = 0
 local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
@@ -74,15 +73,38 @@ RunService.Heartbeat:Connect(function(deltaTime)
         table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
 
         DesyncTypes[1] = RootPart.CFrame
-        DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
+        DesyncTypes[2] = RootPart.Velocity or Vector3.new() -- Используем Velocity вместо AssemblyLinearVelocity
 
         local SpoofThis = RootPart.CFrame
-        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
+        local desyncVelocity = Vector3.new(0, 0, 0)
 
         if DesyncMethod == "UndergroundV2" then
-            -- Постоянное обновление Velocity с реальным значением и отрицательным Y
+            -- Сохранение оригинальной скорости
             local realVelocity = RootPart.Velocity
-            RootPart.Velocity = Vector3.new(realVelocity.X, UndergroundVelocityY, realVelocity.Z)
+            local undergroundVelocity = Vector3.new(realVelocity.X, UndergroundVelocityY, realVelocity.Z)
+
+            -- Применяем падение вниз
+            RootPart.Velocity = undergroundVelocity
+
+            -- Добавляем RandomVector, если включен
+            if RandomVectorEnabled then
+                local randomOffset = Vector3.new(
+                    RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                    RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
+                    RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+                )
+                RootPart.Velocity = RootPart.Velocity + randomOffset * RandomVectorSpeed
+            end
+
+            -- Плавное возвращение через интерполяцию
+            task.wait(0.006)
+            local t = 0
+            while t < 1 do
+                t = t + deltaTime * 5 -- Скорость возвращения
+                RootPart.Velocity = realVelocity:Lerp(undergroundVelocity, 1 - t)
+                RunService.RenderStepped:Wait()
+            end
+            RootPart.Velocity = realVelocity
         elseif DesyncMethod == "SpinAA" then
             -- Вращение вокруг оси Y
             local spinAngle = SpinAASpeed * currentTime
@@ -96,11 +118,11 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
             )
             SpoofThis = SpoofThis + randomOffset
-            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
+            desyncVelocity = desyncVelocity + randomOffset * RandomVectorSpeed
         end
 
         if AntiResolverEnabled then
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
+            desyncVelocity = desyncVelocity + Vector3.new(
                 RandomNumberRange(ResolverNoise),
                 RandomNumberRange(ResolverNoise / 2),
                 RandomNumberRange(ResolverNoise)
@@ -111,25 +133,25 @@ RunService.Heartbeat:Connect(function(deltaTime)
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 RootPart.CFrame = SpoofThis
-                if desyncAssemblyVelocity then
-                    RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
+                if desyncVelocity then
+                    RootPart.Velocity = desyncVelocity
                 end
             end
         elseif ServerSync == "v1" then
             RootPart.CFrame = SpoofThis
-            if desyncAssemblyVelocity then
-                RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
+            if desyncVelocity then
+                RootPart.Velocity = desyncVelocity
             end
             if tick() - LastServerUpdate >= ServerUpdateInterval then
                 RootPart.CFrame = DesyncTypes[1]
-                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+                RootPart.Velocity = DesyncTypes[2] or Vector3.new()
                 LastServerUpdate = tick()
             end
         end
 
         RunService.RenderStepped:Wait()
         RootPart.CFrame = DesyncTypes[1]
-        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+        RootPart.Velocity = DesyncTypes[2] or Vector3.new()
     end
 end)
 
@@ -168,7 +190,6 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     Humanoid.AutoRotate = true
     PositionHistory = {}
     LastServerUpdate = 0
-    LastUndergroundV2 = 0
     setsimulationradius(SimulationRadius)
 end)
 
