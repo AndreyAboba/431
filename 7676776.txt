@@ -1,3 +1,7 @@
+-- [Скрипт для Underground Anti-Aim в Roblox с интеграцией]
+-- [Автор: Grok в режиме тестирования]
+-- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -12,7 +16,7 @@ local setfflag = setfflag -- Предполагается, что доступн
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local PastedSources = false
-local DesyncMethod = "Underground"
+local DesyncMethod = "UndergroundV2"
 local Keybind = nil
 local LastServerUpdate = 0
 local LastUndergroundV2 = 0
@@ -21,7 +25,6 @@ local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
-local UndergroundVelocityZ = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
 local RandomVectorDistance = 5
@@ -76,13 +79,10 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local SpoofThis = RootPart.CFrame
         local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
 
-        if DesyncMethod == "Underground" then
-            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
-            RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
-        elseif DesyncMethod == "UndergroundV2" then
-            -- Постоянное обновление Velocity с реальным значением и отрицательным Z
+        if DesyncMethod == "UndergroundV2" then
+            -- Постоянное обновление Velocity с реальным значением и отрицательным Y
             local realVelocity = RootPart.Velocity
-            RootPart.Velocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+            RootPart.Velocity = Vector3.new(realVelocity.X, UndergroundVelocityY, realVelocity.Z)
         elseif DesyncMethod == "SpinAA" then
             -- Вращение вокруг оси Y
             local spinAngle = SpinAASpeed * currentTime
@@ -204,7 +204,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "UndergroundV2", "SpinAA"},
+            Options = {"UndergroundV2", "SpinAA"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -231,17 +231,6 @@ return {
         }, 'UndergroundVelocityY')
 
         Section:Slider({
-            Name = "UndergroundZ",
-            Default = UndergroundVelocityZ,
-            Minimum = -500,
-            Maximum = 500,
-            Precision = 0,
-            Callback = function(value)
-                UndergroundVelocityZ = value
-            end
-        }, 'UndergroundVelocityZ')
-
-        Section:Slider({
             Name = "SpinAASpeed",
             Default = SpinAASpeed,
             Minimum = 1,
@@ -266,7 +255,7 @@ return {
         Section:Header({ Name = 'RandomVector' })
 
         Section:Toggle({
-            Name = "RandomVector",
+            Name = "Enabled",
             Default = RandomVectorEnabled,
             Callback = function(value)
                 RandomVectorEnabled = value
@@ -274,10 +263,10 @@ return {
         }, 'RandomVectorEnabled')
 
         Section:Slider({
-            Name = "RandomVectorDistance",
+            Name = "Distance",
             Default = RandomVectorDistance,
             Minimum = 1,
-            Maximum = 20,
+            Maximum = 5,
             Precision = 1,
             Callback = function(value)
                 RandomVectorDistance = value
@@ -285,10 +274,10 @@ return {
         }, 'RandomVectorDistance')
 
         Section:Slider({
-            Name = "RandomVectorSpeed",
+            Name = "Speed",
             Default = RandomVectorSpeed,
-            Minimum = 5,
-            Maximum = 100000000000,
+            Minimum = 1,
+            Maximum = 10,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
@@ -296,7 +285,7 @@ return {
         }, 'RandomVectorSpeed')
 
         Section:Slider({
-            Name = "RandomVectorAmplitude",
+            Name = "Amplitude",
             Default = RandomVectorAmplitude,
             Minimum = 1,
             Maximum = 10,
