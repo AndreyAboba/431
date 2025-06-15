@@ -1,4 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox с RollHitbox]
+-- [Скрипт для Underground Anti-Aim в Roblox с исправлениями]
 -- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -32,7 +32,7 @@ local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
-local RollHitboxAngle = 0
+local IncreaseVeloMultiplier = 2.75 -- Умножитель скорости для IncreaseVelo
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -85,17 +85,26 @@ RunService.Heartbeat:Connect(function(deltaTime)
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
-            -- Постоянное обновление Velocity с реальным значением и отрицательным Z
             local realVelocity = RootPart.Velocity
-            RootPart.Velocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+            local moveDirection = Humanoid.MoveDirection
+            local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16)
+            RootPart.Velocity = baseVelocity
+            task.wait(0.006)
+            RootPart.Velocity = realVelocity
         elseif DesyncMethod == "SpinAA" then
-            -- Вращение вокруг оси Y
             local spinAngle = SpinAASpeed * currentTime
             SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
-        elseif DesyncMethod == "RollHitbox" then
-            RollHitboxAngle = RollHitboxAngle + 1 -- Постепенное увеличение угла
-            local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0) -- Качание влево-вправо
-            SpoofThis = SpoofThis + rollOffset
+        elseif DesyncMethod == "IncreaseVelo" then
+            local realVelocity = RootPart.Velocity
+            local moveDirection = Humanoid.MoveDirection
+            local increasedVelocity = Vector3.new(
+                moveDirection.X * 16 * IncreaseVeloMultiplier,
+                realVelocity.Y,
+                moveDirection.Z * 16 * IncreaseVeloMultiplier
+            )
+            RootPart.Velocity = increasedVelocity
+            task.wait(0.006)
+            RootPart.Velocity = realVelocity
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -150,11 +159,6 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 local callingScript = getcallingscript()
                 if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                     if self == LocalPlayer.Character.HumanoidRootPart then
-                        if DesyncMethod == "RollHitbox" then
-                            RollHitboxAngle = RollHitboxAngle + 1
-                            local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0)
-                            return DesyncTypes[1] + rollOffset or CFrame.new()
-                        end
                         return DesyncTypes[1] or CFrame.new()
                     elseif self == LocalPlayer.Character.Head then
                         return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -162,11 +166,6 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 end
             elseif ServerSync == "v1" then
                 if self == LocalPlayer.Character.HumanoidRootPart then
-                    if DesyncMethod == "RollHitbox" then
-                        RollHitboxAngle = RollHitboxAngle + 1
-                        local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0)
-                        return DesyncTypes[1] + rollOffset or CFrame.new()
-                    end
                     return DesyncTypes[1] or CFrame.new()
                 elseif self == LocalPlayer.Character.Head then
                     return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -223,7 +222,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"Underground", "UndergroundV2", "SpinAA", "RollHitbox"},
+            Options = {"Underground", "UndergroundV2", "SpinAA", "IncreaseVelo"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -270,6 +269,17 @@ return {
                 SpinAASpeed = value
             end
         }, 'SpinAASpeed')
+
+        Section:Slider({
+            Name = "IncreaseVeloMultiplier",
+            Default = IncreaseVeloMultiplier,
+            Minimum = 1,
+            Maximum = 5,
+            Precision = 2,
+            Callback = function(value)
+                IncreaseVeloMultiplier = value
+            end
+        }, 'IncreaseVeloMultiplier')
 
         Section:Slider({
             Name = "ResolverNoise",
