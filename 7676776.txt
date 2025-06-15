@@ -1,7 +1,7 @@
 -- [Скрипт для Underground Anti-Aim в Roblox с RollHitbox]
--- [Автор: Grok в режиме тестирования]
+-- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-print('1')
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -16,24 +16,25 @@ local setfflag = setfflag -- Предполагается, что доступн
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local PastedSources = false
-local DesyncMethod = "UndergroundV2"
+local DesyncMethod = "Underground"
 local Keybind = nil
 local LastServerUpdate = 0
+local LastUndergroundV2 = 0
 local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
-local IncreaseVeloMultiplier = 2.75 -- Умножитель скорости (20 → 55)
+local UndergroundVelocityZ = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
+local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
 local RollHitboxAngle = 0
-local VisualizationEnabled = false
 
-local DesyncTypes = {CFrame = CFrame.new(), Velocity = Vector3.new()}
+local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
 
 -- Установка Fast Flags для усиления десинхронизации
@@ -43,6 +44,13 @@ setfflag("FInt_MaxSimulationSteps", "500")
 
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
+
+-- Toggles
+Mouse.KeyDown:Connect(function(key)
+    if key == string.lower("b") then
+        PastedSources = not PastedSources
+    end
+end)
 
 local function RandomNumberRange(a)
     return math.random(-a * 100, a * 100) / 100
@@ -58,62 +66,6 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
--- Индикатор визуализации
-local Visualization = Drawing.new("Square")
-Visualization.Visible = false
-Visualization.Size = Vector2.new(10, 10)
-Visualization.Color = Color3.new(1, 0, 0)
-Visualization.Thickness = 2
-
-local function ApplyUndergroundV2()
-    local char = LocalPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        local hrp = char.HumanoidRootPart
-        local originalVelocity = hrp.Velocity
-
-        -- Применяем падение вниз, сохраняя движение
-        local moveDirection = char.Humanoid.MoveDirection
-        local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16)
-        hrp.Velocity = baseVelocity
-        task.wait(0.006) -- Короткий интервал
-
-        -- Возвращаем оригинальную скорость
-        hrp.Velocity = originalVelocity
-    end
-end
-
-local function ApplyIncreaseVelo()
-    local char = LocalPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        local hrp = char.HumanoidRootPart
-        local originalVelocity = hrp.Velocity
-        local moveDirection = char.Humanoid.MoveDirection
-
-        -- Увеличиваем горизонтальную скорость
-        local increasedVelocity = Vector3.new(
-            originalVelocity.X * IncreaseVeloMultiplier,
-            originalVelocity.Y,
-            originalVelocity.Z * IncreaseVeloMultiplier
-        )
-        hrp.Velocity = increasedVelocity
-        task.wait(0.006) -- Короткий интервал
-
-        -- Возвращаем оригинальную скорость
-        hrp.Velocity = originalVelocity
-    end
-end
-
-local function ApplyRollHitbox()
-    local char = LocalPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        local hrp = char.HumanoidRootPart
-        RollHitboxAngle = RollHitboxAngle + 1 -- Постепенное увеличение угла
-        local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0) -- Качание влево-вправо
-        hrp.CFrame = hrp.CFrame + rollOffset
-        task.wait(0.01) -- Короткий интервал
-    end
-end
-
 RunService.Heartbeat:Connect(function(deltaTime)
     if PastedSources then
         local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -124,71 +76,69 @@ RunService.Heartbeat:Connect(function(deltaTime)
         table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
 
         DesyncTypes[1] = RootPart.CFrame
-        DesyncTypes[2] = RootPart.Velocity or Vector3.new()
+        DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
-        local desyncVelocity = Vector3.new(0, 0, 0)
+        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
 
-        if DesyncMethod == "UndergroundV2" then
-            ApplyUndergroundV2()
-            task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
-        elseif DesyncMethod == "IncreaseVelo" then
-            ApplyIncreaseVelo()
-            task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
+        if DesyncMethod == "Underground" then
+            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
+            RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
+        elseif DesyncMethod == "UndergroundV2" then
+            -- Постоянное обновление Velocity с реальным значением и отрицательным Z
+            local realVelocity = RootPart.Velocity
+            RootPart.Velocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+        elseif DesyncMethod == "SpinAA" then
+            -- Вращение вокруг оси Y
+            local spinAngle = SpinAASpeed * currentTime
+            SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
         elseif DesyncMethod == "RollHitbox" then
-            ApplyRollHitbox()
+            RollHitboxAngle = RollHitboxAngle + 1 -- Постепенное увеличение угла
+            local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0) -- Качание влево-вправо
+            SpoofThis = SpoofThis + rollOffset
         end
 
-        -- Отдельная работа RandomVector
-        if RandomVectorEnabled then
+        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
             local randomOffset = Vector3.new(
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                0, -- Не трогаем Y, чтобы не ломать ходьбу
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-            ) * RandomVectorSpeed
+            )
             SpoofThis = SpoofThis + randomOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
         end
 
         if AntiResolverEnabled then
-            desyncVelocity = desyncVelocity + Vector3.new(
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
                 RandomNumberRange(ResolverNoise),
                 RandomNumberRange(ResolverNoise / 2),
                 RandomNumberRange(ResolverNoise)
             )
         end
 
-        -- Визуализация позиции
-        if VisualizationEnabled and RootPart then
-            Visualization.Visible = true
-            local screenPos = workspace.CurrentCamera:WorldToViewportPoint(RootPart.Position)
-            Visualization.Position = Vector2.new(screenPos.X, screenPos.Y)
-        else
-            Visualization.Visible = false
-        end
-
         if ServerSync == "proxy" then
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 RootPart.CFrame = SpoofThis
-                if desyncVelocity then
-                    RootPart.Velocity = desyncVelocity
+                if desyncAssemblyVelocity then
+                    RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
                 end
             end
         elseif ServerSync == "v1" then
             RootPart.CFrame = SpoofThis
-            if desyncVelocity then
-                RootPart.Velocity = desyncVelocity
+            if desyncAssemblyVelocity then
+                RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
             end
             if tick() - LastServerUpdate >= ServerUpdateInterval then
                 RootPart.CFrame = DesyncTypes[1]
-                RootPart.Velocity = DesyncTypes[2] or Vector3.new()
+                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
                 LastServerUpdate = tick()
             end
         end
 
         RunService.RenderStepped:Wait()
         RootPart.CFrame = DesyncTypes[1]
-        RootPart.Velocity = DesyncTypes[2] or Vector3.new()
+        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
     end
 end)
 
@@ -237,6 +187,7 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     Humanoid.AutoRotate = true
     PositionHistory = {}
     LastServerUpdate = 0
+    LastUndergroundV2 = 0
     setsimulationradius(SimulationRadius)
 end)
 
@@ -272,7 +223,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"UndergroundV2", "IncreaseVelo", "RollHitbox"},
+            Options = {"Underground", "UndergroundV2", "SpinAA", "RollHitbox"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -299,15 +250,26 @@ return {
         }, 'UndergroundVelocityY')
 
         Section:Slider({
-            Name = "IncreaseVeloMultiplier",
-            Default = IncreaseVeloMultiplier,
-            Minimum = 1,
-            Maximum = 5,
-            Precision = 2,
+            Name = "UndergroundZ",
+            Default = UndergroundVelocityZ,
+            Minimum = -500,
+            Maximum = 500,
+            Precision = 0,
             Callback = function(value)
-                IncreaseVeloMultiplier = value
+                UndergroundVelocityZ = value
             end
-        }, 'IncreaseVeloMultiplier')
+        }, 'UndergroundVelocityZ')
+
+        Section:Slider({
+            Name = "SpinAASpeed",
+            Default = SpinAASpeed,
+            Minimum = 1,
+            Maximum = 20,
+            Precision = 1,
+            Callback = function(value)
+                SpinAASpeed = value
+            end
+        }, 'SpinAASpeed')
 
         Section:Slider({
             Name = "ResolverNoise",
@@ -323,7 +285,7 @@ return {
         Section:Header({ Name = 'RandomVector' })
 
         Section:Toggle({
-            Name = "Enabled",
+            Name = "RandomVector",
             Default = RandomVectorEnabled,
             Callback = function(value)
                 RandomVectorEnabled = value
@@ -331,10 +293,10 @@ return {
         }, 'RandomVectorEnabled')
 
         Section:Slider({
-            Name = "Distance",
+            Name = "RandomVectorDistance",
             Default = RandomVectorDistance,
             Minimum = 1,
-            Maximum = 5,
+            Maximum = 20,
             Precision = 1,
             Callback = function(value)
                 RandomVectorDistance = value
@@ -342,10 +304,10 @@ return {
         }, 'RandomVectorDistance')
 
         Section:Slider({
-            Name = "Speed",
+            Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
-            Minimum = 1,
-            Maximum = 10,
+            Minimum = 5,
+            Maximum = 100000000000,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
@@ -353,7 +315,7 @@ return {
         }, 'RandomVectorSpeed')
 
         Section:Slider({
-            Name = "Amplitude",
+            Name = "RandomVectorAmplitude",
             Default = RandomVectorAmplitude,
             Minimum = 1,
             Maximum = 10,
@@ -362,15 +324,6 @@ return {
                 RandomVectorAmplitude = value
             end
         }, 'RandomVectorAmplitude')
-
-        Section:Toggle({
-            Name = "Visualization",
-            Default = VisualizationEnabled,
-            Callback = function(value)
-                VisualizationEnabled = value
-                notify("Visualization", "Visualization " .. (value and "Enabled" or "Disabled"), true)
-            end
-        }, 'VisualizationEnabled')
 
         Section:Keybind({
             Name = "Keybind",
