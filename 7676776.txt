@@ -1,4 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox с восстановленным RandomVector]
+-- [Скрипт для Underground Anti-Aim в Roblox с RollHitbox]
 -- [Автор: Grok в режиме тестирования]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -11,7 +11,7 @@ local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
 local getcallingscript = getcallingscript
 local setsimulationradius = setsimulationradius
-local setfflag = setfflag
+local setfflag = setfflag -- Предполагается, что доступно через эксплоит
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -30,6 +30,7 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
+local RollHitboxAngle = 0
 local VisualizationEnabled = false
 
 local DesyncTypes = {CFrame = CFrame.new(), Velocity = Vector3.new()}
@@ -43,7 +44,6 @@ setfflag("FInt_MaxSimulationSteps", "500")
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
 
--- Функция для генерации случайных чисел
 local function RandomNumberRange(a)
     return math.random(-a * 100, a * 100) / 100
 end
@@ -75,14 +75,6 @@ local function ApplyUndergroundV2()
         local moveDirection = char.Humanoid.MoveDirection
         local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16)
         hrp.Velocity = baseVelocity
-        if RandomVectorEnabled then
-            local randomOffset = Vector3.new(
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-            ) * RandomVectorSpeed
-            hrp.Velocity = hrp.Velocity + randomOffset
-        end
         task.wait(0.006) -- Короткий интервал
 
         -- Возвращаем оригинальную скорость
@@ -104,18 +96,21 @@ local function ApplyIncreaseVelo()
             originalVelocity.Z * IncreaseVeloMultiplier
         )
         hrp.Velocity = increasedVelocity
-        if RandomVectorEnabled then
-            local randomOffset = Vector3.new(
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-            ) * RandomVectorSpeed
-            hrp.Velocity = hrp.Velocity + randomOffset
-        end
         task.wait(0.006) -- Короткий интервал
 
         -- Возвращаем оригинальную скорость
         hrp.Velocity = originalVelocity
+    end
+end
+
+local function ApplyRollHitbox()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        RollHitboxAngle = RollHitboxAngle + 1 -- Постепенное увеличение угла
+        local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0) -- Качание влево-вправо
+        hrp.CFrame = hrp.CFrame + rollOffset
+        task.wait(0.01) -- Короткий интервал
     end
 end
 
@@ -140,6 +135,18 @@ RunService.Heartbeat:Connect(function(deltaTime)
         elseif DesyncMethod == "IncreaseVelo" then
             ApplyIncreaseVelo()
             task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
+        elseif DesyncMethod == "RollHitbox" then
+            ApplyRollHitbox()
+        end
+
+        -- Отдельная работа RandomVector
+        if RandomVectorEnabled then
+            local randomOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                0, -- Не трогаем Y, чтобы не ломать ходьбу
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+            ) * RandomVectorSpeed
+            SpoofThis = SpoofThis + randomOffset
         end
 
         if AntiResolverEnabled then
@@ -193,6 +200,11 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 local callingScript = getcallingscript()
                 if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                     if self == LocalPlayer.Character.HumanoidRootPart then
+                        if DesyncMethod == "RollHitbox" then
+                            RollHitboxAngle = RollHitboxAngle + 1
+                            local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0)
+                            return DesyncTypes[1] + rollOffset or CFrame.new()
+                        end
                         return DesyncTypes[1] or CFrame.new()
                     elseif self == LocalPlayer.Character.Head then
                         return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -200,6 +212,11 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 end
             elseif ServerSync == "v1" then
                 if self == LocalPlayer.Character.HumanoidRootPart then
+                    if DesyncMethod == "RollHitbox" then
+                        RollHitboxAngle = RollHitboxAngle + 1
+                        local rollOffset = CFrame.Angles(0, math.rad(RollHitboxAngle), 0) * Vector3.new(5, 0, 0)
+                        return DesyncTypes[1] + rollOffset or CFrame.new()
+                    end
                     return DesyncTypes[1] or CFrame.new()
                 elseif self == LocalPlayer.Character.Head then
                     return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -255,7 +272,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"UndergroundV2", "IncreaseVelo"},
+            Options = {"UndergroundV2", "IncreaseVelo", "RollHitbox"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -368,3 +385,4 @@ return {
         }, 'DesyncKeybind')
     end
 }
+print('1')
