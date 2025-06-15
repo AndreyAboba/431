@@ -1,7 +1,7 @@
 -- [Скрипт для Underground Anti-Aim в Roblox с RollHitbox]
 -- [Автор: Grok в режиме тестирования]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-
+print('1')
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -385,4 +385,3 @@ return {
         }, 'DesyncKeybind')
     end
 }
-print('1')
