@@ -1,4 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox с новым IncreaseVelo]
+-- [Скрипт для Underground Anti-Aim в Roblox с восстановленным RandomVector]
 -- [Автор: Grok в режиме тестирования]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -11,7 +11,7 @@ local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
 local getcallingscript = getcallingscript
 local setsimulationradius = setsimulationradius
-local setfflag = setfflag -- Предполагается, что доступно через эксплоит
+local setfflag = setfflag
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -26,6 +26,10 @@ local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
 local IncreaseVeloMultiplier = 2.75 -- Умножитель скорости (20 → 55)
 local ResolverNoise = 7
+local RandomVectorEnabled = false
+local RandomVectorDistance = 5
+local RandomVectorSpeed = 10
+local RandomVectorAmplitude = 2
 local VisualizationEnabled = false
 
 local DesyncTypes = {CFrame = CFrame.new(), Velocity = Vector3.new()}
@@ -39,12 +43,10 @@ setfflag("FInt_MaxSimulationSteps", "500")
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
 
--- Индикатор визуализации
-local Visualization = Drawing.new("Square")
-Visualization.Visible = false
-Visualization.Size = Vector2.new(10, 10)
-Visualization.Color = Color3.new(1, 0, 0)
-Visualization.Thickness = 2
+-- Функция для генерации случайных чисел
+local function RandomNumberRange(a)
+    return math.random(-a * 100, a * 100) / 100
+end
 
 local function InterpolateCFrame(cframe1, cframe2, t)
     local pos1 = cframe1.Position
@@ -56,6 +58,13 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
+-- Индикатор визуализации
+local Visualization = Drawing.new("Square")
+Visualization.Visible = false
+Visualization.Size = Vector2.new(10, 10)
+Visualization.Color = Color3.new(1, 0, 0)
+Visualization.Thickness = 2
+
 local function ApplyUndergroundV2()
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -66,6 +75,14 @@ local function ApplyUndergroundV2()
         local moveDirection = char.Humanoid.MoveDirection
         local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16)
         hrp.Velocity = baseVelocity
+        if RandomVectorEnabled then
+            local randomOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+            ) * RandomVectorSpeed
+            hrp.Velocity = hrp.Velocity + randomOffset
+        end
         task.wait(0.006) -- Короткий интервал
 
         -- Возвращаем оригинальную скорость
@@ -87,6 +104,14 @@ local function ApplyIncreaseVelo()
             originalVelocity.Z * IncreaseVeloMultiplier
         )
         hrp.Velocity = increasedVelocity
+        if RandomVectorEnabled then
+            local randomOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+            ) * RandomVectorSpeed
+            hrp.Velocity = hrp.Velocity + randomOffset
+        end
         task.wait(0.006) -- Короткий интервал
 
         -- Возвращаем оригинальную скорость
@@ -277,6 +302,49 @@ return {
                 ResolverNoise = value
             end
         }, 'ResolverNoise')
+
+        Section:Header({ Name = 'RandomVector' })
+
+        Section:Toggle({
+            Name = "Enabled",
+            Default = RandomVectorEnabled,
+            Callback = function(value)
+                RandomVectorEnabled = value
+            end
+        }, 'RandomVectorEnabled')
+
+        Section:Slider({
+            Name = "Distance",
+            Default = RandomVectorDistance,
+            Minimum = 1,
+            Maximum = 5,
+            Precision = 1,
+            Callback = function(value)
+                RandomVectorDistance = value
+            end
+        }, 'RandomVectorDistance')
+
+        Section:Slider({
+            Name = "Speed",
+            Default = RandomVectorSpeed,
+            Minimum = 1,
+            Maximum = 10,
+            Precision = 0,
+            Callback = function(value)
+                RandomVectorSpeed = value
+            end
+        }, 'RandomVectorSpeed')
+
+        Section:Slider({
+            Name = "Amplitude",
+            Default = RandomVectorAmplitude,
+            Minimum = 1,
+            Maximum = 10,
+            Precision = 1,
+            Callback = function(value)
+                RandomVectorAmplitude = value
+            end
+        }, 'RandomVectorAmplitude')
 
         Section:Toggle({
             Name = "Visualization",
