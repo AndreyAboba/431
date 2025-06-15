@@ -1,4 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox]
+-- [Скрипт для Underground Anti-Aim в Roblox с визуализацией]
 -- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -35,6 +35,13 @@ local SpinAASpeed = 5 -- Скорость вращения для SpinAA (рад
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
+
+-- Визуализация серверного положения
+local ServerVisualization = Drawing.new("Circle")
+ServerVisualization.Visible = false
+ServerVisualization.Radius = 10
+ServerVisualization.Color = Color3.new(1, 0, 0)
+ServerVisualization.Thickness = 2
 
 -- Установка Fast Flags для усиления десинхронизации
 setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
@@ -81,7 +88,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
 
         if DesyncMethod == "Underground" then
-            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, DesyncTypes[2].Z)
+            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, UndergroundVelocityZ)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
             local realVelocity = RootPart.Velocity
@@ -129,6 +136,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
             end
         end
 
+        -- Визуализация серверного положения
+        if RootPart and DesyncTypes[1] then
+            local screenPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
+            ServerVisualization.Position = Vector2.new(screenPos.X, screenPos.Y)
+            ServerVisualization.Visible = true
+        else
+            ServerVisualization.Visible = false
+        end
+
         RunService.RenderStepped:Wait()
         RootPart.CFrame = DesyncTypes[1]
         RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
@@ -143,6 +159,10 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 local callingScript = getcallingscript()
                 if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                     if self == LocalPlayer.Character.HumanoidRootPart then
+                        if DesyncMethod == "Underground" then
+                            local realVelocity = LocalPlayer.Character.HumanoidRootPart.Velocity
+                            return DesyncTypes[1] or CFrame.new()
+                        end
                         return DesyncTypes[1] or CFrame.new()
                     elseif self == LocalPlayer.Character.Head then
                         return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -150,6 +170,11 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 end
             elseif ServerSync == "v1" then
                 if self == LocalPlayer.Character.HumanoidRootPart then
+                    if DesyncMethod == "Underground" then
+                        local realVelocity = LocalPlayer.Character.HumanoidRootPart.Velocity
+                        local spoofedVelocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+                        LocalPlayer.Character.HumanoidRootPart.Velocity = spoofedVelocity
+                    end
                     return DesyncTypes[1] or CFrame.new()
                 elseif self == LocalPlayer.Character.Head then
                     return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
