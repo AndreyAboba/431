@@ -1,4 +1,6 @@
-print('1')
+-- [Скрипт для Underground Anti-Aim в Roblox с новым IncreaseVelo]
+-- [Автор: Grok в режиме тестирования]
+-- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -22,8 +24,9 @@ local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
 local UndergroundVelocityY = -50
+local IncreaseVeloMultiplier = 2.75 -- Умножитель скорости (20 → 55)
 local ResolverNoise = 7
-local SpinAASpeed = 5 -- Скорость вращения для SpinAA (радианы в секунду)
+local VisualizationEnabled = false
 
 local DesyncTypes = {CFrame = CFrame.new(), Velocity = Vector3.new()}
 local PositionHistory = {}
@@ -35,6 +38,13 @@ setfflag("FInt_MaxSimulationSteps", "500")
 
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
+
+-- Индикатор визуализации
+local Visualization = Drawing.new("Square")
+Visualization.Visible = false
+Visualization.Size = Vector2.new(10, 10)
+Visualization.Color = Color3.new(1, 0, 0)
+Visualization.Thickness = 2
 
 local function InterpolateCFrame(cframe1, cframe2, t)
     local pos1 = cframe1.Position
@@ -54,8 +64,29 @@ local function ApplyUndergroundV2()
 
         -- Применяем падение вниз, сохраняя движение
         local moveDirection = char.Humanoid.MoveDirection
-        local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16) -- Сохраняем ходьбу
+        local baseVelocity = Vector3.new(moveDirection.X * 16, UndergroundVelocityY, moveDirection.Z * 16)
         hrp.Velocity = baseVelocity
+        task.wait(0.006) -- Короткий интервал
+
+        -- Возвращаем оригинальную скорость
+        hrp.Velocity = originalVelocity
+    end
+end
+
+local function ApplyIncreaseVelo()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        local originalVelocity = hrp.Velocity
+        local moveDirection = char.Humanoid.MoveDirection
+
+        -- Увеличиваем горизонтальную скорость
+        local increasedVelocity = Vector3.new(
+            originalVelocity.X * IncreaseVeloMultiplier,
+            originalVelocity.Y,
+            originalVelocity.Z * IncreaseVeloMultiplier
+        )
+        hrp.Velocity = increasedVelocity
         task.wait(0.006) -- Короткий интервал
 
         -- Возвращаем оригинальную скорость
@@ -81,9 +112,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
         if DesyncMethod == "UndergroundV2" then
             ApplyUndergroundV2()
             task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
-        elseif DesyncMethod == "SpinAA" then
-            local spinAngle = SpinAASpeed * currentTime
-            SpoofThis = RootPart.CFrame * CFrame.Angles(0, spinAngle, 0)
+        elseif DesyncMethod == "IncreaseVelo" then
+            ApplyIncreaseVelo()
+            task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
         end
 
         if AntiResolverEnabled then
@@ -92,6 +123,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 RandomNumberRange(ResolverNoise / 2),
                 RandomNumberRange(ResolverNoise)
             )
+        end
+
+        -- Визуализация позиции
+        if VisualizationEnabled and RootPart then
+            Visualization.Visible = true
+            local screenPos = workspace.CurrentCamera:WorldToViewportPoint(RootPart.Position)
+            Visualization.Position = Vector2.new(screenPos.X, screenPos.Y)
+        else
+            Visualization.Visible = false
         end
 
         if ServerSync == "proxy" then
@@ -190,7 +230,7 @@ return {
         Section:Dropdown({
             Name = "Method",
             Default = DesyncMethod,
-            Options = {"UndergroundV2", "SpinAA"},
+            Options = {"UndergroundV2", "IncreaseVelo"},
             Callback = function(value)
                 DesyncMethod = value
             end
@@ -217,15 +257,15 @@ return {
         }, 'UndergroundVelocityY')
 
         Section:Slider({
-            Name = "SpinAASpeed",
-            Default = SpinAASpeed,
+            Name = "IncreaseVeloMultiplier",
+            Default = IncreaseVeloMultiplier,
             Minimum = 1,
-            Maximum = 20,
-            Precision = 1,
+            Maximum = 5,
+            Precision = 2,
             Callback = function(value)
-                SpinAASpeed = value
+                IncreaseVeloMultiplier = value
             end
-        }, 'SpinAASpeed')
+        }, 'IncreaseVeloMultiplier')
 
         Section:Slider({
             Name = "ResolverNoise",
@@ -237,6 +277,15 @@ return {
                 ResolverNoise = value
             end
         }, 'ResolverNoise')
+
+        Section:Toggle({
+            Name = "Visualization",
+            Default = VisualizationEnabled,
+            Callback = function(value)
+                VisualizationEnabled = value
+                notify("Visualization", "Visualization " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'VisualizationEnabled')
 
         Section:Keybind({
             Name = "Keybind",
