@@ -1,4 +1,4 @@
--- [Скрипт для Underground Anti-Aim в Roblox с визуализацией]
+-- [Скрипт для Underground Anti-Aim в Roblox]
 -- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -24,7 +24,6 @@ local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
-local UndergroundVelocityY = -50
 local UndergroundVelocityZ = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
@@ -88,7 +87,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
 
         if DesyncMethod == "Underground" then
-            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, UndergroundVelocityY, UndergroundVelocityZ)
+            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
             local realVelocity = RootPart.Velocity
@@ -116,6 +115,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
             )
         end
 
+        -- Визуализация серверного положения
+        if RootPart and DesyncTypes[1] then
+            local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
+            ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
+            ServerVisualization.Visible = true
+        else
+            ServerVisualization.Visible = false
+        end
+
         if ServerSync == "proxy" then
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
@@ -136,15 +144,6 @@ RunService.Heartbeat:Connect(function(deltaTime)
             end
         end
 
-        -- Визуализация серверного положения
-        if RootPart and DesyncTypes[1] then
-            local screenPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
-            ServerVisualization.Position = Vector2.new(screenPos.X, screenPos.Y)
-            ServerVisualization.Visible = true
-        else
-            ServerVisualization.Visible = false
-        end
-
         RunService.RenderStepped:Wait()
         RootPart.CFrame = DesyncTypes[1]
         RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
@@ -154,15 +153,17 @@ end)
 local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() then
+        if key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0 then
+            if DesyncMethod == "Underground" and self == LocalPlayer.Character.HumanoidRootPart then
+                local realVelocity = XDDDDDD(self, key)
+                return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+            end
+        end
         if key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0 then
             if ServerSync == "proxy" then
                 local callingScript = getcallingscript()
                 if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                     if self == LocalPlayer.Character.HumanoidRootPart then
-                        if DesyncMethod == "Underground" then
-                            local realVelocity = LocalPlayer.Character.HumanoidRootPart.Velocity
-                            return DesyncTypes[1] or CFrame.new()
-                        end
                         return DesyncTypes[1] or CFrame.new()
                     elseif self == LocalPlayer.Character.Head then
                         return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -170,11 +171,6 @@ XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 end
             elseif ServerSync == "v1" then
                 if self == LocalPlayer.Character.HumanoidRootPart then
-                    if DesyncMethod == "Underground" then
-                        local realVelocity = LocalPlayer.Character.HumanoidRootPart.Velocity
-                        local spoofedVelocity = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
-                        LocalPlayer.Character.HumanoidRootPart.Velocity = spoofedVelocity
-                    end
                     return DesyncTypes[1] or CFrame.new()
                 elseif self == LocalPlayer.Character.Head then
                     return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
@@ -247,17 +243,6 @@ return {
         }, 'ServerSync')
 
         Section:Slider({
-            Name = "UndergroundY",
-            Default = UndergroundVelocityY,
-            Minimum = -500,
-            Maximum = 500,
-            Precision = 0,
-            Callback = function(value)
-                UndergroundVelocityY = value
-            end
-        }, 'UndergroundVelocityY')
-
-        Section:Slider({
             Name = "UndergroundZ",
             Default = UndergroundVelocityZ,
             Minimum = -500,
@@ -304,7 +289,7 @@ return {
             Name = "RandomVectorDistance",
             Default = RandomVectorDistance,
             Minimum = 1,
-            Maximum = 20,
+            Maximum = 4,
             Precision = 1,
             Callback = function(value)
                 RandomVectorDistance = value
@@ -315,7 +300,7 @@ return {
             Name = "RandomVectorSpeed",
             Default = RandomVectorSpeed,
             Minimum = 5,
-            Maximum = 100000000000,
+            Maximum = 10,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
@@ -326,7 +311,7 @@ return {
             Name = "RandomVectorAmplitude",
             Default = RandomVectorAmplitude,
             Minimum = 1,
-            Maximum = 10,
+            Maximum = 4,
             Precision = 1,
             Callback = function(value)
                 RandomVectorAmplitude = value
