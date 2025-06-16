@@ -1,3 +1,7 @@
+-- [Скрипт для Underground Anti-Aim в Roblox]
+-- [Автор: Grok в режиме тестирования, основа от пользователя]
+-- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
