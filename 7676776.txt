@@ -1,7 +1,7 @@
 -- [Скрипт для Underground Anti-Aim в Roblox]
 -- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-print('1')
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -29,7 +29,7 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
-local HitboxRollDistance = 2 -- Уменьшил для незаметности
+local HitboxRollDistance = 5
 local HitboxRollAngle = 0
 local VisualizationEnabled = true
 
@@ -80,7 +80,7 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
--- Хук для Underground (Velocity)
+-- Хук для Underground (Velocity и CFrame)
 local OriginalVelocityIndex = nil
 OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
@@ -92,52 +92,40 @@ OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(sel
     return OriginalVelocityIndex(self, key)
 end))
 
--- Хук для Underground и HitboxRoll (CFrame)
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        local callingScript = getcallingscript()
-        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
-            if DesyncMethod == "Underground" then
-                return DesyncTypes[1] or CFrame.new()
-            elseif DesyncMethod == "HitboxRoll" then
-                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-                return DesyncTypes[1] * rollOffset
-            end
+        if DesyncMethod == "Underground" then
+            return DesyncTypes[1] or CFrame.new()
         end
     end
     return OriginalCFrameIndex(self, key)
 end))
 
--- Хук для HitboxRoll (AssemblyLinearVelocity)
+-- Хук для физики (AssemblyLinearVelocity)
 local OriginalAssemblyVelocityIndex = nil
 OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        local callingScript = getcallingscript()
-        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
-            if DesyncMethod == "HitboxRoll" then
-                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-                return Vector3.new(0, 0, 0) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 10 -- Тихий ролл
-            end
+        local realVelocity = OriginalAssemblyVelocityIndex(self, key)
+        if DesyncMethod == "HitboxRoll" then
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50
         end
+        return realVelocity
     end
     return OriginalAssemblyVelocityIndex(self, key)
 end))
 
--- Хук для HitboxRoll (Velocity)
-local OriginalVelocityRollIndex = nil
-OriginalVelocityRollIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+-- Новый хук для Velocity (отдельный для Underground)
+local OriginalVelocityHookIndex = nil
+OriginalVelocityHookIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        local callingScript = getcallingscript()
-        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
-            if DesyncMethod == "HitboxRoll" then
-                local realVelocity = OriginalVelocityRollIndex(self, key)
-                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-                return Vector3.new(realVelocity.X, realVelocity.Y, realVelocity.Z) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 5 -- Тихий ролл Velocity
-            end
+        local realVelocity = OriginalVelocityHookIndex(self, key)
+        if DesyncMethod == "Underground" then
+            return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
         end
     end
-    return OriginalVelocityRollIndex(self, key)
+    return OriginalVelocityHookIndex(self, key)
 end))
 
 -- Отдельный модуль UndergroundV2
@@ -175,10 +163,14 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
         if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
 
+        local currentTime = tick()
+        table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
+
         DesyncTypes[1] = RootPart.CFrame
         DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
+        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
 
         if DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
             UndergroundV2Active = true
@@ -186,7 +178,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             Indicator.Text = "AA: ON"
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 5 -- Меньше угла для незаметности
+            HitboxRollAngle = HitboxRollAngle + 45
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
         end
@@ -198,18 +190,18 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
             )
             SpoofThis = SpoofThis + randomOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
         end
 
         if AntiResolverEnabled then
-            local noise = Vector3.new(
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
                 RandomNumberRange(ResolverNoise),
                 RandomNumberRange(ResolverNoise / 2),
                 RandomNumberRange(ResolverNoise)
             )
-            RootPart.AssemblyLinearVelocity = RootPart.AssemblyLinearVelocity + noise
         end
 
-        -- Визуализация серверного положения (где нас видят игроки)
+        -- Визуализация серверного положения
         if VisualizationEnabled and RootPart and DesyncTypes[1] then
             local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
             ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
@@ -220,25 +212,31 @@ RunService.Heartbeat:Connect(function(deltaTime)
         else
             ServerVisualization.Visible = false
             PhysicsVisualization.Visible = false
-            ServerVisualization:Remove()
-            PhysicsVisualization:Remove()
-            Indicator:Remove()
         end
 
         if ServerSync == "proxy" then
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 RootPart.CFrame = SpoofThis
+                if desyncAssemblyVelocity then
+                    RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
+                end
             end
         elseif ServerSync == "v1" then
             RootPart.CFrame = SpoofThis
+            if desyncAssemblyVelocity then
+                RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
+            end
             if tick() - LastServerUpdate >= ServerUpdateInterval then
                 RootPart.CFrame = DesyncTypes[1]
+                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
                 LastServerUpdate = tick()
             end
         end
 
         RunService.RenderStepped:Wait()
+        RootPart.CFrame = DesyncTypes[1]
+        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
     else
         UndergroundV2Active = false
         Indicator.Visible = false
@@ -249,11 +247,13 @@ end)
 local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        local callingScript = getcallingscript()
-        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
-            if DesyncMethod == "Underground" or DesyncMethod == "HitboxRoll" then
+        if ServerSync == "proxy" then
+            local callingScript = getcallingscript()
+            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 return DesyncTypes[1] or CFrame.new()
             end
+        elseif ServerSync == "v1" then
+            return DesyncTypes[1] or CFrame.new()
         end
     end
     return XDDDDDD(self, key)
@@ -299,7 +299,6 @@ return {
             Callback = function(value)
                 PastedSources = value
                 if not value then
-                    DesyncMethod = "Underground"
                     UndergroundV2Active = false
                     Indicator.Visible = false
                     Indicator.Text = "AA: OFF"
