@@ -104,11 +104,11 @@ local function StartUndergroundV2()
                 if humanoid then
                     local moveDirection = humanoid.MoveDirection
                     local originalVelocity = hrp.AssemblyLinearVelocity
-                    local newVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundVelocityZ, moveDirection.Z * originalVelocity.Magnitude)
-                    hrp.AssemblyLinearVelocity = newVelocity
-                    task.wait(0.006)
-                    hrp.AssemblyLinearVelocity = originalVelocity
-                    task.wait(0.05 + math.random() * 0.02)
+                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundVelocityZ, moveDirection.Z * originalVelocity.Magnitude)
+                    hrp.AssemblyLinearVelocity = fakeVelocity
+                    task.wait(0.002) -- Частое применение фейкового Velocity
+                    hrp.AssemblyLinearVelocity = fakeVelocity -- Удерживаем фейк дольше
+                    task.wait(0.01)
                 end
             else
                 task.wait(0.1)
@@ -144,8 +144,8 @@ RunService.Heartbeat:Connect(function(deltaTime)
         elseif DesyncMethod == "HitboxRoll" then
             HitboxRollAngle = HitboxRollAngle + 45 -- Вращение
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(HitboxRollDistance, 0, 0)
-            SpoofThis = SpoofThis * rollOffset -- Применяем вращение
-            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + rollOffset.LookVector * 50 -- Динамическая физика
+            SpoofThis = SpoofThis * rollOffset
+            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50 -- Динамическая физика
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -392,13 +392,17 @@ return {
             Callback = function(key)
                 if not UserInputService:GetFocusedTextBox() and PastedSources then
                     Keybind = key
-                    PastedSources = not PastedSources
-                    notify("Desync", "Desync " .. (PastedSources and "Enabled" or "Disabled"), true)
-                    if not PastedSources then
+                    local isActive = not PastedSources -- Логика переключения
+                    if isActive then
+                        PastedSources = true
+                        notify("Desync", "Desync Enabled", true)
+                    else
+                        PastedSources = false
                         DesyncMethod = "Underground"
                         UndergroundV2Active = false
                         Indicator.Visible = false
                         Indicator.Text = "AA: OFF"
+                        notify("Desync", "Desync Disabled", true)
                     end
                 end
             end
