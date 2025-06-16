@@ -1,4 +1,4 @@
--- [Исправленный AntiAim/Desync для Roblox]
+-- [Исправленный AntiAim/Desync для Roblox с фокусом на хуки]
 -- [Автор: Grok в режиме тестирования]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
@@ -43,6 +43,7 @@ local DesyncTypes = {
     AssemblyLinearVelocity = Vector3.new()
 }
 local LastUpdate = 0
+local HookCallStack = {} -- Для предотвращения рекурсии
 
 -- Визуализация
 local ServerVisualization = Drawing.new("Circle")
@@ -82,66 +83,93 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPosition) * interpolatedRotation
 end
 
--- Хук для CFrame и Velocity
+-- Хук для CFrame и Velocity с защитой от рекурсии
 local OriginalIndex = nil
 OriginalIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    -- Проверка на рекурсию
+    local callId = tostring(self) .. tostring(key)
+    if HookCallStack[callId] then
+        return OriginalIndex(self, key)
+    end
+    HookCallStack[callId] = true
+
     -- Проверка на корректность вызова
     if checkcaller() or not PastedSources then
+        HookCallStack[callId] = nil
         return OriginalIndex(self, key)
     end
 
     -- Получение HumanoidRootPart
     local character = LocalPlayer.Character
     if not character or typeof(character) ~= "Instance" then
+        HookCallStack[callId] = nil
         return OriginalIndex(self, key)
     end
 
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not IsValidHRP(hrp) or self ~= hrp then
+        HookCallStack[callId] = nil
         return OriginalIndex(self, key)
     end
 
     -- Проверка на серверный вызов
     local callingScript = getcallingscript()
     if callingScript and (string.find(tostring(callingScript), "LocalScript") or string.find(tostring(callingScript), "Client")) then
+        HookCallStack[callId] = nil
         return OriginalIndex(self, key)
     end
 
     -- Логика десинхронизации
     if key == "CFrame" and DesyncMethod == "Underground" then
-        return DesyncTypes.CFrame or CFrame.new()
+        local result = DesyncTypes.CFrame or CFrame.new()
+        HookCallStack[callId] = nil
+        return result
     elseif key == "Velocity" and DesyncMethod == "Underground" then
         local realVelocity = OriginalIndex(self, "Velocity")
         if realVelocity then
-            return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+            local result = Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+            HookCallStack[callId] = nil
+            return result
         end
     end
 
+    HookCallStack[callId] = nil
     return OriginalIndex(self, key)
 end))
 
--- Хук для AssemblyLinearVelocity
+-- Хук для AssemblyLinearVelocity с защитой от рекурсии
 local OriginalAssemblyIndex = nil
 OriginalAssemblyIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    -- Проверка на рекурсию
+    local callId = tostring(self) .. tostring(key)
+    if HookCallStack[callId] then
+        return OriginalAssemblyIndex(self, key)
+    end
+    HookCallStack[callId] = true
+
     -- Проверка на корректность вызова
     if checkcaller() or not PastedSources then
+        HookCallStack[callId] = nil
         return OriginalAssemblyIndex(self, key)
     end
 
     -- Получение HumanoidRootPart
     local character = LocalPlayer.Character
     if not character or typeof(character) ~= "Instance" then
+        HookCallStack[callId] = nil
         return OriginalAssemblyIndex(self, key)
     end
 
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not IsValidHRP(hrp) or self ~= hrp then
+        HookCallStack[callId] = nil
         return OriginalAssemblyIndex(self, key)
     end
 
     -- Проверка на серверный вызов
     local callingScript = getcallingscript()
     if callingScript and (string.find(tostring(callingScript), "LocalScript") or string.find(tostring(callingScript), "Client")) then
+        HookCallStack[callId] = nil
         return OriginalAssemblyIndex(self, key)
     end
 
@@ -150,10 +178,13 @@ OriginalAssemblyIndex = hookmetamethod(game, "__index", newcclosure(function(sel
         local realVelocity = OriginalAssemblyIndex(self, key)
         if realVelocity then
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(0, HitboxRollDistance, 0)
-            return Vector3.new(realVelocity.X, HitboxRollDistance * 500, realVelocity.Z)
+            local result = Vector3.new(realVelocity.X, HitboxRollDistance * 500, realVelocity.Z)
+            HookCallStack[callId] = nil
+            return result
         end
     end
 
+    HookCallStack[callId] = nil
     return OriginalAssemblyIndex(self, key)
 end))
 
