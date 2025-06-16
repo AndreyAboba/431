@@ -80,7 +80,7 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
--- Хук для Underground
+-- Хук для Underground (Velocity и CFrame)
 local OriginalVelocityIndex = nil
 OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
@@ -100,6 +100,20 @@ OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self,
         end
     end
     return OriginalCFrameIndex(self, key)
+end))
+
+-- Хук для физики (AssemblyLinearVelocity)
+local OriginalAssemblyVelocityIndex = nil
+OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+        local realVelocity = OriginalAssemblyVelocityIndex(self, key)
+        if DesyncMethod == "HitboxRoll" then
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50
+        end
+        return realVelocity
+    end
+    return OriginalAssemblyVelocityIndex(self, key)
 end))
 
 -- Отдельный модуль UndergroundV2
@@ -153,9 +167,8 @@ RunService.Heartbeat:Connect(function(deltaTime)
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
             HitboxRollAngle = HitboxRollAngle + 45 -- Вращение
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) -- Используем CFrame
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
-            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50 -- Динамическая физика
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -400,18 +413,18 @@ return {
             Name = "Keybind",
             Default = Keybind,
             Callback = function(key)
-                if not UserInputService:GetFocusedTextBox() and PastedSources then
+                if not UserInputService:GetFocusedTextBox() then
                     Keybind = key
-                    local isActive = not PastedSources -- Логика переключения
-                    PastedSources = isActive
                     if PastedSources then
-                        notify("Desync", "Desync Enabled", true)
-                    else
+                        PastedSources = false
                         DesyncMethod = "Underground"
                         UndergroundV2Active = false
                         Indicator.Visible = false
                         Indicator.Text = "AA: OFF"
                         notify("Desync", "Desync Disabled", true)
+                    else
+                        PastedSources = true
+                        notify("Desync", "Desync Enabled", true)
                     end
                 end
             end
