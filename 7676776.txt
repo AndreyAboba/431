@@ -217,7 +217,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             StartAngleJitter()
         end
 
-        if RandomVectorEnabled and DesyncMethod != "UndergroundV2" then
+        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
             local randomOffset = Vector3.new(
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
