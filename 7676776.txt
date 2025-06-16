@@ -29,7 +29,7 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
-local HitboxRollDistance = 15 -- Увеличил для более заметного ролла
+local HitboxRollDistance = 15
 local HitboxRollAngle = 0
 local VisualizationEnabled = true
 
@@ -101,8 +101,8 @@ OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(func
     if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalAssemblyVelocityIndex(self, key)
         if DesyncMethod == "HitboxRoll" then
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500 -- Увеличил интенсивность ролла
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0) -- Добавлен переворот
+            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
         end
         return realVelocity
     end
@@ -206,10 +206,10 @@ RunService.Heartbeat:Connect(function(deltaTime)
             UndergroundV2Active = true
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 45
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            HitboxRollAngle = HitboxRollAngle + 90 -- Увеличил угол для более сложного кручения
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0) -- Переворот вверх ногами
             SpoofThis = SpoofThis * rollOffset
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500 -- Увеличил ролл Velocity
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
         elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
             AngleJitterActive = true
             StartAngleJitter()
@@ -221,7 +221,14 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
             )
-            SpoofThis = SpoofThis + randomOffset
+            local flipChance = math.random()
+            local rotation = CFrame.new()
+            if flipChance < 0.5 then
+                rotation = CFrame.Angles(0, 0, math.pi) -- Переворот вверх ногами
+            elseif flipChance < 0.75 then
+                rotation = CFrame.Angles(0, 0, -math.pi) -- Обратный переворот
+            end
+            SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
             desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
         end
 
