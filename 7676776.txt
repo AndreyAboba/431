@@ -42,6 +42,13 @@ ServerVisualization.Radius = 10
 ServerVisualization.Color = Color3.new(1, 0, 0)
 ServerVisualization.Thickness = 2
 
+-- Визуализация физики
+local PhysicsVisualization = Drawing.new("Circle")
+PhysicsVisualization.Visible = false
+PhysicsVisualization.Radius = 8
+PhysicsVisualization.Color = Color3.new(0, 1, 0)
+PhysicsVisualization.Thickness = 2
+
 -- Индикатор состояния для UndergroundV2
 local Indicator = Drawing.new("Text")
 Indicator.Visible = false
@@ -83,11 +90,11 @@ local function StartUndergroundV2()
                 local humanoid = char:FindFirstChild("Humanoid")
                 if humanoid then
                     local moveDirection = humanoid.MoveDirection
-                    local originalVelocity = hrp.Velocity
+                    local originalVelocity = hrp.AssemblyLinearVelocity
                     local newVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundVelocityZ, moveDirection.Z * originalVelocity.Magnitude)
-                    hrp.Velocity = newVelocity
+                    hrp.AssemblyLinearVelocity = newVelocity
                     task.wait(0.006)
-                    hrp.Velocity = originalVelocity
+                    hrp.AssemblyLinearVelocity = originalVelocity
                     task.wait(0.05 + math.random() * 0.02)
                 end
             else
@@ -114,7 +121,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
-        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф по умолчанию
+        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
 
         if DesyncMethod == "Underground" then
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ)
@@ -127,7 +134,12 @@ RunService.Heartbeat:Connect(function(deltaTime)
         elseif DesyncMethod == "HitboxRoll" then
             local offset = Vector3.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis + offset
-            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + offset * 50 -- Изменение физики
+            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + offset * 50
+            if tick() - LastServerUpdate >= 0.1 then -- Уменьшаем частоту возврата
+                RootPart.CFrame = DesyncTypes[1]
+                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+                LastServerUpdate = tick()
+            end
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -153,8 +165,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
             local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
             ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
             ServerVisualization.Visible = true
+            -- Визуализация физики
+            local physicsPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1)
+            PhysicsVisualization.Position = Vector2.new(physicsPos.X, physicsPos.Y)
+            PhysicsVisualization.Visible = true
         else
             ServerVisualization.Visible = false
+            PhysicsVisualization.Visible = false
         end
 
         if ServerSync == "proxy" then
@@ -388,6 +405,12 @@ return {
                     if PastedSources then
                         PastedSources = not PastedSources
                         notify("Desync", "Desync " .. (PastedSources and "Enabled" or "Disabled"), true)
+                        if not PastedSources then
+                            DesyncMethod = "Underground"
+                            UndergroundV2Active = false
+                            Indicator.Visible = false
+                            Indicator.Text = "AA: OFF"
+                        end
                     end
                 end
             end
