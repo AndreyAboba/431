@@ -15,48 +15,56 @@ local setfflag = setfflag -- Предполагается, что доступн
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
-local PastedSources = false
-local DesyncMethod = "Underground"
-local Keybind = nil
-local LastServerUpdate = 0
-local SimulationRadius = math.huge
-local ServerSync = "v1"
-local ServerUpdateInterval = 0.1
-local AntiResolverEnabled = true
-local UndergroundVelocityZ = -50
-local ResolverNoise = 7
-local RandomVectorEnabled = false
-local RandomVectorDistance = 5
-local RandomVectorSpeed = 10
-local RandomVectorAmplitude = 2
-local HitboxRollDistance = 15
-local HitboxRollAngle = 0
-local VisualizationEnabled = true
+
+local Desync = {
+    Enabled = false,
+    Method = "Underground",
+    Keybind = nil,
+    LastServerUpdate = 0,
+    SimulationRadius = math.huge,
+    ServerSync = "v1",
+    ServerUpdateInterval = 0.1,
+    AntiResolverEnabled = true,
+    UndergroundVelocityZ = -50,
+    ResolverNoise = 7,
+    RandomVectorEnabled = false,
+    RandomVectorDistance = 5,
+    RandomVectorSpeed = 10,
+    RandomVectorAmplitude = 2,
+    HitboxRollDistance = 15,
+    HitboxRollAngle = 0,
+    VisualizationEnabled = true,
+    AngleJitter = {
+        Active = false,
+        BaseDelay = 0,
+        RandomFactor = 0.51,
+        MaxVelocity = 200000,
+        AngleJitterValue = 1000
+    },
+    UndergroundV2Active = false
+}
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
 
--- Визуализация серверного положения
+-- Визуализация
 local ServerVisualization = Drawing.new("Circle")
 ServerVisualization.Visible = false
 ServerVisualization.Radius = 10
 ServerVisualization.Color = Color3.new(1, 0, 0)
 ServerVisualization.Thickness = 2
 
--- Визуализация физики
 local PhysicsVisualization = Drawing.new("Circle")
 PhysicsVisualization.Visible = false
 PhysicsVisualization.Radius = 8
 PhysicsVisualization.Color = Color3.new(0, 1, 0)
 PhysicsVisualization.Thickness = 2
 
--- Установка Fast Flags для усиления десинхронизации
+-- Установка Fast Flags
 setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
 setfflag("FInt_SimulationSyncInterval", "0.01")
 setfflag("FInt_MaxSimulationSteps", "500")
-
--- Установка радиуса симуляции
-setsimulationradius(SimulationRadius)
+setsimulationradius(Desync.SimulationRadius)
 
 local function RandomNumberRange(a)
     return math.random(-a * 100, a * 100) / 100
@@ -75,10 +83,10 @@ end
 -- Хук для Underground (Velocity)
 local OriginalVelocityIndex = nil
 OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if Desync.Enabled and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalVelocityIndex(self, key)
-        if DesyncMethod == "Underground" then
-            return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+        if Desync.Method == "Underground" then
+            return Vector3.new(realVelocity.X, realVelocity.Y, Desync.UndergroundVelocityZ)
         end
     end
     return OriginalVelocityIndex(self, key)
@@ -87,8 +95,8 @@ end))
 -- Хук для Underground (CFrame)
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if DesyncMethod == "Underground" then
+    if Desync.Enabled and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+        if Desync.Method == "Underground" then
             return DesyncTypes[1] or CFrame.new()
         end
     end
@@ -98,10 +106,10 @@ end))
 -- Хук для HitboxRoll (AssemblyLinearVelocity)
 local OriginalAssemblyVelocityIndex = nil
 OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if Desync.Enabled and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalAssemblyVelocityIndex(self, key)
-        if DesyncMethod == "HitboxRoll" then
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0) -- Добавлен переворот
+        if Desync.Method == "HitboxRoll" then
+            local rollOffset = CFrame.Angles(0, 0, math.rad(Desync.HitboxRollAngle)) * CFrame.new(Desync.HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0)
             return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
         end
         return realVelocity
@@ -112,20 +120,19 @@ end))
 -- Новый хук для Velocity (отдельный для Underground)
 local OriginalVelocityHookIndex = nil
 OriginalVelocityHookIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if Desync.Enabled and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalVelocityHookIndex(self, key)
-        if DesyncMethod == "Underground" then
-            return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+        if Desync.Method == "Underground" then
+            return Vector3.new(realVelocity.X, realVelocity.Y, Desync.UndergroundVelocityZ)
         end
     end
     return OriginalVelocityHookIndex(self, key)
 end))
 
--- Отдельный модуль UndergroundV2
-local UndergroundV2Active = false
+-- Модуль UndergroundV2
 local function StartUndergroundV2()
     task.spawn(function()
-        while UndergroundV2Active and PastedSources do
+        while Desync.UndergroundV2Active and Desync.Enabled do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
@@ -133,7 +140,7 @@ local function StartUndergroundV2()
                 if humanoid then
                     local moveDirection = humanoid.MoveDirection
                     local originalVelocity = hrp.AssemblyLinearVelocity
-                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundVelocityZ, moveDirection.Z * originalVelocity.Magnitude)
+                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, Desync.UndergroundVelocityZ, moveDirection.Z * originalVelocity.Magnitude)
                     hrp.AssemblyLinearVelocity = fakeVelocity
                     task.wait(0.02)
                     hrp.AssemblyLinearVelocity = fakeVelocity
@@ -146,25 +153,20 @@ local function StartUndergroundV2()
     end)
 end
 
--- Новый модуль AngleJitter
-local AngleJitterActive = false
-local BaseDelay = 0
-local RandomFactor = 0.51
-local MaxVelocity = 200000
-local AngleJitterValue = 1000
+-- Модуль AngleJitter
 local function StartAngleJitter()
     task.spawn(function()
-        while AngleJitterActive and PastedSources do
+        while Desync.AngleJitter.Active and Desync.Enabled do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
-                local delay = BaseDelay + math.random(-RandomFactor, RandomFactor)
+                local delay = Desync.AngleJitter.BaseDelay + math.random(-Desync.AngleJitter.RandomFactor, Desync.AngleJitter.RandomFactor)
                 local fakeVelocity = Vector3.new(
-                    math.random(-MaxVelocity, MaxVelocity),
-                    math.random(-MaxVelocity, MaxVelocity),
-                    math.random(-MaxVelocity, MaxVelocity)
+                    math.random(-Desync.AngleJitter.MaxVelocity, Desync.AngleJitter.MaxVelocity),
+                    math.random(-Desync.AngleJitter.MaxVelocity, Desync.AngleJitter.MaxVelocity),
+                    math.random(-Desync.AngleJitter.MaxVelocity, Desync.AngleJitter.MaxVelocity)
                 )
-                local angleJitter = math.rad(math.random(-AngleJitterValue * 10000, AngleJitterValue * 10000) / 10000)
+                local angleJitter = math.rad(math.random(-Desync.AngleJitter.AngleJitterValue * 10000, Desync.AngleJitter.AngleJitterValue * 10000) / 10000)
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, angleJitter, 0)
@@ -188,111 +190,120 @@ local function StartAngleJitter()
 end
 
 RunService.Heartbeat:Connect(function(deltaTime)
-    if PastedSources then
-        local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
+    if not Desync.Enabled then
+        ServerVisualization:Remove()
+        PhysicsVisualization:Remove()
+        return
+    end
 
-        local currentTime = tick()
-        table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
+    local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if not RootPart or not Humanoid or Humanoid.Health <= 0 then
+        ServerVisualization.Visible = false
+        PhysicsVisualization.Visible = false
+        return
+    end
 
-        DesyncTypes[1] = RootPart.CFrame
-        DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
+    local currentTime = tick()
+    if currentTime - Desync.LastServerUpdate < 0.05 then return end -- Ограничение до 20 FPS
+    Desync.LastServerUpdate = currentTime
 
-        local SpoofThis = RootPart.CFrame
-        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
+    table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
 
-        if DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
-            UndergroundV2Active = true
-            StartUndergroundV2()
-        elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 90 -- Увеличил угол для более сложного кручения
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0) -- Переворот вверх ногами
-            SpoofThis = SpoofThis * rollOffset
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
-        elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
-            AngleJitterActive = true
-            StartAngleJitter()
+    DesyncTypes[1] = RootPart.CFrame
+    DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
+
+    local SpoofThis = RootPart.CFrame
+    local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
+
+    if Desync.Method == "UndergroundV2" and not Desync.UndergroundV2Active then
+        Desync.UndergroundV2Active = true
+        StartUndergroundV2()
+    elseif Desync.Method == "HitboxRoll" then
+        Desync.HitboxRollAngle = (Desync.HitboxRollAngle + 90) % 360
+        local rollOffset = CFrame.Angles(0, 0, math.rad(Desync.HitboxRollAngle)) * CFrame.new(Desync.HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+        SpoofThis = SpoofThis * rollOffset
+        desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
+    elseif Desync.Method == "AngleJitter" and not Desync.AngleJitter.Active then
+        Desync.AngleJitter.Active = true
+        StartAngleJitter()
+    end
+
+    if Desync.RandomVectorEnabled and Desync.Method ~= "UndergroundV2" then
+        local randomOffset = Vector3.new(
+            RandomNumberRange(Desync.RandomVectorDistance * Desync.RandomVectorAmplitude),
+            RandomNumberRange(Desync.RandomVectorDistance * Desync.RandomVectorAmplitude / 2),
+            RandomNumberRange(Desync.RandomVectorDistance * Desync.RandomVectorAmplitude)
+        )
+        local flipChance = math.random()
+        local rotation = CFrame.new()
+        if flipChance < 0.5 then
+            rotation = CFrame.Angles(0, 0, math.pi)
+        elseif flipChance < 0.75 then
+            rotation = CFrame.Angles(0, 0, -math.pi)
         end
+        SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
+        desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * Desync.RandomVectorSpeed
+    end
 
-        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
-            local randomOffset = Vector3.new(
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-            )
-            local flipChance = math.random()
-            local rotation = CFrame.new()
-            if flipChance < 0.5 then
-                rotation = CFrame.Angles(0, 0, math.pi) -- Переворот вверх ногами
-            elseif flipChance < 0.75 then
-                rotation = CFrame.Angles(0, 0, -math.pi) -- Обратный переворот
-            end
-            SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
-            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
-        end
+    if Desync.AntiResolverEnabled then
+        desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
+            RandomNumberRange(Desync.ResolverNoise),
+            RandomNumberRange(Desync.ResolverNoise / 2),
+            RandomNumberRange(Desync.ResolverNoise)
+        )
+    end
 
-        if AntiResolverEnabled then
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
-                RandomNumberRange(ResolverNoise),
-                RandomNumberRange(ResolverNoise / 2),
-                RandomNumberRange(ResolverNoise)
-            )
-        end
-
-        -- Визуализация серверного положения
-        if VisualizationEnabled and RootPart and DesyncTypes[1] then
-            local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
-            ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
-            ServerVisualization.Visible = true
-            local physicsPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1)
-            PhysicsVisualization.Position = Vector2.new(physicsPos.X, physicsPos.Y)
-            PhysicsVisualization.Visible = true
-        else
-            ServerVisualization.Visible = false
-            PhysicsVisualization.Visible = false
+    -- Визуализация
+    if Desync.VisualizationEnabled and RootPart and DesyncTypes[1] then
+        local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
+        ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
+        ServerVisualization.Visible = true
+        local physicsPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1)
+        PhysicsVisualization.Position = Vector2.new(physicsPos.X, physicsPos.Y)
+        PhysicsVisualization.Visible = true
+    else
+        ServerVisualization.Visible = false
+        PhysicsVisualization.Visible = false
+        if not Desync.VisualizationEnabled or not Desync.Enabled then
             ServerVisualization:Remove()
             PhysicsVisualization:Remove()
         end
+    end
 
-        if ServerSync == "proxy" then
-            local callingScript = getcallingscript()
-            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
-                RootPart.CFrame = SpoofThis
-                if desyncAssemblyVelocity then
-                    RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
-                end
-            end
-        elseif ServerSync == "v1" then
+    if Desync.ServerSync == "proxy" then
+        local callingScript = getcallingscript()
+        if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
             RootPart.CFrame = SpoofThis
             if desyncAssemblyVelocity then
                 RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
             end
-            if tick() - LastServerUpdate >= ServerUpdateInterval then
-                RootPart.CFrame = DesyncTypes[1]
-                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
-                LastServerUpdate = tick()
-            end
         end
-
-        RunService.RenderStepped:Wait()
-        RootPart.CFrame = DesyncTypes[1]
-        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
-    else
-        UndergroundV2Active = false
-        AngleJitterActive = false
+    elseif Desync.ServerSync == "v1" then
+        RootPart.CFrame = SpoofThis
+        if desyncAssemblyVelocity then
+            RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
+        end
+        if currentTime - Desync.LastServerUpdate >= Desync.ServerUpdateInterval then
+            RootPart.CFrame = DesyncTypes[1]
+            RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+        end
     end
+
+    RunService.RenderStepped:Wait()
+    RootPart.CFrame = DesyncTypes[1]
+    RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
 end)
 
 local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if ServerSync == "proxy" then
+    if Desync.Enabled and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+        if Desync.ServerSync == "proxy" then
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 return DesyncTypes[1] or CFrame.new()
             end
-        elseif ServerSync == "v1" then
+        elseif Desync.ServerSync == "v1" then
             return DesyncTypes[1] or CFrame.new()
         end
     end
@@ -308,9 +319,9 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     until RootPart and Humanoid
     Humanoid.AutoRotate = true
     PositionHistory = {}
-    LastServerUpdate = 0
-    UndergroundV2Active = false
-    setsimulationradius(SimulationRadius)
+    Desync.LastServerUpdate = 0
+    Desync.UndergroundV2Active = false
+    setsimulationradius(Desync.SimulationRadius)
 end)
 
 if LocalPlayer.Character then
@@ -318,7 +329,7 @@ if LocalPlayer.Character then
     local Humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
     if RootPart and Humanoid then
         Humanoid.AutoRotate = true
-        setsimulationradius(SimulationRadius)
+        setsimulationradius(Desync.SimulationRadius)
     end
 end
 
@@ -335,12 +346,14 @@ return {
 
         Section:Toggle({
             Name = "Enabled",
-            Default = PastedSources,
+            Default = Desync.Enabled,
             Callback = function(value)
-                PastedSources = value
+                Desync.Enabled = value
                 if not value then
-                    UndergroundV2Active = false
-                    AngleJitterActive = false
+                    Desync.UndergroundV2Active = false
+                    Desync.AngleJitter.Active = false
+                    ServerVisualization:Remove()
+                    PhysicsVisualization:Remove()
                 else
                     notify("Desync", "Desync Enabled", true)
                 end
@@ -349,20 +362,20 @@ return {
 
         Section:Dropdown({
             Name = "Method",
-            Default = DesyncMethod,
+            Default = Desync.Method,
             Options = {"Underground", "UndergroundV2", "HitboxRoll", "AngleJitter"},
             Callback = function(value)
-                DesyncMethod = value
+                Desync.Method = value
                 if value ~= "UndergroundV2" then
-                    UndergroundV2Active = false
-                elseif value == "UndergroundV2" and PastedSources then
-                    UndergroundV2Active = true
+                    Desync.UndergroundV2Active = false
+                elseif value == "UndergroundV2" and Desync.Enabled then
+                    Desync.UndergroundV2Active = true
                     StartUndergroundV2()
                 end
                 if value ~= "AngleJitter" then
-                    AngleJitterActive = false
-                elseif value == "AngleJitter" and PastedSources then
-                    AngleJitterActive = true
+                    Desync.AngleJitter.Active = false
+                elseif value == "AngleJitter" and Desync.Enabled then
+                    Desync.AngleJitter.Active = true
                     StartAngleJitter()
                 end
             end
@@ -370,51 +383,65 @@ return {
 
         Section:Dropdown({
             Name = "ServerSync",
-            Default = ServerSync,
+            Default = Desync.ServerSync,
             Options = {"v1", "proxy"},
             Callback = function(value)
-                ServerSync = value
+                Desync.ServerSync = value
             end
         }, 'ServerSync')
 
         Section:Slider({
             Name = "UndergroundZ",
-            Default = UndergroundVelocityZ,
+            Default = Desync.UndergroundVelocityZ,
             Minimum = -500,
             Maximum = 500,
             Precision = 0,
             Callback = function(value)
-                UndergroundVelocityZ = value
+                Desync.UndergroundVelocityZ = value
             end
         }, 'UndergroundZ')
 
         Section:Slider({
             Name = "ResolverNoise",
-            Default = ResolverNoise,
+            Default = Desync.ResolverNoise,
             Minimum = 3,
             Maximum = 50,
             Precision = 1,
             Callback = function(value)
-                ResolverNoise = value
+                Desync.ResolverNoise = value
             end
         }, 'ResolverNoise')
 
         Section:Slider({
             Name = "HitboxRollDistance",
-            Default = HitboxRollDistance,
+            Default = Desync.HitboxRollDistance,
             Minimum = 1,
             Maximum = 15,
             Precision = 1,
             Callback = function(value)
-                HitboxRollDistance = value
+                Desync.HitboxRollDistance = value
             end
         }, 'HitboxRollDistance')
 
         Section:Toggle({
             Name = "Visualization",
-            Default = VisualizationEnabled,
+            Default = Desync.VisualizationEnabled,
             Callback = function(value)
-                VisualizationEnabled = value
+                Desync.VisualizationEnabled = value
+                if not value then
+                    ServerVisualization:Remove()
+                    PhysicsVisualization:Remove()
+                    ServerVisualization = Drawing.new("Circle")
+                    PhysicsVisualization = Drawing.new("Circle")
+                    ServerVisualization.Visible = false
+                    PhysicsVisualization.Visible = false
+                    ServerVisualization.Radius = 10
+                    ServerVisualization.Color = Color3.new(1, 0, 0)
+                    ServerVisualization.Thickness = 2
+                    PhysicsVisualization.Radius = 8
+                    PhysicsVisualization.Color = Color3.new(0, 1, 0)
+                    PhysicsVisualization.Thickness = 2
+                end
             end
         }, 'VisualizationEnabled')
 
@@ -422,58 +449,106 @@ return {
 
         Section:Toggle({
             Name = "RandomVector",
-            Default = RandomVectorEnabled,
+            Default = Desync.RandomVectorEnabled,
             Callback = function(value)
-                RandomVectorEnabled = value
+                Desync.RandomVectorEnabled = value
             end
         }, 'RandomVectorEnabled')
 
         Section:Slider({
             Name = "RandomVectorDistance",
-            Default = RandomVectorDistance,
+            Default = Desync.RandomVectorDistance,
             Minimum = 1,
             Maximum = 20,
             Precision = 1,
             Callback = function(value)
-                RandomVectorDistance = value
+                Desync.RandomVectorDistance = value
             end
         }, 'RandomVectorDistance')
 
         Section:Slider({
             Name = "RandomVectorSpeed",
-            Default = RandomVectorSpeed,
+            Default = Desync.RandomVectorSpeed,
             Minimum = 5,
             Maximum = 100000000000,
             Precision = 0,
             Callback = function(value)
-                RandomVectorSpeed = value
+                Desync.RandomVectorSpeed = value
             end
         }, 'RandomVectorSpeed')
 
         Section:Slider({
             Name = "RandomVectorAmplitude",
-            Default = RandomVectorAmplitude,
+            Default = Desync.RandomVectorAmplitude,
             Minimum = 1,
             Maximum = 10,
             Precision = 1,
             Callback = function(value)
-                RandomVectorAmplitude = value
+                Desync.RandomVectorAmplitude = value
             end
         }, 'RandomVectorAmplitude')
 
+        Section:Header({ Name = 'AngleJitter' })
+
+        Section:Slider({
+            Name = "BaseDelay",
+            Default = Desync.AngleJitter.BaseDelay,
+            Minimum = 0,
+            Maximum = 1,
+            Precision = 2,
+            Callback = function(value)
+                Desync.AngleJitter.BaseDelay = value
+            end
+        }, 'AngleJitterBaseDelay')
+
+        Section:Slider({
+            Name = "RandomFactor",
+            Default = Desync.AngleJitter.RandomFactor,
+            Minimum = 0,
+            Maximum = 1,
+            Precision = 2,
+            Callback = function(value)
+                Desync.AngleJitter.RandomFactor = value
+            end
+        }, 'AngleJitterRandomFactor')
+
+        Section:Slider({
+            Name = "MaxVelocity",
+            Default = Desync.AngleJitter.MaxVelocity,
+            Minimum = 10000,
+            Maximum = 500000,
+            Precision = 0,
+            Callback = function(value)
+                Desync.AngleJitter.MaxVelocity = value
+            end
+        }, 'AngleJitterMaxVelocity')
+
+        Section:Slider({
+            Name = "AngleJitterValue",
+            Default = Desync.AngleJitter.AngleJitterValue,
+            Minimum = 500,
+            Maximum = 2000,
+            Precision = 0,
+            Callback = function(value)
+                Desync.AngleJitter.AngleJitterValue = value
+            end
+        }, 'AngleJitterValue')
+
         Section:Keybind({
             Name = "Keybind",
-            Default = Keybind,
+            Default = Desync.Keybind,
             Callback = function(key)
                 if not UserInputService:GetFocusedTextBox() then
-                    Keybind = key
-                    if PastedSources then
-                        PastedSources = false
-                        UndergroundV2Active = false
-                        AngleJitterActive = false
+                    Desync.Keybind = key
+                    if Desync.Enabled then
+                        Desync.Enabled = false
+                        Desync.UndergroundV2Active = false
+                        Desync.AngleJitter.Active = false
+                        ServerVisualization:Remove()
+                        PhysicsVisualization:Remove()
                         notify("Desync", "Desync Disabled", true)
                     else
-                        PastedSources = true
+                        Desync.Enabled = true
                         notify("Desync", "Desync Enabled", true)
                     end
                 end
