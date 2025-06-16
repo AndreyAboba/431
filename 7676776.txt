@@ -19,6 +19,7 @@ local PastedSources = false
 local DesyncMethod = "Underground"
 local Keybind = nil
 local LastServerUpdate = 0
+local LastUndergroundV2 = 0
 local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
@@ -29,6 +30,7 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
+local HitboxRollAngle = 0
 local VisualizationEnabled = true
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
@@ -41,9 +43,9 @@ ServerVisualization.Radius = 10
 ServerVisualization.Color = Color3.new(1, 0, 0)
 ServerVisualization.Thickness = 2
 
--- Индикатор для UndergroundV2
+-- Индикатор состояния для UndergroundV2
 local Indicator = Drawing.new("Text")
-Indicator.Visible = false
+Indicator.Visible = true
 Indicator.Position = Vector2.new(50, 100)
 Indicator.Text = "AA: OFF"
 Indicator.Color = Color3.new(1, 1, 1)
@@ -66,7 +68,7 @@ Mouse.KeyDown:Connect(function(key)
             Indicator.Visible = false
             ServerVisualization.Visible = false
         end
-        print("Script toggled: " .. (PastedSources and "ON" or "OFF") .. " at 03:15 AM EEST, 16.06.2025")
+        print("Script toggled: " .. (PastedSources and "ON" or "OFF") .. " at 03:13 AM EEST, 16.06.2025")
     end
 end)
 
@@ -85,36 +87,38 @@ local function InterpolateCFrame(cframe1, cframe2, t)
 end
 
 -- Функция для UndergroundV2
-local function ApplyUndergroundV2()
+local EnabledV2 = false
+local ToggleKey = Enum.KeyCode.G
+local function ApplyUndergroundAA()
     task.spawn(function()
-        local EnabledV2 = false
-        while PastedSources and DesyncMethod == "UndergroundV2" do
+        while EnabledV2 do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
                 local originalVelocity = hrp.Velocity
-                EnabledV2 = true
-                Indicator.Visible = true
-                Indicator.Text = "AA: ON"
-
                 hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityZ, originalVelocity.Z)
                 task.wait(0.006)
-
                 hrp.Velocity = originalVelocity
-
                 task.wait(0.05 + math.random() * 0.02)
             else
                 task.wait(0.1)
             end
-            if not PastedSources or DesyncMethod ~= "UndergroundV2" then
-                EnabledV2 = false
-                Indicator.Text = "AA: OFF"
-                Indicator.Visible = false
-                break
-            end
         end
     end)
 end
+
+-- Обработка ввода для UndergroundV2
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if not gameProcessedEvent and input.KeyCode == ToggleKey then
+        EnabledV2 = not EnabledV2
+        Indicator.Text = "AA: " .. (EnabledV2 and "ON" or "OFF")
+        if EnabledV2 and PastedSources and DesyncMethod == "UndergroundV2" then
+            ApplyUndergroundAA()
+        elseif not EnabledV2 then
+            Indicator.Text = "AA: OFF"
+        end
+    end
+end)
 
 RunService.Heartbeat:Connect(function(deltaTime)
     if PastedSources then
@@ -135,12 +139,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
-            ApplyUndergroundV2()
+            if EnabledV2 then
+                ApplyUndergroundAA()
+            end
         elseif DesyncMethod == "HitboxRoll" then
-            local rollOffset = CFrame.Angles(0, 0, math.rad(45)) * Vector3.new(5, 0, 0)
+            HitboxRollAngle = HitboxRollAngle + 45 -- Резкое изменение угла для косого смещения
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(5, 0, 0)
             SpoofThis = SpoofThis + rollOffset
-            task.wait(0.01)
-            SpoofThis = RootPart.CFrame - rollOffset
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -237,6 +242,7 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     Humanoid.AutoRotate = true
     PositionHistory = {}
     LastServerUpdate = 0
+    LastUndergroundV2 = 0
     setsimulationradius(SimulationRadius)
 end)
 
