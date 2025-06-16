@@ -1,7 +1,7 @@
 -- [Скрипт для Underground Anti-Aim в Roblox]
 -- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-print('1')
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -23,8 +23,8 @@ local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
-local UndergroundZ = -5000 -- Фиксированное значение для Z в Underground
-local UndergroundV2Z = -50 -- Отдельное значение для UndergroundV2
+local UndergroundZ = -5000
+local UndergroundV2Z = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
 local RandomVectorDistance = 5
@@ -75,8 +75,10 @@ OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(func
     if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalAssemblyVelocityIndex(self, key)
         if DesyncMethod == "HitboxRoll" then
-            local rollOffset = CFrame.new(0, 0, -HitboxRollDistance) * CFrame.Angles(0, math.rad(HitboxRollAngle), 0)
-            return Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
+            HitboxRollAngle = HitboxRollAngle + 45
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            SpoofThis = SpoofThis * rollOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
         end
         return realVelocity
     end
@@ -98,7 +100,7 @@ local function StartUnderground()
                 local fakeVelocity = Vector3.new(
                     math.random(-MaxVelocity, MaxVelocity),
                     math.random(-MaxVelocity, MaxVelocity),
-                    UndergroundZ -- Фиксированное -5000 вниз по Z
+                    UndergroundZ
                 )
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
@@ -206,16 +208,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
             UndergroundV2Active = true
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = (HitboxRollAngle + 1) % 360
-            local rollOffset = CFrame.new(0, 0, -HitboxRollDistance) * CFrame.Angles(0, math.rad(HitboxRollAngle), 0)
+            HitboxRollAngle = HitboxRollAngle + 45
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
-            desyncAssemblyVelocity = Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
         elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
             AngleJitterActive = true
             StartAngleJitter()
         end
 
-        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
+        if RandomVectorEnabled and DesyncMethod != "UndergroundV2" then
             local randomOffset = Vector3.new(
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
@@ -359,6 +361,17 @@ return {
                 ServerSync = value
             end
         }, 'ServerSync')
+
+        Section:Slider({
+            Name = "UndergroundZ",
+            Default = UndergroundZ,
+            Minimum = -10000,
+            Maximum = 0,
+            Precision = 0,
+            Callback = function(value)
+                UndergroundZ = value
+            end
+        }, 'UndergroundZ')
 
         Section:Slider({
             Name = "UndergroundV2Z",
