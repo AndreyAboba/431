@@ -23,8 +23,8 @@ local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
-local UndergroundY = -5000
-local UndergroundV2Z = -50
+local UndergroundY = -10000
+local UndergroundYUndergroundV2 = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
 local RandomVectorDistance = 5
@@ -32,6 +32,7 @@ local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollDistance = 15
 local HitboxRollAngle = 0
+local FakePosition = 0
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -123,7 +124,7 @@ local function StartUnderground()
     end)
 end
 
--- Модуль UndergroundV2 (с Y для совместимости)
+-- Модуль UndergroundV2 (с Y)
 local UndergroundV2Active = false
 local function StartUndergroundV2()
     task.spawn(function()
@@ -135,7 +136,7 @@ local function StartUndergroundV2()
                 if humanoid then
                     local moveDirection = humanoid.MoveDirection
                     local originalVelocity = hrp.AssemblyLinearVelocity
-                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundV2Z, moveDirection.Z * originalVelocity.Magnitude)
+                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundYUndergroundV2, moveDirection.Z * originalVelocity.Magnitude)
                     hrp.AssemblyLinearVelocity = fakeVelocity
                     task.wait(0.02)
                     hrp.AssemblyLinearVelocity = fakeVelocity
@@ -166,7 +167,7 @@ local function StartAngleJitter()
                 local angleJitter = math.rad(math.random(-AngleJitterValue * 10000, AngleJitterValue * 10000) / 10000)
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, angleJitter, 0)
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, angleJitter, 0) * CFrame.new(0, FakePosition, 0)
                 hrp.AssemblyLinearVelocity = fakeVelocity
                 task.wait(0.01)
                 hrp.Velocity = originalVelocity
@@ -363,26 +364,15 @@ return {
         }, 'ServerSync')
 
         Section:Slider({
-            Name = "UndergroundY",
-            Default = UndergroundY,
-            Minimum = -10000,
-            Maximum = 0,
-            Precision = 0,
-            Callback = function(value)
-                UndergroundY = value
-            end
-        }, 'UndergroundY')
-
-        Section:Slider({
-            Name = "UndergroundV2Z",
-            Default = UndergroundV2Z,
+            Name = "UndergroundY (UndergroundV2)",
+            Default = UndergroundYUndergroundV2,
             Minimum = -500,
             Maximum = 500,
             Precision = 0,
             Callback = function(value)
-                UndergroundV2Z = value
+                UndergroundYUndergroundV2 = value
             end
-        }, 'UndergroundV2Z')
+        }, 'UndergroundYUndergroundV2')
 
         Section:Slider({
             Name = "ResolverNoise",
@@ -409,13 +399,24 @@ return {
         Section:Slider({
             Name = "AngleJitterValue",
             Default = AngleJitterValue,
-            Minimum = 500,
-            Maximum = 2000,
+            Minimum = 1000,
+            Maximum = 5000,
             Precision = 0,
             Callback = function(value)
                 AngleJitterValue = value
             end
         }, 'AngleJitterValue')
+
+        Section:Slider({
+            Name = "FakePosition",
+            Default = FakePosition,
+            Minimum = -100,
+            Maximum = 100,
+            Precision = 0,
+            Callback = function(value)
+                FakePosition = value
+            end
+        }, 'FakePosition')
 
         Section:Header({ Name = 'RandomVector' })
 
