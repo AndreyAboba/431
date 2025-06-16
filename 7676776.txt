@@ -31,15 +31,18 @@ local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollDistance = 15
 local HitboxRollAngle = 0
+local RollSpeed = 5 -- Новая конфигурация: скорость вращения HitboxRoll
 local VisualizationEnabled = true
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
 
--- Установка Fast Flags
+-- Установка Fast Flags для усиления десинхронизации
 setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
 setfflag("FInt_SimulationSyncInterval", "0.01")
 setfflag("FInt_MaxSimulationSteps", "500")
+
+-- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
 
 local function RandomNumberRange(a)
@@ -105,7 +108,7 @@ OriginalVelocityHookIndex = hookmetamethod(game, "__index", newcclosure(function
     return OriginalVelocityHookIndex(self, key)
 end))
 
--- Модуль UndergroundV2
+-- Отдельный модуль UndergroundV2
 local UndergroundV2Active = false
 local function StartUndergroundV2()
     task.spawn(function()
@@ -130,13 +133,13 @@ local function StartUndergroundV2()
     end)
 end
 
--- Модуль AngleJitter
+-- Новый модуль AngleJitter
 local AngleJitterActive = false
 local BaseDelay = 0
 local RandomFactor = 0.51
 local MaxVelocity = 200000
 local AngleJitterValue = 1000
-local SpoofDuration = 0.5 -- Время пребывания в заспуфленном месте
+local SpoofDuration = 0.5 -- Новая конфигурация: время пребывания в заспуфленном месте
 local function StartAngleJitter()
     task.spawn(function()
         while AngleJitterActive and PastedSources do
@@ -173,90 +176,92 @@ local function StartAngleJitter()
 end
 
 RunService.Heartbeat:Connect(function(deltaTime)
-    if not PastedSources then return end
+    if PastedSources then
+        local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
 
-    local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-    if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
+        local currentTime = tick()
+        table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
 
-    local currentTime = tick()
-    if currentTime - LastServerUpdate < 0.05 then return end -- Ограничение до 20 FPS
-    LastServerUpdate = currentTime
+        DesyncTypes[1] = RootPart.CFrame
+        DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
-    table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
+        local SpoofThis = RootPart.CFrame
+        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
 
-    DesyncTypes[1] = RootPart.CFrame
-    DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
-
-    local SpoofThis = RootPart.CFrame
-    local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
-
-    if DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
-        UndergroundV2Active = true
-        StartUndergroundV2()
-    elseif DesyncMethod == "HitboxRoll" then
-        HitboxRollAngle = (HitboxRollAngle + 90) % 360
-        local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0)
-        SpoofThis = SpoofThis * rollOffset
-        desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
-    elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
-        AngleJitterActive = true
-        StartAngleJitter()
-    end
-
-    if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
-        local randomOffset = Vector3.new(
-            RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-            RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-            RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
-        )
-        local flipChance = math.random()
-        local rotation = CFrame.new()
-        if flipChance < 0.5 then
-            rotation = CFrame.Angles(0, 0, math.pi)
-        elseif flipChance < 0.75 then
-            rotation = CFrame.Angles(0, 0, -math.pi)
+        if DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
+            UndergroundV2Active = true
+            StartUndergroundV2()
+        elseif DesyncMethod == "HitboxRoll" then
+            HitboxRollAngle = HitboxRollAngle + RollSpeed -- Используем новую конфигурацию RollSpeed
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+            SpoofThis = SpoofThis * rollOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
+        elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
+            AngleJitterActive = true
+            StartAngleJitter()
         end
-        SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
-        desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
-    end
 
-    if AntiResolverEnabled then
-        desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
-            RandomNumberRange(ResolverNoise),
-            RandomNumberRange(ResolverNoise / 2),
-            RandomNumberRange(ResolverNoise)
-        )
-    end
+        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
+            local randomOffset = Vector3.new(
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
+                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+            )
+            local flipChance = math.random()
+            local rotation = CFrame.new()
+            if flipChance < 0.5 then
+                rotation = CFrame.Angles(0, 0, math.pi)
+            elseif flipChance < 0.75 then
+                rotation = CFrame.Angles(0, 0, -math.pi)
+            end
+            SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
+            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
+        end
 
-    -- Альтернативная визуализация через print
-    if VisualizationEnabled and RootPart and DesyncTypes[1] then
-        local serverPos = DesyncTypes[1].Position
-        local physicsPos = DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1
-        print("Server Pos: " .. tostring(serverPos) .. " | Physics Pos: " .. tostring(physicsPos))
-    end
+        if AntiResolverEnabled then
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
+                RandomNumberRange(ResolverNoise),
+                RandomNumberRange(ResolverNoise / 2),
+                RandomNumberRange(ResolverNoise)
+            )
+        end
 
-    if ServerSync == "proxy" then
-        local callingScript = getcallingscript()
-        if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
+        -- Текстовая визуализация
+        if VisualizationEnabled and RootPart and DesyncTypes[1] then
+            local serverPos = DesyncTypes[1].Position
+            local physicsPos = DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1
+            print("Server Pos: " .. tostring(serverPos) .. " | Physics Pos: " .. tostring(physicsPos))
+        end
+
+        if ServerSync == "proxy" then
+            local callingScript = getcallingscript()
+            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
+                RootPart.CFrame = SpoofThis
+                if desyncAssemblyVelocity then
+                    RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
+                end
+            end
+        elseif ServerSync == "v1" then
             RootPart.CFrame = SpoofThis
             if desyncAssemblyVelocity then
                 RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
             end
+            if tick() - LastServerUpdate >= ServerUpdateInterval then
+                RootPart.CFrame = DesyncTypes[1]
+                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+                LastServerUpdate = tick()
+            end
         end
-    elseif ServerSync == "v1" then
-        RootPart.CFrame = SpoofThis
-        if desyncAssemblyVelocity then
-            RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
-        end
-        if currentTime - LastServerUpdate >= ServerUpdateInterval then
-            RootPart.CFrame = DesyncTypes[1]
-            RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
-        end
-    end
 
-    RootPart.CFrame = DesyncTypes[1]
-    RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+        RunService.RenderStepped:Wait()
+        RootPart.CFrame = DesyncTypes[1]
+        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
+    else
+        UndergroundV2Active = false
+        AngleJitterActive = false
+    end
 end)
 
 local XDDDDDD = nil
@@ -384,6 +389,17 @@ return {
                 HitboxRollDistance = value
             end
         }, 'HitboxRollDistance')
+
+        Section:Slider({
+            Name = "RollSpeed",
+            Default = RollSpeed,
+            Minimum = 1,
+            Maximum = 10,
+            Precision = 0,
+            Callback = function(value)
+                RollSpeed = value
+            end
+        }, 'RollSpeed')
 
         Section:Toggle({
             Name = "Visualization",
