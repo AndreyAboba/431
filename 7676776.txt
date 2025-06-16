@@ -32,7 +32,7 @@ local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollDistance = 15
 local HitboxRollAngle = 0
-local FakePosition = 0
+local JitterDuration = 0.5
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -167,11 +167,10 @@ local function StartAngleJitter()
                 local angleJitter = math.rad(math.random(-AngleJitterValue * 10000, AngleJitterValue * 10000) / 10000)
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, angleJitter, 0) * CFrame.new(0, FakePosition, 0)
-                hrp.AssemblyLinearVelocity = fakeVelocity
-                task.wait(0.01)
+                hrp.Velocity = fakeVelocity
+                task.wait(JitterDuration)
                 hrp.Velocity = originalVelocity
-                hrp.CFrame = originalCFrame
+                hrp.CFrame = originalCFrame * CFrame.Angles(0, angleJitter, 0)
                 if math.random() < 0.6 then
                     pcall(function()
                         sethiddenproperty(hrp, "NetworkIsSleeping", true)
@@ -408,15 +407,15 @@ return {
         }, 'AngleJitterValue')
 
         Section:Slider({
-            Name = "FakePosition",
-            Default = FakePosition,
-            Minimum = -100,
-            Maximum = 100,
-            Precision = 0,
+            Name = "JitterDuration",
+            Default = JitterDuration,
+            Minimum = 0.1,
+            Maximum = 2.0,
+            Precision = 1,
             Callback = function(value)
-                FakePosition = value
+                JitterDuration = value
             end
-        }, 'FakePosition')
+        }, 'JitterDuration')
 
         Section:Header({ Name = 'RandomVector' })
 
