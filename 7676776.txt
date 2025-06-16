@@ -83,7 +83,7 @@ end
 -- Хук для Underground (Velocity)
 local OriginalVelocityIndex = nil
 OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart and PastedSources then
         local realVelocity = OriginalVelocityIndex(self, key)
         if DesyncMethod == "Underground" then
             return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
@@ -95,7 +95,7 @@ end))
 -- Хук для Underground (CFrame)
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart and PastedSources then
         if DesyncMethod == "Underground" then
             return DesyncTypes[1] or CFrame.new()
         end
@@ -103,21 +103,18 @@ OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self,
     return OriginalCFrameIndex(self, key)
 end))
 
--- Хук для физики (AssemblyLinearVelocity и Velocity для HitboxRoll)
+-- Хук для HitboxRoll (AssemblyLinearVelocity и Velocity)
 local OriginalAssemblyVelocityIndex = nil
 OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if key == "AssemblyLinearVelocity" then
-            local realVelocity = OriginalAssemblyVelocityIndex(self, key)
-            if DesyncMethod == "HitboxRoll" then
-                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-                return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 100 -- Усиленный ролл физики
-            end
-            return realVelocity
+    if not checkcaller() and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart and PastedSources then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        if key == "AssemblyLinearVelocity" and DesyncMethod == "HitboxRoll" then
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 100
         elseif key == "Velocity" and DesyncMethod == "HitboxRoll" then
             local realVelocity = OriginalAssemblyVelocityIndex(self, "Velocity")
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-            return Vector3.new(realVelocity.X, realVelocity.Y, realVelocity.Z) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50 -- Ролл Velocity
+            return Vector3.new(realVelocity.X, realVelocity.Y, realVelocity.Z) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50
         end
     end
     return OriginalAssemblyVelocityIndex(self, key)
@@ -158,14 +155,10 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
         if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
 
-        local currentTime = tick()
-        table.insert(PositionHistory, {Time = currentTime, CFrame = RootPart.CFrame})
-
         DesyncTypes[1] = RootPart.CFrame
         DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
-        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
 
         if DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
             UndergroundV2Active = true
@@ -173,7 +166,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             Indicator.Text = "AA: ON"
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 45 -- Вращение
+            HitboxRollAngle = HitboxRollAngle + 45
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
         end
@@ -185,30 +178,29 @@ RunService.Heartbeat:Connect(function(deltaTime)
                 RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
             )
             SpoofThis = SpoofThis + randomOffset
-            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
         end
 
         if AntiResolverEnabled then
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
+            local noise = Vector3.new(
                 RandomNumberRange(ResolverNoise),
                 RandomNumberRange(ResolverNoise / 2),
                 RandomNumberRange(ResolverNoise)
             )
+            RootPart.AssemblyLinearVelocity = RootPart.AssemblyLinearVelocity + noise
         end
 
-        -- Визуализация серверного положения (где нас видят игроки)
+        -- Визуализация серверного положения
         if VisualizationEnabled and RootPart and DesyncTypes[1] then
             local serverPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position)
             ServerVisualization.Position = Vector2.new(serverPos.X, serverPos.Y)
             ServerVisualization.Visible = true
-            -- Визуализация физики
             local physicsPos = workspace.CurrentCamera:WorldToViewportPoint(DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1)
             PhysicsVisualization.Position = Vector2.new(physicsPos.X, physicsPos.Y)
             PhysicsVisualization.Visible = true
         else
             ServerVisualization.Visible = false
             PhysicsVisualization.Visible = false
-            ServerVisualization:Remove() -- Очистка при выключении
+            ServerVisualization:Remove()
             PhysicsVisualization:Remove()
             Indicator:Remove()
         end
@@ -217,25 +209,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
                 RootPart.CFrame = SpoofThis
-                if desyncAssemblyVelocity then
-                    RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
-                end
             end
         elseif ServerSync == "v1" then
             RootPart.CFrame = SpoofThis
-            if desyncAssemblyVelocity then
-                RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
-            end
             if tick() - LastServerUpdate >= ServerUpdateInterval then
                 RootPart.CFrame = DesyncTypes[1]
-                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
                 LastServerUpdate = tick()
             end
         end
 
         RunService.RenderStepped:Wait()
-        RootPart.CFrame = DesyncTypes[1]
-        RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
     else
         UndergroundV2Active = false
         Indicator.Visible = false
@@ -245,7 +228,7 @@ end)
 
 local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart and PastedSources then
         if ServerSync == "proxy" then
             local callingScript = getcallingscript()
             if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
