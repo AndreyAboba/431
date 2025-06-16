@@ -29,7 +29,7 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
-local HitboxRollDistance = 5
+local HitboxRollDistance = 2 -- Уменьшил для незаметности
 local HitboxRollAngle = 0
 local VisualizationEnabled = true
 
@@ -92,36 +92,52 @@ OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(sel
     return OriginalVelocityIndex(self, key)
 end))
 
--- Хук для Underground (CFrame)
+-- Хук для Underground и HitboxRoll (CFrame)
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if DesyncMethod == "Underground" then
-            return DesyncTypes[1] or CFrame.new()
+        local callingScript = getcallingscript()
+        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
+            if DesyncMethod == "Underground" then
+                return DesyncTypes[1] or CFrame.new()
+            elseif DesyncMethod == "HitboxRoll" then
+                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+                return DesyncTypes[1] * rollOffset
+            end
         end
     end
     return OriginalCFrameIndex(self, key)
 end))
 
--- Хук для HitboxRoll (AssemblyLinearVelocity и Velocity)
+-- Хук для HitboxRoll (AssemblyLinearVelocity)
 local OriginalAssemblyVelocityIndex = nil
 OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        local realVelocity = OriginalAssemblyVelocityIndex(self, key)
-        if DesyncMethod == "HitboxRoll" then
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 100 -- Усиленный ролл физики
+        local callingScript = getcallingscript()
+        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
+            if DesyncMethod == "HitboxRoll" then
+                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+                return Vector3.new(0, 0, 0) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 10 -- Тихий ролл
+            end
         end
-        return realVelocity
-    elseif PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        local realVelocity = OriginalAssemblyVelocityIndex(self, "Velocity")
-        if DesyncMethod == "HitboxRoll" then
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-            return Vector3.new(realVelocity.X, realVelocity.Y, realVelocity.Z) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50 -- Ролл Velocity
-        end
-        return realVelocity
     end
     return OriginalAssemblyVelocityIndex(self, key)
+end))
+
+-- Хук для HitboxRoll (Velocity)
+local OriginalVelocityRollIndex = nil
+OriginalVelocityRollIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+        local callingScript = getcallingscript()
+        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
+            if DesyncMethod == "HitboxRoll" then
+                local realVelocity = OriginalVelocityRollIndex(self, key)
+                local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+                return Vector3.new(realVelocity.X, realVelocity.Y, realVelocity.Z) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 5 -- Тихий ролл Velocity
+            end
+        end
+    end
+    return OriginalVelocityRollIndex(self, key)
 end))
 
 -- Отдельный модуль UndergroundV2
@@ -170,7 +186,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             Indicator.Text = "AA: ON"
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 45
+            HitboxRollAngle = HitboxRollAngle + 5 -- Меньше угла для незаметности
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
         end
@@ -233,13 +249,11 @@ end)
 local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if ServerSync == "proxy" then
-            local callingScript = getcallingscript()
-            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
+        local callingScript = getcallingscript()
+        if callingScript and not string.find(tostring(callingScript), "LocalScript") and not string.find(tostring(callingScript), "Client") then -- Серверный вызов
+            if DesyncMethod == "Underground" or DesyncMethod == "HitboxRoll" then
                 return DesyncTypes[1] or CFrame.new()
             end
-        elseif ServerSync == "v1" then
-            return DesyncTypes[1] or CFrame.new()
         end
     end
     return XDDDDDD(self, key)
@@ -415,7 +429,6 @@ return {
                     Keybind = key
                     if PastedSources then
                         PastedSources = false
-                        DesyncMethod = "Underground"
                         UndergroundV2Active = false
                         Indicator.Visible = false
                         Indicator.Text = "AA: OFF"
