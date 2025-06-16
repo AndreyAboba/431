@@ -29,7 +29,7 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
-local HitboxRollDistance = 5
+local HitboxRollDistance = 10 -- Увеличил для более заметного ролла
 local HitboxRollAngle = 0
 local VisualizationEnabled = true
 
@@ -80,7 +80,7 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
--- Хук для Underground (Velocity и CFrame)
+-- Хук для Underground (Velocity)
 local OriginalVelocityIndex = nil
 OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
@@ -92,6 +92,7 @@ OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(sel
     return OriginalVelocityIndex(self, key)
 end))
 
+-- Хук для Underground (CFrame)
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
@@ -102,14 +103,14 @@ OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self,
     return OriginalCFrameIndex(self, key)
 end))
 
--- Хук для физики (AssemblyLinearVelocity)
+-- Хук для HitboxRoll (AssemblyLinearVelocity)
 local OriginalAssemblyVelocityIndex = nil
 OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalAssemblyVelocityIndex(self, key)
         if DesyncMethod == "HitboxRoll" then
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
-            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 50
+            return Vector3.new(1000, 1000, 1000) + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 200 -- Увеличил интенсивность ролла
         end
         return realVelocity
     end
@@ -181,6 +182,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             HitboxRollAngle = HitboxRollAngle + 45
             local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 100 -- Увеличил ролл Velocity
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -212,6 +214,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
         else
             ServerVisualization.Visible = false
             PhysicsVisualization.Visible = false
+            ServerVisualization:Remove()
+            PhysicsVisualization:Remove()
+            Indicator:Remove()
         end
 
         if ServerSync == "proxy" then
