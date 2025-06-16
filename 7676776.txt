@@ -15,11 +15,10 @@ local setfflag = setfflag -- Предполагается, что доступн
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
-local PastedSources = true
+local PastedSources = false
 local DesyncMethod = "Underground"
 local Keybind = nil
 local LastServerUpdate = 0
-local LastUndergroundV2 = 0
 local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
@@ -30,7 +29,6 @@ local RandomVectorEnabled = false
 local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
-local HitboxRollAngle = 0
 local HitboxRollDistance = 5
 local VisualizationEnabled = true
 
@@ -74,22 +72,31 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
--- Функция для UndergroundV2
-local EnabledV2 = false
-local function ApplyUndergroundAA()
+-- Отдельный модуль UndergroundV2
+local UndergroundV2Active = false
+local function StartUndergroundV2()
     task.spawn(function()
-        while EnabledV2 do
+        while UndergroundV2Active and PastedSources do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
-                local originalVelocity = hrp.Velocity
-                hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityZ, originalVelocity.Z)
-                task.wait(0.006)
-                hrp.Velocity = originalVelocity
-                task.wait(0.05 + math.random() * 0.02)
+                local humanoid = char:FindFirstChild("Humanoid")
+                if humanoid then
+                    local moveDirection = humanoid.MoveDirection
+                    local originalVelocity = hrp.Velocity
+                    local newVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundVelocityZ, moveDirection.Z * originalVelocity.Magnitude)
+                    hrp.Velocity = newVelocity
+                    task.wait(0.006)
+                    hrp.Velocity = originalVelocity
+                    task.wait(0.05 + math.random() * 0.02)
+                end
             else
                 task.wait(0.1)
             end
+        end
+        if not UndergroundV2Active then
+            Indicator.Visible = false
+            Indicator.Text = "AA: OFF"
         end
     end)
 end
@@ -111,16 +118,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
 
         if DesyncMethod == "Underground" then
             desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ)
-            RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
-        elseif DesyncMethod == "UndergroundV2" then
-            EnabledV2 = true
+            RootPart.Velocity = Vector3.new(1000, 1000, 1000)
+        elseif DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
+            UndergroundV2Active = true
             Indicator.Visible = true
             Indicator.Text = "AA: ON"
-            ApplyUndergroundAA()
+            StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 45 -- Резкое изменение угла для косого смещения
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(HitboxRollDistance, 0, 0)
-            SpoofThis = SpoofThis + rollOffset
+            local offset = Vector3.new(HitboxRollDistance, 0, 0)
+            SpoofThis = SpoofThis + offset
+            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + offset * 50 -- Изменение физики
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -174,7 +181,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         RootPart.CFrame = DesyncTypes[1]
         RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
     else
-        EnabledV2 = false
+        UndergroundV2Active = false
         Indicator.Visible = false
         Indicator.Text = "AA: OFF"
     end
@@ -221,7 +228,7 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     Humanoid.AutoRotate = true
     PositionHistory = {}
     LastServerUpdate = 0
-    LastUndergroundV2 = 0
+    UndergroundV2Active = false
     setsimulationradius(SimulationRadius)
 end)
 
@@ -250,6 +257,12 @@ return {
             Default = PastedSources,
             Callback = function(value)
                 PastedSources = value
+                if not value then
+                    DesyncMethod = "Underground"
+                    UndergroundV2Active = false
+                    Indicator.Visible = false
+                    Indicator.Text = "AA: OFF"
+                end
                 notify("Desync", "Desync " .. (value and "Enabled" or "Disabled"), true)
             end
         }, 'DesyncEnabled')
@@ -261,9 +274,14 @@ return {
             Callback = function(value)
                 DesyncMethod = value
                 if value ~= "UndergroundV2" then
-                    EnabledV2 = false
+                    UndergroundV2Active = false
                     Indicator.Visible = false
                     Indicator.Text = "AA: OFF"
+                elseif value == "UndergroundV2" and PastedSources then
+                    UndergroundV2Active = true
+                    Indicator.Visible = true
+                    Indicator.Text = "AA: ON"
+                    StartUndergroundV2()
                 end
             end
         }, 'DesyncMethod')
@@ -367,8 +385,10 @@ return {
             Callback = function(key)
                 if not UserInputService:GetFocusedTextBox() then
                     Keybind = key
-                    PastedSources = not PastedSources
-                    notify("Desync", "Desync " .. (PastedSources and "Enabled" or "Disabled"), true)
+                    if PastedSources then
+                        PastedSources = not PastedSources
+                        notify("Desync", "Desync " .. (PastedSources and "Enabled" or "Disabled"), true)
+                    end
                 end
             end
         }, 'DesyncKeybind')
