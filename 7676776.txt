@@ -30,6 +30,7 @@ local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollDistance = 5
+local HitboxRollAngle = 0
 local VisualizationEnabled = true
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
@@ -79,6 +80,18 @@ local function InterpolateCFrame(cframe1, cframe2, t)
     return CFrame.new(interpolatedPos) * interpolatedRot
 end
 
+-- Хук для Underground
+local OriginalVelocityIndex = nil
+OriginalVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    if PastedSources and not checkcaller() and key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+        local realVelocity = OriginalVelocityIndex(self, key)
+        if DesyncMethod == "Underground" then
+            return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+        end
+    end
+    return OriginalVelocityIndex(self, key)
+end))
+
 -- Отдельный модуль UndergroundV2
 local UndergroundV2Active = false
 local function StartUndergroundV2()
@@ -123,23 +136,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local SpoofThis = RootPart.CFrame
         local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
 
-        if DesyncMethod == "Underground" then
-            desyncAssemblyVelocity = Vector3.new(DesyncTypes[2].X, DesyncTypes[2].Y, UndergroundVelocityZ)
-            RootPart.Velocity = Vector3.new(1000, 1000, 1000)
-        elseif DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
+        if DesyncMethod == "UndergroundV2" and not UndergroundV2Active then
             UndergroundV2Active = true
             Indicator.Visible = true
             Indicator.Text = "AA: ON"
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            local offset = Vector3.new(HitboxRollDistance, 0, 0)
-            SpoofThis = SpoofThis + offset
-            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + offset * 50
-            if tick() - LastServerUpdate >= 0.1 then -- Уменьшаем частоту возврата
-                RootPart.CFrame = DesyncTypes[1]
-                RootPart.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.new()
-                LastServerUpdate = tick()
-            end
+            HitboxRollAngle = HitboxRollAngle + 45 -- Вращение
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(HitboxRollDistance, 0, 0)
+            SpoofThis = SpoofThis * rollOffset -- Применяем вращение
+            desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000) + rollOffset.LookVector * 50 -- Динамическая физика
         end
 
         if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
@@ -206,30 +212,14 @@ end)
 
 local XDDDDDD = nil
 XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if PastedSources and not checkcaller() then
-        if key == "Velocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0 then
-            if DesyncMethod == "Underground" and self == LocalPlayer.Character.HumanoidRootPart then
-                local realVelocity = XDDDDDD(self, key)
-                return Vector3.new(realVelocity.X, realVelocity.Y, UndergroundVelocityZ)
+    if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+        if ServerSync == "proxy" then
+            local callingScript = getcallingscript()
+            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
+                return DesyncTypes[1] or CFrame.new()
             end
-        end
-        if key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0 then
-            if ServerSync == "proxy" then
-                local callingScript = getcallingscript()
-                if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
-                    if self == LocalPlayer.Character.HumanoidRootPart then
-                        return DesyncTypes[1] or CFrame.new()
-                    elseif self == LocalPlayer.Character.Head then
-                        return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
-                    end
-                end
-            elseif ServerSync == "v1" then
-                if self == LocalPlayer.Character.HumanoidRootPart then
-                    return DesyncTypes[1] or CFrame.new()
-                elseif self == LocalPlayer.Character.Head then
-                    return DesyncTypes[1] and DesyncTypes[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
-                end
-            end
+        elseif ServerSync == "v1" then
+            return DesyncTypes[1] or CFrame.new()
         end
     end
     return XDDDDDD(self, key)
@@ -400,17 +390,15 @@ return {
             Name = "Keybind",
             Default = Keybind,
             Callback = function(key)
-                if not UserInputService:GetFocusedTextBox() then
+                if not UserInputService:GetFocusedTextBox() and PastedSources then
                     Keybind = key
-                    if PastedSources then
-                        PastedSources = not PastedSources
-                        notify("Desync", "Desync " .. (PastedSources and "Enabled" or "Disabled"), true)
-                        if not PastedSources then
-                            DesyncMethod = "Underground"
-                            UndergroundV2Active = false
-                            Indicator.Visible = false
-                            Indicator.Text = "AA: OFF"
-                        end
+                    PastedSources = not PastedSources
+                    notify("Desync", "Desync " .. (PastedSources and "Enabled" or "Disabled"), true)
+                    if not PastedSources then
+                        DesyncMethod = "Underground"
+                        UndergroundV2Active = false
+                        Indicator.Visible = false
+                        Indicator.Text = "AA: OFF"
                     end
                 end
             end
