@@ -23,7 +23,7 @@ local SimulationRadius = math.huge
 local ServerSync = "v1"
 local ServerUpdateInterval = 0.1
 local AntiResolverEnabled = true
-local UndergroundZ = -5000
+local UndergroundY = -5000
 local UndergroundV2Z = -50
 local ResolverNoise = 7
 local RandomVectorEnabled = false
@@ -85,7 +85,7 @@ OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(func
     return OriginalAssemblyVelocityIndex(self, key)
 end))
 
--- Модуль Underground (как AngleJitter с фиксацией Z)
+-- Модуль Underground (с фиксацией Y)
 local UndergroundActive = false
 local BaseDelay = 0
 local RandomFactor = 0.51
@@ -99,8 +99,8 @@ local function StartUnderground()
                 local delay = BaseDelay + math.random(-RandomFactor, RandomFactor)
                 local fakeVelocity = Vector3.new(
                     math.random(-MaxVelocity, MaxVelocity),
-                    math.random(-MaxVelocity, MaxVelocity),
-                    UndergroundZ
+                    UndergroundY,
+                    math.random(-MaxVelocity, MaxVelocity)
                 )
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
@@ -123,7 +123,7 @@ local function StartUnderground()
     end)
 end
 
--- Модуль UndergroundV2
+-- Модуль UndergroundV2 (с Y для совместимости)
 local UndergroundV2Active = false
 local function StartUndergroundV2()
     task.spawn(function()
@@ -135,7 +135,7 @@ local function StartUndergroundV2()
                 if humanoid then
                     local moveDirection = humanoid.MoveDirection
                     local originalVelocity = hrp.AssemblyLinearVelocity
-                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, moveDirection.Y * originalVelocity.Magnitude, UndergroundV2Z)
+                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundV2Z, moveDirection.Z * originalVelocity.Magnitude)
                     hrp.AssemblyLinearVelocity = fakeVelocity
                     task.wait(0.02)
                     hrp.AssemblyLinearVelocity = fakeVelocity
@@ -363,15 +363,15 @@ return {
         }, 'ServerSync')
 
         Section:Slider({
-            Name = "UndergroundZ",
-            Default = UndergroundZ,
+            Name = "UndergroundY",
+            Default = UndergroundY,
             Minimum = -10000,
             Maximum = 0,
             Precision = 0,
             Callback = function(value)
-                UndergroundZ = value
+                UndergroundY = value
             end
-        }, 'UndergroundZ')
+        }, 'UndergroundY')
 
         Section:Slider({
             Name = "UndergroundV2Z",
