@@ -1,7 +1,7 @@
 -- [Скрипт для Underground Anti-Aim в Roblox]
 -- [Автор: Grok в режиме тестирования, основа от пользователя]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-print('1')
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -31,11 +31,31 @@ local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollDistance = 15
 local HitboxRollAngle = 0
-local RollSpeed = 5 -- Новая конфигурация: скорость вращения HitboxRoll
 local VisualizationEnabled = true
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
+
+-- Создание GUI для визуализации
+local ScreenGui = Instance.new("ScreenGui")
+local ServerLabel = Instance.new("TextLabel")
+local PhysicsLabel = Instance.new("TextLabel")
+
+ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+ServerLabel.Parent = ScreenGui
+PhysicsLabel.Parent = ScreenGui
+
+ServerLabel.Size = UDim2.new(0, 200, 0, 30)
+ServerLabel.Position = UDim2.new(0, 10, 0, 10)
+ServerLabel.BackgroundColor3 = Color3.new(1, 0, 0)
+ServerLabel.TextColor3 = Color3.new(1, 1, 1)
+ServerLabel.Visible = false
+
+PhysicsLabel.Size = UDim2.new(0, 200, 0, 30)
+PhysicsLabel.Position = UDim2.new(0, 10, 0, 50)
+PhysicsLabel.BackgroundColor3 = Color3.new(0, 1, 0)
+PhysicsLabel.TextColor3 = Color3.new(1, 1, 1)
+PhysicsLabel.Visible = false
 
 -- Установка Fast Flags для усиления десинхронизации
 setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
@@ -139,7 +159,6 @@ local BaseDelay = 0
 local RandomFactor = 0.51
 local MaxVelocity = 200000
 local AngleJitterValue = 1000
-local SpoofDuration = 0.5 -- Новая конфигурация: время пребывания в заспуфленном месте
 local function StartAngleJitter()
     task.spawn(function()
         while AngleJitterActive and PastedSources do
@@ -157,7 +176,7 @@ local function StartAngleJitter()
                 local originalCFrame = hrp.CFrame
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, angleJitter, 0)
                 hrp.AssemblyLinearVelocity = fakeVelocity
-                task.wait(SpoofDuration) -- Пребывание в заспуфленном месте
+                task.wait(0.01)
                 hrp.Velocity = originalVelocity
                 hrp.CFrame = originalCFrame
                 if math.random() < 0.6 then
@@ -194,8 +213,8 @@ RunService.Heartbeat:Connect(function(deltaTime)
             UndergroundV2Active = true
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + RollSpeed -- Используем новую конфигурацию RollSpeed
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+            HitboxRollAngle = HitboxRollAngle + 90 -- Увеличил угол для более сложного кручения
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0) * CFrame.Angles(math.pi / 2, 0, 0) -- Переворот вверх ногами
             SpoofThis = SpoofThis * rollOffset
             desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
         elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
@@ -212,9 +231,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
             local flipChance = math.random()
             local rotation = CFrame.new()
             if flipChance < 0.5 then
-                rotation = CFrame.Angles(0, 0, math.pi)
+                rotation = CFrame.Angles(0, 0, math.pi) -- Переворот вверх ногами
             elseif flipChance < 0.75 then
-                rotation = CFrame.Angles(0, 0, -math.pi)
+                rotation = CFrame.Angles(0, 0, -math.pi) -- Обратный переворот
             end
             SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
             desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
@@ -228,11 +247,17 @@ RunService.Heartbeat:Connect(function(deltaTime)
             )
         end
 
-        -- Текстовая визуализация
+        -- Визуализация через TextLabel
         if VisualizationEnabled and RootPart and DesyncTypes[1] then
             local serverPos = DesyncTypes[1].Position
             local physicsPos = DesyncTypes[1].Position + (DesyncTypes[2] or Vector3.new()) * 0.1
-            print("Server Pos: " .. tostring(serverPos) .. " | Physics Pos: " .. tostring(physicsPos))
+            ServerLabel.Text = "Server: " .. tostring(serverPos)
+            PhysicsLabel.Text = "Physics: " .. tostring(physicsPos)
+            ServerLabel.Visible = true
+            PhysicsLabel.Visible = true
+        else
+            ServerLabel.Visible = false
+            PhysicsLabel.Visible = false
         end
 
         if ServerSync == "proxy" then
@@ -390,17 +415,6 @@ return {
             end
         }, 'HitboxRollDistance')
 
-        Section:Slider({
-            Name = "RollSpeed",
-            Default = RollSpeed,
-            Minimum = 1,
-            Maximum = 10,
-            Precision = 0,
-            Callback = function(value)
-                RollSpeed = value
-            end
-        }, 'RollSpeed')
-
         Section:Toggle({
             Name = "Visualization",
             Default = VisualizationEnabled,
@@ -451,63 +465,6 @@ return {
                 RandomVectorAmplitude = value
             end
         }, 'RandomVectorAmplitude')
-
-        Section:Header({ Name = 'AngleJitter' })
-
-        Section:Slider({
-            Name = "BaseDelay",
-            Default = BaseDelay,
-            Minimum = 0,
-            Maximum = 1,
-            Precision = 2,
-            Callback = function(value)
-                BaseDelay = value
-            end
-        }, 'AngleJitterBaseDelay')
-
-        Section:Slider({
-            Name = "RandomFactor",
-            Default = RandomFactor,
-            Minimum = 0,
-            Maximum = 1,
-            Precision = 2,
-            Callback = function(value)
-                RandomFactor = value
-            end
-        }, 'AngleJitterRandomFactor')
-
-        Section:Slider({
-            Name = "MaxVelocity",
-            Default = MaxVelocity,
-            Minimum = 10000,
-            Maximum = 500000,
-            Precision = 0,
-            Callback = function(value)
-                MaxVelocity = value
-            end
-        }, 'AngleJitterMaxVelocity')
-
-        Section:Slider({
-            Name = "AngleJitterValue",
-            Default = AngleJitterValue,
-            Minimum = 500,
-            Maximum = 2000,
-            Precision = 0,
-            Callback = function(value)
-                AngleJitterValue = value
-            end
-        }, 'AngleJitterValue')
-
-        Section:Slider({
-            Name = "SpoofDuration",
-            Default = SpoofDuration,
-            Minimum = 0.1,
-            Maximum = 2,
-            Precision = 1,
-            Callback = function(value)
-                SpoofDuration = value
-            end
-        }, 'AngleJitterSpoofDuration')
 
         Section:Keybind({
             Name = "Keybind",
