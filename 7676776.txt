@@ -31,6 +31,7 @@ local RandomVectorDistance = 5
 local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollAngle = 0
+local HitboxRollDistance = 5
 local VisualizationEnabled = true
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
@@ -68,7 +69,7 @@ Mouse.KeyDown:Connect(function(key)
             Indicator.Visible = false
             ServerVisualization.Visible = false
         end
-        print("Script toggled: " .. (PastedSources and "ON" or "OFF") .. " at 03:13 AM EEST, 16.06.2025")
+        print("Script toggled: " .. (PastedSources and "ON" or "OFF") .. " at 03:28 AM EEST, 16.06.2025")
     end
 end)
 
@@ -112,10 +113,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if not gameProcessedEvent and input.KeyCode == ToggleKey then
         EnabledV2 = not EnabledV2
         Indicator.Text = "AA: " .. (EnabledV2 and "ON" or "OFF")
-        if EnabledV2 and PastedSources and DesyncMethod == "UndergroundV2" then
+        if EnabledV2 then
             ApplyUndergroundAA()
-        elseif not EnabledV2 then
-            Indicator.Text = "AA: OFF"
         end
     end
 end)
@@ -140,11 +139,19 @@ RunService.Heartbeat:Connect(function(deltaTime)
             RootPart.Velocity = Vector3.new(1000, 1000, 1000) -- Максимальный спуф Velocity
         elseif DesyncMethod == "UndergroundV2" then
             if EnabledV2 then
-                ApplyUndergroundAA()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local hrp = char.HumanoidRootPart
+                    local originalVelocity = hrp.Velocity
+                    hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityZ, originalVelocity.Z)
+                    task.wait(0.006)
+                    hrp.Velocity = originalVelocity
+                    task.wait(0.05 + math.random() * 0.02)
+                end
             end
         elseif DesyncMethod == "HitboxRoll" then
             HitboxRollAngle = HitboxRollAngle + 45 -- Резкое изменение угла для косого смещения
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(5, 0, 0)
+            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * Vector3.new(HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis + rollOffset
         end
 
@@ -314,6 +321,17 @@ return {
                 ResolverNoise = value
             end
         }, 'ResolverNoise')
+
+        Section:Slider({
+            Name = "HitboxRollDistance",
+            Default = HitboxRollDistance,
+            Minimum = 1,
+            Maximum = 10,
+            Precision = 1,
+            Callback = function(value)
+                HitboxRollDistance = value
+            end
+        }, 'HitboxRollDistance')
 
         Section:Toggle({
             Name = "Visualization",
