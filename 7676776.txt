@@ -57,10 +57,16 @@ setfflag("FInt_MaxSimulationSteps", "500")
 -- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
 
--- Toggles
+-- Переключение через 'b'
 Mouse.KeyDown:Connect(function(key)
     if key == string.lower("b") then
         PastedSources = not PastedSources
+        if not PastedSources then
+            DesyncMethod = "Underground" -- Сброс на дефолт при выключении
+            Indicator.Visible = false
+            ServerVisualization.Visible = false
+        end
+        print("Script toggled: " .. (PastedSources and "ON" or "OFF") .. " at 03:15 AM EEST, 16.06.2025")
     end
 end)
 
@@ -91,14 +97,12 @@ local function ApplyUndergroundV2()
                 Indicator.Visible = true
                 Indicator.Text = "AA: ON"
 
-                -- Применяем падение вниз
                 hrp.Velocity = Vector3.new(originalVelocity.X, UndergroundVelocityZ, originalVelocity.Z)
-                task.wait(0.006) -- Короткий интервал
+                task.wait(0.006)
 
-                -- Возвращаем оригинальную скорость
                 hrp.Velocity = originalVelocity
 
-                task.wait(0.05 + math.random() * 0.02) -- Рандомная пауза
+                task.wait(0.05 + math.random() * 0.02)
             else
                 task.wait(0.1)
             end
