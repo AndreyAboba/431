@@ -353,9 +353,9 @@ return {
                     UndergroundActive = false
                     UndergroundV2Active = false
                     AngleJitterActive = false
-                    notify("Desync", "Desync Disabled", true)
+                    notify("Desync", "Desync Disabled", true) -- Исправлено на явную строку
                 else
-                    notify("Desync", "Desync Enabled", true)
+                    notify("Desync", "Desync Enabled", true) -- Исправлено на явную строку
                 end
             end
         }, 'DesyncEnabled')
@@ -499,12 +499,12 @@ return {
                             AngleJitterActive = true
                             StartAngleJitter()
                         end
-                        notify("Desync", "Desync Enabled", true)
+                        notify("Desync", "Desync Enabled", true) -- Исправлено на явную строку
                     else
                         UndergroundActive = false
                         UndergroundV2Active = false
                         AngleJitterActive = false
-                        notify("Desync", "Desync Disabled", true)
+                        notify("Desync", "Desync Disabled", true) -- Исправлено на явную строку
                     end
                 end
             end
