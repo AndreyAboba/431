@@ -1,7 +1,3 @@
--- [Скрипт для Underground Anti-Aim в Roblox]
--- [Автор: Grok в режиме тестирования, основа от пользователя]
--- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -11,17 +7,12 @@ local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
 local getcallingscript = getcallingscript
 local setsimulationradius = setsimulationradius
-local setfflag = setfflag -- Предполагается, что доступно через эксплоит
+local setfflag = setfflag
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
-local SimulationRadius = math.huge
-local ServerUpdateInterval = 0.1
-local BaseDelay = 0
-local RandomFactor = 0.51
-local MaxVelocity = 200000
 
--- Конфигурация модуля Desync
+-- Конфигурация модуля
 local Desync = {}
 Desync.Config = {
     Desync = {
@@ -31,7 +22,6 @@ Desync.Config = {
         UndergroundY = -10000,
         UndergroundYUndergroundV2 = -50,
         ResolverNoise = 7,
-        AntiResolverEnabled = true,
         RandomVectorEnabled = false,
         RandomVectorDistance = 5,
         RandomVectorSpeed = 10,
@@ -42,7 +32,7 @@ Desync.Config = {
     }
 }
 
--- Состояние модуля Desync
+-- Состояние модуля
 local DesyncStatus = {
     Enabled = Desync.Config.Desync.Enabled,
     Running = false,
@@ -51,21 +41,24 @@ local DesyncStatus = {
     UndergroundActive = false,
     UndergroundV2Active = false,
     AngleJitterActive = false,
+    HitboxRollAngle = 0,
     Key = Desync.Config.Desync.ToggleKey,
     LastServerUpdate = 0,
-    HitboxRollAngle = 0
+    SimulationRadius = math.huge,
+    ServerUpdateInterval = 0.1,
+    AntiResolverEnabled = true
 }
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
 
--- Установка Fast Flags для усиления десинхронизации
+-- Установка Fast Flags
 setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
 setfflag("FInt_SimulationSyncInterval", "0.01")
 setfflag("FInt_MaxSimulationSteps", "500")
 
 -- Установка радиуса симуляции
-setsimulationradius(SimulationRadius)
+setsimulationradius(DesyncStatus.SimulationRadius)
 
 local function RandomNumberRange(a)
     return math.random(-a * 100, a * 100) / 100
@@ -84,8 +77,16 @@ end
 -- Хук для Underground (CFrame)
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if DesyncStatus.Enabled and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if DesyncStatus.Running and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         if DesyncStatus.Method == "Underground" then
+            return DesyncTypes.CFrame or CFrame.new()
+        end
+        if DesyncStatus.ServerSync == "proxy" then
+            local callingScript = getcallingscript()
+            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
+                return DesyncTypes.CFrame or CFrame.new()
+            end
+        elseif DesyncStatus.ServerSync == "v1" then
             return DesyncTypes.CFrame or CFrame.new()
         end
     end
@@ -95,7 +96,7 @@ end))
 -- Хук для HitboxRoll (AssemblyLinearVelocity)
 local OriginalAssemblyVelocityIndex = nil
 OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if DesyncStatus.Enabled and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
+    if DesyncStatus.Running and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalAssemblyVelocityIndex(self, key)
         if DesyncStatus.Method == "HitboxRoll" then
             DesyncStatus.HitboxRollAngle = DesyncStatus.HitboxRollAngle + 45
@@ -107,10 +108,15 @@ OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(func
     return OriginalAssemblyVelocityIndex(self, key)
 end))
 
--- Модуль Underground (с фиксацией Y)
+-- Модуль Underground
 local function StartUnderground()
+    if DesyncStatus.UndergroundActive then return end
+    DesyncStatus.UndergroundActive = true
     task.spawn(function()
-        while DesyncStatus.UndergroundActive and DesyncStatus.Enabled do
+        local BaseDelay = 0
+        local RandomFactor = 0.51
+        local MaxVelocity = 200000
+        while DesyncStatus.UndergroundActive and DesyncStatus.Running do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
@@ -138,13 +144,16 @@ local function StartUnderground()
                 task.wait(0.1)
             end
         end
+        DesyncStatus.UndergroundActive = false
     end)
 end
 
--- Модуль UndergroundV2 (с Y)
+-- Модуль UndergroundV2
 local function StartUndergroundV2()
+    if DesyncStatus.UndergroundV2Active then return end
+    DesyncStatus.UndergroundV2Active = true
     task.spawn(function()
-        while DesyncStatus.UndergroundV2Active and DesyncStatus.Enabled do
+        while DesyncStatus.UndergroundV2Active and DesyncStatus.Running do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
@@ -162,13 +171,19 @@ local function StartUndergroundV2()
                 task.wait(0.1)
             end
         end
+        DesyncStatus.UndergroundV2Active = false
     end)
 end
 
 -- Модуль AngleJitter
 local function StartAngleJitter()
+    if DesyncStatus.AngleJitterActive then return end
+    DesyncStatus.AngleJitterActive = true
     task.spawn(function()
-        while DesyncStatus.AngleJitterActive and DesyncStatus.Enabled do
+        local BaseDelay = 0
+        local RandomFactor = 0.51
+        local MaxVelocity = 200000
+        while DesyncStatus.AngleJitterActive and DesyncStatus.Running do
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
@@ -197,42 +212,29 @@ local function StartAngleJitter()
                 task.wait(0.1)
             end
         end
+        DesyncStatus.AngleJitterActive = false
     end)
 end
 
--- Функции управления десинхронизацией
+-- Основная логика десинхронизации
+local HeartbeatConnection
 local function StartDesync()
     if DesyncStatus.Running then return end
     DesyncStatus.Running = true
     DesyncStatus.Enabled = true
     Desync.Config.Desync.Enabled = true
+    notify("Desync", "Started with method: " .. DesyncStatus.Method, true)
+
     if DesyncStatus.Method == "Underground" then
-        DesyncStatus.UndergroundActive = true
         StartUnderground()
     elseif DesyncStatus.Method == "UndergroundV2" then
-        DesyncStatus.UndergroundV2Active = true
         StartUndergroundV2()
     elseif DesyncStatus.Method == "AngleJitter" then
-        DesyncStatus.AngleJitterActive = true
         StartAngleJitter()
     end
-    notify("Desync", "Started with method: " .. DesyncStatus.Method, true)
-end
 
-local function StopDesync()
-    if not DesyncStatus.Running then return end
-    DesyncStatus.Running = false
-    DesyncStatus.Enabled = false
-    Desync.Config.Desync.Enabled = false
-    DesyncStatus.UndergroundActive = false
-    DesyncStatus.UndergroundV2Active = false
-    DesyncStatus.AngleJitterActive = false
-    notify("Desync", "Stopped", true)
-end
-
--- Основной цикл десинхронизации
-RunService.Heartbeat:Connect(function(deltaTime)
-    if DesyncStatus.Enabled then
+    HeartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not DesyncStatus.Running then return end
         local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
         if not RootPart or not Humanoid or Humanoid.Health <= 0 then return end
@@ -246,20 +248,11 @@ RunService.Heartbeat:Connect(function(deltaTime)
         local SpoofThis = RootPart.CFrame
         local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
 
-        if DesyncStatus.Method == "Underground" and not DesyncStatus.UndergroundActive then
-            DesyncStatus.UndergroundActive = true
-            StartUnderground()
-        elseif DesyncStatus.Method == "UndergroundV2" and not DesyncStatus.UndergroundV2Active then
-            DesyncStatus.UndergroundV2Active = true
-            StartUndergroundV2()
-        elseif DesyncStatus.Method == "HitboxRoll" then
+        if DesyncStatus.Method == "HitboxRoll" then
             DesyncStatus.HitboxRollAngle = DesyncStatus.HitboxRollAngle + 45
             local rollOffset = CFrame.Angles(0, 0, math.rad(DesyncStatus.HitboxRollAngle)) * CFrame.new(Desync.Config.Desync.HitboxRollDistance, 0, 0)
             SpoofThis = SpoofThis * rollOffset
             desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
-        elseif DesyncStatus.Method == "AngleJitter" and not DesyncStatus.AngleJitterActive then
-            DesyncStatus.AngleJitterActive = true
-            StartAngleJitter()
         end
 
         if Desync.Config.Desync.RandomVectorEnabled and DesyncStatus.Method ~= "UndergroundV2" then
@@ -279,7 +272,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * Desync.Config.Desync.RandomVectorSpeed
         end
 
-        if Desync.Config.Desync.AntiResolverEnabled then
+        if DesyncStatus.AntiResolverEnabled then
             desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
                 RandomNumberRange(Desync.Config.Desync.ResolverNoise),
                 RandomNumberRange(Desync.Config.Desync.ResolverNoise / 2),
@@ -300,7 +293,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             if desyncAssemblyVelocity then
                 RootPart.AssemblyLinearVelocity = desyncAssemblyVelocity
             end
-            if tick() - DesyncStatus.LastServerUpdate >= ServerUpdateInterval then
+            if tick() - DesyncStatus.LastServerUpdate >= DesyncStatus.ServerUpdateInterval then
                 RootPart.CFrame = DesyncTypes.CFrame
                 RootPart.AssemblyLinearVelocity = DesyncTypes.AssemblyLinearVelocity or Vector3.new()
                 DesyncStatus.LastServerUpdate = tick()
@@ -310,30 +303,26 @@ RunService.Heartbeat:Connect(function(deltaTime)
         RunService.RenderStepped:Wait()
         RootPart.CFrame = DesyncTypes.CFrame
         RootPart.AssemblyLinearVelocity = DesyncTypes.AssemblyLinearVelocity or Vector3.new()
-    else
-        DesyncStatus.UndergroundActive = false
-        DesyncStatus.UndergroundV2Active = false
-        DesyncStatus.AngleJitterActive = false
-    end
-end)
+    end)
+end
 
--- Дополнительный хук для CFrame
-local XDDDDDD = nil
-XDDDDDD = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if DesyncStatus.Enabled and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if DesyncStatus.ServerSync == "proxy" then
-            local callingScript = getcallingscript()
-            if callingScript and not string.find(tostring(callingScript), "Server") and not string.find(tostring(callingScript), "Network") then
-                return DesyncTypes.CFrame or CFrame.new()
-            end
-        elseif DesyncStatus.ServerSync == "v1" then
-            return DesyncTypes.CFrame or CFrame.new()
-        end
+local function StopDesync()
+    if not DesyncStatus.Running then return end
+    DesyncStatus.Running = false
+    DesyncStatus.Enabled = false
+    Desync.Config.Desync.Enabled = false
+    DesyncStatus.UndergroundActive = false
+    DesyncStatus.UndergroundV2Active = false
+    DesyncStatus.AngleJitterActive = false
+    DesyncStatus.HitboxRollAngle = 0
+    if HeartbeatConnection then
+        HeartbeatConnection:Disconnect()
+        HeartbeatConnection = nil
     end
-    return XDDDDDD(self, key)
-end))
+    notify("Desync", "Stopped", true)
+end
 
--- Обработка нового персонажа
+-- Обработка CharacterAdded
 LocalPlayer.CharacterAdded:Connect(function(Character)
     local RootPart, Humanoid
     repeat
@@ -347,7 +336,10 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     DesyncStatus.UndergroundActive = false
     DesyncStatus.UndergroundV2Active = false
     DesyncStatus.AngleJitterActive = false
-    setsimulationradius(SimulationRadius)
+    setsimulationradius(DesyncStatus.SimulationRadius)
+    if DesyncStatus.Enabled then
+        StartDesync()
+    end
 end)
 
 if LocalPlayer.Character then
@@ -355,11 +347,10 @@ if LocalPlayer.Character then
     local Humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
     if RootPart and Humanoid then
         Humanoid.AutoRotate = true
-        setsimulationradius(SimulationRadius)
+        setsimulationradius(DesyncStatus.SimulationRadius)
     end
 end
 
--- UI и инициализация
 return {
     Init = function(UI, CoreProxy, notify)
         if not UI.Tabs or not UI.Tabs.LocalPlayer then
@@ -395,7 +386,7 @@ return {
                 if value ~= "Underground" then DesyncStatus.UndergroundActive = false end
                 if value ~= "UndergroundV2" then DesyncStatus.UndergroundV2Active = false end
                 if value ~= "AngleJitter" then DesyncStatus.AngleJitterActive = false end
-                if DesyncStatus.Enabled then
+                if DesyncStatus.Running then
                     StopDesync()
                     StartDesync()
                 end
@@ -507,7 +498,11 @@ return {
                 Desync.Config.Desync.ToggleKey = value
                 if UserInputService:GetFocusedTextBox() then return end
                 if DesyncStatus.Enabled then
-                    if DesyncStatus.Running then StopDesync() else StartDesync() end
+                    if DesyncStatus.Running then
+                        StopDesync()
+                    else
+                        StartDesync()
+                    end
                 else
                     notify("Desync", "Enable Desync to use keybind.", true)
                 end
