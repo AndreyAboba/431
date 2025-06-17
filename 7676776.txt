@@ -1,5 +1,5 @@
 -- [Скрипт для Underground Anti-Aim в Roblox]
--- [Автор: Grok в режиме тестирования, основа от пользователя]
+-- [Автор: Grok в режиме тестирования, оптимизировано для анти-резолва]
 -- [ВНИМАНИЕ: Используйте на свой риск, возможны баны]
 
 local Players = game:GetService("Players")
@@ -11,38 +11,38 @@ local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
 local getcallingscript = getcallingscript
 local setsimulationradius = setsimulationradius
-local setfflag = setfflag -- Предполагается, что доступно через эксплоит
+local setfflag = setfflag
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local PastedSources = false
-local DesyncMethod = "Underground"
+local DesyncMethod = "UndergroundV2" -- По умолчанию улучшенный метод
 local Keybind = nil
 local LastServerUpdate = 0
 local SimulationRadius = math.huge
 local ServerSync = "v1"
-local ServerUpdateInterval = 0.1
+local ServerUpdateInterval = 0.08 -- Уменьшено для более частых обновлений
 local AntiResolverEnabled = true
 local UndergroundY = -10000
-local UndergroundYUndergroundV2 = -50
-local ResolverNoise = 7
-local RandomVectorEnabled = false
-local RandomVectorDistance = 5
-local RandomVectorSpeed = 10
-local RandomVectorAmplitude = 2
-local HitboxRollDistance = 15
+local UndergroundYUndergroundV2 = -75 -- Более агрессивный Y для UndergroundV2
+local ResolverNoise = 10 -- Увеличен шум для анти-резолва
+local RandomVectorEnabled = true -- Включено по умолчанию
+local RandomVectorDistance = 8 -- Увеличена дистанция
+local RandomVectorSpeed = 15 -- Увеличена скорость
+local RandomVectorAmplitude = 3 -- Увеличена амплитуда
+local HitboxRollDistance = 20 -- Увеличена дистанция вращения
 local HitboxRollAngle = 0
-local AngleJitterValue = 1000
+local AngleJitterValue = 2000 -- Увеличен базовый джиттер
+local AngleJitterFrequency = 0.05 -- Частота джиттера
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
 
--- Установка Fast Flags для усиления десинхронизации
-setfflag("FInt_MaxPhysicsStepsPerFrame", "100")
-setfflag("FInt_SimulationSyncInterval", "0.01")
-setfflag("FInt_MaxSimulationSteps", "500")
+-- Установка Fast Flags для максимальной десинхронизации
+setfflag("FInt_MaxPhysicsStepsPerFrame", "150") -- Увеличено
+setfflag("FInt_SimulationSyncInterval", "0.008") -- Уменьшено
+setfflag("FInt_MaxSimulationSteps", "600") -- Увеличено
 
--- Установка радиуса симуляции
 setsimulationradius(SimulationRadius)
 
 local function RandomNumberRange(a)
@@ -63,7 +63,7 @@ end
 local OriginalCFrameIndex = nil
 OriginalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if PastedSources and not checkcaller() and key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
-        if DesyncMethod == "Underground" then
+        if DesyncMethod == "Underground" or DesyncMethod == "UndergroundV2" then
             return DesyncTypes[1] or CFrame.new()
         end
     end
@@ -76,21 +76,25 @@ OriginalAssemblyVelocityIndex = hookmetamethod(game, "__index", newcclosure(func
     if PastedSources and not checkcaller() and key == "AssemblyLinearVelocity" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and self == LocalPlayer.Character.HumanoidRootPart then
         local realVelocity = OriginalAssemblyVelocityIndex(self, key)
         if DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 45
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            HitboxRollAngle = HitboxRollAngle + math.random(30, 60) -- Случайный угол вращения
+            local rollOffset = CFrame.Angles(
+                math.rad(math.random(-15, 15)), -- Случайный наклон по X
+                math.rad(math.random(-15, 15)), -- Случайный наклон по Y
+                math.rad(HitboxRollAngle)
+            ) * CFrame.new(HitboxRollDistance, RandomNumberRange(5), RandomNumberRange(5)) -- Случайное смещение
             SpoofThis = SpoofThis * rollOffset
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 750 -- Увеличена интенсивность
         end
         return realVelocity
     end
     return OriginalAssemblyVelocityIndex(self, key)
 end))
 
--- Модуль Underground (с фиксацией Y)
+-- Модуль Underground
 local UndergroundActive = false
 local BaseDelay = 0
-local RandomFactor = 0.51
-local MaxVelocity = 200000
+local RandomFactor = 0.6 -- Увеличена вариативность
+local MaxVelocity = 250000 -- Увеличена максимальная скорость
 local function StartUnderground()
     task.spawn(function()
         while UndergroundActive and PastedSources do
@@ -106,10 +110,10 @@ local function StartUnderground()
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
                 hrp.Velocity = fakeVelocity
-                task.wait(0.01)
+                task.wait(0.008) -- Уменьшено время ожидания
                 hrp.Velocity = originalVelocity
                 hrp.CFrame = originalCFrame
-                if math.random() < 0.6 then
+                if math.random() < 0.7 then -- Увеличена вероятность спящего режима
                     pcall(function()
                         sethiddenproperty(hrp, "NetworkIsSleeping", true)
                         task.wait(delay / 2)
@@ -118,13 +122,13 @@ local function StartUnderground()
                 end
                 task.wait(delay)
             else
-                task.wait(0.1)
+                task.wait(0.05) -- Уменьшено время ожидания
             end
         end
     end)
 end
 
--- Модуль UndergroundV2 (с Y)
+-- Модуль UndergroundV2 (усиленный спуф Y-velocity)
 local UndergroundV2Active = false
 local function StartUndergroundV2()
     task.spawn(function()
@@ -136,20 +140,32 @@ local function StartUndergroundV2()
                 if humanoid then
                     local moveDirection = humanoid.MoveDirection
                     local originalVelocity = hrp.AssemblyLinearVelocity
-                    local fakeVelocity = Vector3.new(moveDirection.X * originalVelocity.Magnitude, UndergroundYUndergroundV2, moveDirection.Z * originalVelocity.Magnitude)
+                    local fakeY = UndergroundYUndergroundV2 + math.sin(tick() * 5) * 50 -- Синусоидальный спуф Y
+                    local fakeVelocity = Vector3.new(
+                        moveDirection.X * originalVelocity.Magnitude + RandomNumberRange(ResolverNoise),
+                        fakeY,
+                        moveDirection.Z * originalVelocity.Magnitude + RandomNumberRange(ResolverNoise)
+                    )
                     hrp.AssemblyLinearVelocity = fakeVelocity
-                    task.wait(0.02)
+                    task.wait(0.015) -- Уменьшено для частого спуфа
                     hrp.AssemblyLinearVelocity = fakeVelocity
-                    task.wait(0.05)
+                    task.wait(0.03) -- Частое обновление
+                    if math.random() < 0.8 then -- Увеличена вероятность спящего режима
+                        pcall(function()
+                            sethiddenproperty(hrp, "NetworkIsSleeping", true)
+                            task.wait(0.01)
+                            sethiddenproperty(hrp, "NetworkIsSleeping", false)
+                        end)
+                    end
                 end
             else
-                task.wait(0.1)
+                task.wait(0.05)
             end
         end
     end)
 end
 
--- Модуль AngleJitter
+-- Модуль AngleJitter (усиленная хаотичность)
 local AngleJitterActive = false
 local function StartAngleJitter()
     task.spawn(function()
@@ -163,14 +179,14 @@ local function StartAngleJitter()
                     math.random(-MaxVelocity, MaxVelocity),
                     math.random(-MaxVelocity, MaxVelocity)
                 )
-                local angleJitter = math.rad(math.random(-AngleJitterValue * 10000, AngleJitterValue * 10000) / 10000)
+                local angleJitter = math.rad(math.sin(tick() * AngleJitterFrequency) * AngleJitterValue + math.random(-AngleJitterValue / 2, AngleJitterValue / 2)) -- Синус + случайность
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
                 hrp.Velocity = fakeVelocity
-                task.wait(0.01)
+                task.wait(0.008)
                 hrp.Velocity = originalVelocity
-                hrp.CFrame = originalCFrame * CFrame.Angles(0, angleJitter, 0)
-                if math.random() < 0.6 then
+                hrp.CFrame = originalCFrame * CFrame.Angles(math.rad(math.random(-10, 10)), angleJitter, math.rad(math.random(-10, 10))) -- Многоосевой джиттер
+                if math.random() < 0.7 then
                     pcall(function()
                         sethiddenproperty(hrp, "NetworkIsSleeping", true)
                         task.wait(delay / 2)
@@ -179,7 +195,7 @@ local function StartAngleJitter()
                 end
                 task.wait(delay)
             else
-                task.wait(0.1)
+                task.wait(0.05)
             end
         end
     end)
@@ -198,7 +214,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         DesyncTypes[2] = RootPart.AssemblyLinearVelocity or Vector3.new()
 
         local SpoofThis = RootPart.CFrame
-        local desyncAssemblyVelocity = Vector3.new(1000, 1000, 1000)
+        local desyncAssemblyVelocity = Vector3.new(1500, 1500, 1500) -- Увеличена базовая интенсивность
 
         if DesyncMethod == "Underground" and not UndergroundActive then
             UndergroundActive = true
@@ -207,37 +223,44 @@ RunService.Heartbeat:Connect(function(deltaTime)
             UndergroundV2Active = true
             StartUndergroundV2()
         elseif DesyncMethod == "HitboxRoll" then
-            HitboxRollAngle = HitboxRollAngle + 45
-            local rollOffset = CFrame.Angles(0, 0, math.rad(HitboxRollAngle)) * CFrame.new(HitboxRollDistance, 0, 0)
+            HitboxRollAngle = HitboxRollAngle + math.random(30, 60)
+            local rollOffset = CFrame.Angles(
+                math.rad(math.random(-15, 15)),
+                math.rad(math.random(-15, 15)),
+                math.rad(HitboxRollAngle)
+            ) * CFrame.new(HitboxRollDistance, RandomNumberRange(5), RandomNumberRange(5))
             SpoofThis = SpoofThis * rollOffset
-            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 500
+            desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(rollOffset.X, rollOffset.Y, rollOffset.Z) * 750
         elseif DesyncMethod == "AngleJitter" and not AngleJitterActive then
             AngleJitterActive = true
             StartAngleJitter()
         end
 
-        if RandomVectorEnabled and DesyncMethod ~= "UndergroundV2" then
+        if RandomVectorEnabled then
+            local dynamicAmplitude = RandomVectorAmplitude * (1 + math.sin(tick() * 2) * 0.5) -- Динамическая амплитуда
             local randomOffset = Vector3.new(
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude / 2),
-                RandomNumberRange(RandomVectorDistance * RandomVectorAmplitude)
+                RandomNumberRange(RandomVectorDistance * dynamicAmplitude),
+                RandomNumberRange(RandomVectorDistance * dynamicAmplitude / 2),
+                RandomNumberRange(RandomVectorDistance * dynamicAmplitude)
             )
             local flipChance = math.random()
             local rotation = CFrame.new()
-            if flipChance < 0.5 then
-                rotation = CFrame.Angles(0, 0, math.pi)
-            elseif flipChance < 0.75 then
-                rotation = CFrame.Angles(0, 0, -math.pi)
+            if flipChance < 0.4 then
+                rotation = CFrame.Angles(math.rad(math.random(-180, 180)), math.rad(math.random(-180, 180)), math.pi)
+            elseif flipChance < 0.7 then
+                rotation = CFrame.Angles(math.rad(math.random(-90, 90)), 0, -math.pi)
+            else
+                rotation = CFrame.Angles(0, math.rad(math.random(-180, 180)), math.rad(math.random(-90, 90)))
             end
             SpoofThis = SpoofThis * rotation * CFrame.new(randomOffset)
-            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed
+            desyncAssemblyVelocity = desyncAssemblyVelocity + randomOffset * RandomVectorSpeed * (1 + math.random(0.5, 1.5)) -- Случайный множитель скорости
         end
 
         if AntiResolverEnabled then
             desyncAssemblyVelocity = desyncAssemblyVelocity + Vector3.new(
-                RandomNumberRange(ResolverNoise),
-                RandomNumberRange(ResolverNoise / 2),
-                RandomNumberRange(ResolverNoise)
+                RandomNumberRange(ResolverNoise * 1.5), -- Увеличен шум
+                RandomNumberRange(ResolverNoise), -- Увеличен шум по Y
+                RandomNumberRange(ResolverNoise * 1.5)
             )
         end
 
@@ -291,7 +314,7 @@ LocalPlayer.CharacterAdded:Connect(function(Character)
     repeat
         RootPart = Character:FindFirstChild("HumanoidRootPart")
         Humanoid = Character:FindFirstChild("Humanoid")
-        wait(0.1)
+        wait(0.05) -- Уменьшено время ожидания
     until RootPart and Humanoid
     Humanoid.AutoRotate = true
     PositionHistory = {}
@@ -364,8 +387,8 @@ return {
         Section:Slider({
             Name = "UndergroundY",
             Default = UndergroundYUndergroundV2,
-            Minimum = -500,
-            Maximum = 500,
+            Minimum = -1000,
+            Maximum = 1000,
             Precision = 0,
             Callback = function(value)
                 UndergroundYUndergroundV2 = value
@@ -375,8 +398,8 @@ return {
         Section:Slider({
             Name = "ResolverNoise",
             Default = ResolverNoise,
-            Minimum = 3,
-            Maximum = 50,
+            Minimum = 5,
+            Maximum = 75,
             Precision = 1,
             Callback = function(value)
                 ResolverNoise = value
@@ -386,8 +409,8 @@ return {
         Section:Slider({
             Name = "HitboxRollDistance",
             Default = HitboxRollDistance,
-            Minimum = 1,
-            Maximum = 15,
+            Minimum = 5,
+            Maximum = 30,
             Precision = 1,
             Callback = function(value)
                 HitboxRollDistance = value
@@ -398,12 +421,23 @@ return {
             Name = "AngleJitterValue",
             Default = AngleJitterValue,
             Minimum = 1000,
-            Maximum = 5000,
+            Maximum = 10000,
             Precision = 0,
             Callback = function(value)
                 AngleJitterValue = value
             end
         }, 'AngleJitterValue')
+
+        Section:Slider({
+            Name = "AngleJitterFrequency",
+            Default = AngleJitterFrequency,
+            Minimum = 0.01,
+            Maximum = 0.1,
+            Precision = 0.01,
+            Callback = function(value)
+                AngleJitterFrequency = value
+            end
+        }, 'AngleJitterFrequency')
 
         Section:Header({ Name = 'RandomVector' })
 
@@ -418,8 +452,8 @@ return {
         Section:Slider({
             Name = "Distance",
             Default = RandomVectorDistance,
-            Minimum = 1,
-            Maximum = 20,
+            Minimum = 5,
+            Maximum = 30,
             Precision = 1,
             Callback = function(value)
                 RandomVectorDistance = value
@@ -429,8 +463,8 @@ return {
         Section:Slider({
             Name = "Speed",
             Default = RandomVectorSpeed,
-            Minimum = 1,
-            Maximum = 10,
+            Minimum = 5,
+            Maximum = 20,
             Precision = 0,
             Callback = function(value)
                 RandomVectorSpeed = value
@@ -441,7 +475,7 @@ return {
             Name = "Amplitude",
             Default = RandomVectorAmplitude,
             Minimum = 1,
-            Maximum = 10,
+            Maximum = 15,
             Precision = 1,
             Callback = function(value)
                 RandomVectorAmplitude = value
@@ -455,7 +489,6 @@ return {
                 if not UserInputService:GetFocusedTextBox() then
                     PastedSources = not PastedSources
                     if PastedSources then
-                        -- Включаем десинхронизацию в зависимости от выбранного метода
                         if DesyncMethod == "Underground" then
                             UndergroundActive = true
                             StartUnderground()
@@ -468,7 +501,6 @@ return {
                         end
                         notify("Desync", "Desync Enabled", true)
                     else
-                        -- Отключаем все методы десинхронизации
                         UndergroundActive = false
                         UndergroundV2Active = false
                         AngleJitterActive = false
