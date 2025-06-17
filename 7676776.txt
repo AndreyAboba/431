@@ -472,7 +472,7 @@ return {
             Name = "RandomVectorSpeed",
             Default = Desync.Config.Desync.RandomVectorSpeed,
             Minimum = 5,
-            Maximum = 100000000000,
+            Maximum = 10,
             Precision = 0,
             Callback = function(value)
                 Desync.Config.Desync.RandomVectorSpeed = value
