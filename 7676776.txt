@@ -149,7 +149,7 @@ local function StartUndergroundV2()
     end)
 end
 
--- Новый модуль AngleJitter
+-- Модуль AngleJitter
 local AngleJitterActive = false
 local function StartAngleJitter()
     task.spawn(function()
@@ -452,12 +452,23 @@ return {
             Name = "Keybind",
             Default = Keybind,
             Callback = function(key)
-                if PastedSources and not UserInputService:GetFocusedTextBox() then
-                    Keybind = key
+                if not UserInputService:GetFocusedTextBox() then
                     PastedSources = not PastedSources
                     if PastedSources then
+                        -- Включаем десинхронизацию в зависимости от выбранного метода
+                        if DesyncMethod == "Underground" then
+                            UndergroundActive = true
+                            StartUnderground()
+                        elseif DesyncMethod == "UndergroundV2" then
+                            UndergroundV2Active = true
+                            StartUndergroundV2()
+                        elseif DesyncMethod == "AngleJitter" then
+                            AngleJitterActive = true
+                            StartAngleJitter()
+                        end
                         notify("Desync", "Desync Enabled", true)
                     else
+                        -- Отключаем все методы десинхронизации
                         UndergroundActive = false
                         UndergroundV2Active = false
                         AngleJitterActive = false
