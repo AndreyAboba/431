@@ -158,7 +158,7 @@ local function StartAngleJitter()
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
-                local delay = BaseDelay + math.random(-RandomFactor / 2, RandomFactor / 2) -- Увеличим частоту
+                local delay = 0.01 -- Увеличиваем частоту изменений
                 local fakeVelocity = Vector3.new(
                     math.random(-MaxVelocity, MaxVelocity),
                     math.random(-MaxVelocity, MaxVelocity),
@@ -178,7 +178,7 @@ local function StartAngleJitter()
                         sethiddenproperty(hrp, "NetworkIsSleeping", false)
                     end)
                 end
-                task.wait(delay)
+                task.wait(delay) -- Частота следующего спуфа
             else
                 task.wait(0.1)
             end
