@@ -32,7 +32,7 @@ local RandomVectorSpeed = 10
 local RandomVectorAmplitude = 2
 local HitboxRollDistance = 15
 local HitboxRollAngle = 0
-local JitterDuration = 0.5
+local SpoofDuration = 0.5
 
 local DesyncTypes = {CFrame = CFrame.new(), AssemblyLinearVelocity = Vector3.new()}
 local PositionHistory = {}
@@ -158,7 +158,7 @@ local function StartAngleJitter()
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
-                local delay = BaseDelay + math.random(-RandomFactor, RandomFactor)
+                local delay = BaseDelay + math.random(-RandomFactor / 2, RandomFactor / 2) -- Увеличим частоту
                 local fakeVelocity = Vector3.new(
                     math.random(-MaxVelocity, MaxVelocity),
                     math.random(-MaxVelocity, MaxVelocity),
@@ -168,7 +168,7 @@ local function StartAngleJitter()
                 local originalVelocity = hrp.Velocity
                 local originalCFrame = hrp.CFrame
                 hrp.Velocity = fakeVelocity
-                task.wait(JitterDuration)
+                task.wait(SpoofDuration) -- Длительность спуфа
                 hrp.Velocity = originalVelocity
                 hrp.CFrame = originalCFrame * CFrame.Angles(0, angleJitter, 0)
                 if math.random() < 0.6 then
@@ -407,15 +407,15 @@ return {
         }, 'AngleJitterValue')
 
         Section:Slider({
-            Name = "JitterDuration",
-            Default = JitterDuration,
+            Name = "SpoofDuration",
+            Default = SpoofDuration,
             Minimum = 0.1,
             Maximum = 2.0,
             Precision = 1,
             Callback = function(value)
-                JitterDuration = value
+                SpoofDuration = value
             end
-        }, 'JitterDuration')
+        }, 'SpoofDuration')
 
         Section:Header({ Name = 'RandomVector' })
 
