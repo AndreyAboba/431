@@ -321,7 +321,7 @@ return {
 
         Section:Header({ Name = 'Desync' })
 
-        Section:Toggle({
+        local DesyncToggle = Section:Toggle({
             Name = "Enabled",
             Default = PastedSources,
             Callback = function(value)
@@ -333,6 +333,16 @@ return {
                     notify("Desync", "Desync Disabled", true)
                 else
                     notify("Desync", "Desync Enabled", true)
+                    if DesyncMethod == "Underground" then
+                        UndergroundActive = true
+                        StartUnderground()
+                    elseif DesyncMethod == "UndergroundV2" then
+                        UndergroundV2Active = true
+                        StartUndergroundV2()
+                    elseif DesyncMethod == "AngleJitter" then
+                        AngleJitterActive = true
+                        StartAngleJitter()
+                    end
                 end
             end
         }, 'DesyncEnabled')
@@ -346,9 +356,18 @@ return {
                 if value ~= "Underground" then UndergroundActive = false end
                 if value ~= "UndergroundV2" then UndergroundV2Active = false end
                 if value ~= "AngleJitter" then AngleJitterActive = false end
-                if value == "Underground" and PastedSources then UndergroundActive = true StartUnderground() end
-                if value == "UndergroundV2" and PastedSources then UndergroundV2Active = true StartUndergroundV2() end
-                if value == "AngleJitter" and PastedSources then AngleJitterActive = true StartAngleJitter() end
+                if PastedSources then
+                    if value == "Underground" then
+                        UndergroundActive = true
+                        StartUnderground()
+                    elseif value == "UndergroundV2" then
+                        UndergroundV2Active = true
+                        StartUndergroundV2()
+                    elseif value == "AngleJitter" then
+                        AngleJitterActive = true
+                        StartAngleJitter()
+                    end
+                end
             end
         }, 'DesyncMethod')
 
@@ -451,18 +470,28 @@ return {
         Section:Keybind({
             Name = "Keybind",
             Default = Keybind,
-            Callback = function(key)
-                if PastedSources and not UserInputService:GetFocusedTextBox() then
-                    Keybind = key
-                    PastedSources = not PastedSources
-                    if PastedSources then
-                        notify("Desync", "Desync Enabled", true)
-                    else
-                        UndergroundActive = false
-                        UndergroundV2Active = false
-                        AngleJitterActive = false
-                        notify("Desync", "Desync Disabled", true)
+            Callback = function(value)
+                Keybind = value
+                if UserInputService:GetFocusedTextBox() then return end
+                PastedSources = not PastedSources
+                DesyncToggle:Set(PastedSources) -- Синхронизация UI-тумблера
+                if PastedSources then
+                    notify("Desync", "Desync Enabled", true)
+                    if DesyncMethod == "Underground" then
+                        UndergroundActive = true
+                        StartUnderground()
+                    elseif DesyncMethod == "UndergroundV2" then
+                        UndergroundV2Active = true
+                        StartUndergroundV2()
+                    elseif DesyncMethod == "AngleJitter" then
+                        AngleJitterActive = true
+                        StartAngleJitter()
                     end
+                else
+                    UndergroundActive = false
+                    UndergroundV2Active = false
+                    AngleJitterActive = false
+                    notify("Desync", "Desync Disabled", true)
                 end
             end
         }, 'DesyncKeybind')
