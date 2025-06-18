@@ -1,0 +1,120 @@
+local ScriptingModule = {}
+
+function ScriptingModule.Init(UI, CoreProxy, notify)
+    -- Создание вкладки Scripting
+    local ScriptingTab = UI.TabGroups.Main:Tab({ Name = "Scripting", Image = "rbxassetid://9754234978" })
+    local ScriptingSection = ScriptingTab:Section({ Name = "Custom Scripts", Side = "Left" })
+    
+    -- Инициализация папки для скриптов
+    local success, folderError = pcall(function()
+        MacLib:SetFolder("Syllinse/Scripts")
+    end)
+    if not success then
+        notify("Scripting Error", "Failed to set Scripts folder: " .. tostring(folderError), true)
+        return
+    end
+
+    -- Функция для получения списка скриптов
+    local function getScriptList()
+        local scripts = {}
+        local success, files = pcall(function()
+            return MacLib:GetFiles("Syllinse/Scripts", ".lua")
+        end)
+        if success and files then
+            for _, file in ipairs(files) do
+                table.insert(scripts, file)
+            end
+        end
+        return scripts
+    end
+
+    -- Создание UI элементов
+    ScriptingSection:Header({ Name = "Script Executor" })
+
+    local selectedScript = nil
+    local scriptDropdown = ScriptingSection:Dropdown({
+        Name = "Select Script",
+        Options = getScriptList(),
+        Default = nil,
+        Callback = function(value)
+            selectedScript = value
+        end
+    }, "ScriptSelector")
+
+    -- Кнопка для выполнения выбранного скрипта
+    ScriptingSection:Button({
+        Name = "Execute Script",
+        Callback = function()
+            if not selectedScript then
+                notify("Scripting Error", "No script selected!", true)
+                return
+            end
+            local success, content = pcall(function()
+                return MacLib:ReadFile("Syllinse/Scripts/" .. selectedScript)
+            end)
+            if not success then
+                notify("Scripting Error", "Failed to read script: " .. tostring(content), true)
+                return
+            end
+            local scriptFunc, compileError = loadstring(content)
+            if not scriptFunc then
+                notify("Scripting Error", "Failed to compile script: " .. tostring(compileError), true)
+                return
+            end
+            local execSuccess, execError = pcall(scriptFunc)
+            if not execSuccess then
+                notify("Scripting Error", "Script execution failed: " .. tostring(execError), true)
+                return
+            end
+            notify("Scripting Success", "Script " .. selectedScript .. " executed successfully!", true)
+        end
+    }, "ExecuteScript")
+
+    -- Кнопка для обновления списка скриптов
+    ScriptingSection:Button({
+        Name = "Refresh Script List",
+        Callback = function()
+            scriptDropdown:UpdateOptions(getScriptList())
+            notify("Scripting", "Script list refreshed!", true)
+        end
+    }, "RefreshScripts")
+
+    -- Текстовое поле и кнопка для создания нового скрипта
+    local scriptName = ""
+    ScriptingSection:Textbox({
+        Name = "New Script Name",
+        Placeholder = "Enter script name (without .lua)",
+        Callback = function(value)
+            scriptName = value
+        end
+    }, "ScriptName")
+
+    ScriptingSection:Button({
+        Name = "Create New Script",
+        Callback = function()
+            if scriptName == "" then
+                notify("Scripting Error", "Please enter a script name!", true)
+                return
+            end
+            if not string.match(scriptName, "^[%w_]+$") then
+                notify("Scripting Error", "Script name can only contain letters, numbers, and underscores!", true)
+                return
+            end
+            local fullPath = "Syllinse/Scripts/" .. scriptName .. ".lua"
+            local success, writeError = pcall(function()
+                MacLib:WriteFile(fullPath, "-- Your custom script here\n")
+            end)
+            if not success then
+                notify("Scripting Error", "Failed to create script: " .. tostring(writeError), true)
+                return
+            end
+            scriptDropdown:UpdateOptions(getScriptList())
+            notify("Scripting Success", "Script " .. scriptName .. ".lua created!", true)
+            scriptName = ""
+        end
+    }, "CreateScript")
+
+    notify("Scripting Module", "Scripting module loaded successfully!", true)
+end
+
+return ScriptingModule
