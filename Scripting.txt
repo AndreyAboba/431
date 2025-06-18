@@ -5,12 +5,15 @@ function ScriptingModule.Init(UI, CoreProxy, notify)
     local ScriptingTab = UI.TabGroups.Main:Tab({ Name = "Scripting", Image = "rbxassetid://9754234978" })
     local ScriptingSection = ScriptingTab:Section({ Name = "Custom Scripts", Side = "Left" })
     
-    -- Инициализация папки для скриптов
+    -- Создание папки для скриптов через makefolder
+    local scriptFolder = "Syllinse/Scripts"
     local success, folderError = pcall(function()
-        MacLib:SetFolder("Syllinse/Scripts")
+        if not isfolder(scriptFolder) then
+            makefolder(scriptFolder)
+        end
     end)
     if not success then
-        notify("Scripting Error", "Failed to set Scripts folder: " .. tostring(folderError), true)
+        notify("Scripting Error", "Failed to create Scripts folder: " .. tostring(folderError), true)
         return
     end
 
@@ -18,11 +21,13 @@ function ScriptingModule.Init(UI, CoreProxy, notify)
     local function getScriptList()
         local scripts = {}
         local success, files = pcall(function()
-            return MacLib:GetFiles("Syllinse/Scripts", ".lua")
+            return listfiles(scriptFolder)
         end)
         if success and files then
             for _, file in ipairs(files) do
-                table.insert(scripts, file)
+                if file:match("%.lua$") then
+                    table.insert(scripts, file:match("^.+/(.+)$"))
+                end
             end
         end
         return scripts
@@ -49,8 +54,9 @@ function ScriptingModule.Init(UI, CoreProxy, notify)
                 notify("Scripting Error", "No script selected!", true)
                 return
             end
+            local fullPath = scriptFolder .. "/" .. selectedScript
             local success, content = pcall(function()
-                return MacLib:ReadFile("Syllinse/Scripts/" .. selectedScript)
+                return readfile(fullPath)
             end)
             if not success then
                 notify("Scripting Error", "Failed to read script: " .. tostring(content), true)
@@ -100,9 +106,9 @@ function ScriptingModule.Init(UI, CoreProxy, notify)
                 notify("Scripting Error", "Script name can only contain letters, numbers, and underscores!", true)
                 return
             end
-            local fullPath = "Syllinse/Scripts/" .. scriptName .. ".lua"
+            local fullPath = scriptFolder .. "/" .. scriptName .. ".lua"
             local success, writeError = pcall(function()
-                MacLib:WriteFile(fullPath, "-- Your custom script here\n")
+                writefile(fullPath, "-- Your custom script here\n")
             end)
             if not success then
                 notify("Scripting Error", "Failed to create script: " .. tostring(writeError), true)
