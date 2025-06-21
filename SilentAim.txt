@@ -46,7 +46,7 @@ local function DelayedPrint(message)
     end
 end
 
--- Улучшенная функция проверки видимости
+-- Улучшенная функция проверки видимости с оптимизированными лучами
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then return true end
     
@@ -60,11 +60,26 @@ local function IsVisible(targetPart)
     raycastParams.FilterDescendantsInstances = {character}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
+    -- Основной луч
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
-        DelayedPrint("Visible: Raycast hit target " .. targetPart.Parent.Name)
+        DelayedPrint("Visible: Main ray hit target " .. targetPart.Parent.Name)
         return true
     end
+    
+    -- Два дополнительных луча для точности (оптимизация)
+    local offsetDirections = {
+        rayDirection + Vector3.new(0.2, 0, 0), -- Смещение по X
+        rayDirection + Vector3.new(0, 0.2, 0)  -- Смещение по Y
+    }
+    for _, offsetDir in pairs(offsetDirections) do
+        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
+        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
+            DelayedPrint("Visible: Offset ray hit target " .. targetPart.Parent.Name)
+            return true
+        end
+    end
+    
     DelayedPrint("Not visible: Raycast blocked by " .. (raycastResult and raycastResult.Instance.Name or "nothing"))
     return false
 end
@@ -145,16 +160,16 @@ local function CanAttack(player)
         return true
     end
     
-    -- Проверка друзей с отладкой
+    -- Проверка друзей с синхронизацией и отладкой
     local isFriend = false
-    if Core and Core.Services and Core.Services.FriendsList then
-        isFriend = Core.Services.FriendsList[player.Name:lower()] or false
+    if Core and Core.Services and Core.Services.FriendsList and type(Core.Services.FriendsList) == "table" then
+        isFriend = Core.Services.FriendsList[player.Name:lower()] == true
         if isFriend then
             DelayedPrint("Target " .. player.Name .. " is in FriendsList, skipping")
             return false
         end
     else
-        DelayedPrint("FriendsList not available in Core.Services")
+        DelayedPrint("FriendsList not initialized or invalid in Core.Services")
     end
     
     return true
