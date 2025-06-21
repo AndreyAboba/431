@@ -46,7 +46,7 @@ local function DelayedPrint(message)
     end
 end
 
--- Улучшенная функция проверки видимости с несколькими лучами
+-- Улучшенная функция проверки видимости
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then return true end
     
@@ -60,26 +60,12 @@ local function IsVisible(targetPart)
     raycastParams.FilterDescendantsInstances = {character}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
-    -- Основной луч
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
+        DelayedPrint("Visible: Raycast hit target " .. targetPart.Parent.Name)
         return true
     end
-    
-    -- Дополнительные лучи для точности (с небольшим смещением)
-    local offsetDirections = {
-        rayDirection + Vector3.new(0.1, 0, 0),
-        rayDirection + Vector3.new(-0.1, 0, 0),
-        rayDirection + Vector3.new(0, 0.1, 0),
-        rayDirection + Vector3.new(0, -0.1, 0)
-    }
-    for _, offsetDir in pairs(offsetDirections) do
-        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
-        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
-            return true
-        end
-    end
-    
+    DelayedPrint("Not visible: Raycast blocked by " .. (raycastResult and raycastResult.Instance.Name or "nothing"))
     return false
 end
 
@@ -159,10 +145,16 @@ local function CanAttack(player)
         return true
     end
     
-    -- Проверка друзей с учетом регистра (как в VisualsV2)
-    local isFriend = Core.Services.FriendsList and Core.Services.FriendsList[player.Name:lower()] or false
-    if isFriend then
-        return false
+    -- Проверка друзей с отладкой
+    local isFriend = false
+    if Core and Core.Services and Core.Services.FriendsList then
+        isFriend = Core.Services.FriendsList[player.Name:lower()] or false
+        if isFriend then
+            DelayedPrint("Target " .. player.Name .. " is in FriendsList, skipping")
+            return false
+        end
+    else
+        DelayedPrint("FriendsList not available in Core.Services")
     end
     
     return true
@@ -193,31 +185,28 @@ local function GetToolListener()
     return toolListener, wand
 end
 
--- Функция поиска ближайшей цели с приоритетом на курсор и FOV
+-- Оптимизированная функция поиска ближайшей цели
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local validTargets = {}
     
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-            
-            if targetPart and humanoid and humanoidRoot and humanoid.Health > 0 then
-                if CanAttack(player) and IsVisible(targetPart) then
-                    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if mouseDistance <= Settings.FOV then
-                        local worldDistance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                        
-                        table.insert(validTargets, {
-                            Player = player,
-                            WorldDistance = worldDistance,
-                            MouseDistance = mouseDistance,
-                            Health = humanoid.Health
-                        })
-                    end
+        if player == LocalPlayer or not player.Character then continue end
+        
+        local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+        
+        if targetPart and humanoid and humanoidRoot and humanoid.Health > 0 then
+            if CanAttack(player) and IsVisible(targetPart) then
+                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if mouseDistance <= Settings.FOV then
+                    table.insert(validTargets, {
+                        Player = player,
+                        MouseDistance = mouseDistance,
+                        Health = humanoid.Health
+                    })
                 end
             end
         end
@@ -225,20 +214,27 @@ local function GetClosestTarget()
     
     table.sort(validTargets, function(a, b)
         if Settings.SortMethod == "Distance" then
-            return a.WorldDistance < b.WorldDistance
+            return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
+                   (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
         elseif Settings.SortMethod == "Health" then
             return a.Health < b.Health
         elseif Settings.SortMethod == "Crosshair" then
             return a.MouseDistance < b.MouseDistance
         elseif Settings.SortMethod == "Auto" then
-            local aScore = a.Health * 0.7 + a.WorldDistance * 0.3
-            local bScore = b.Health * 0.7 + b.WorldDistance * 0.3
+            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
+            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
             return aScore < bScore
         end
         return a.MouseDistance < b.MouseDistance
     end)
     
-    return validTargets[1] and validTargets[1].Player or nil
+    local target = validTargets[1] and validTargets[1].Player
+    if target then
+        DelayedPrint("Targeting: " .. target.Name .. " (Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
+    else
+        DelayedPrint("No valid target found")
+    end
+    return target
 end
 
 -- Функция отправки remote event (Packet Method)
