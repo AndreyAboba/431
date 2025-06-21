@@ -46,7 +46,7 @@ local function DelayedPrint(message)
     end
 end
 
--- Улучшенная функция проверки видимости с оптимизированными лучами
+-- Восстановленная функция проверки видимости
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then return true end
     
@@ -57,7 +57,7 @@ local function IsVisible(targetPart)
     local rayOrigin = rootPart.Position
     local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {character}
+    raycastParams.FilterDescendantsInstances = {character, targetPart.Parent} -- Исключаем целевой персонаж
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
     -- Основной луч
@@ -67,10 +67,12 @@ local function IsVisible(targetPart)
         return true
     end
     
-    -- Два дополнительных луча для точности (оптимизация)
+    -- Четыре дополнительных луча для точности
     local offsetDirections = {
-        rayDirection + Vector3.new(0.2, 0, 0), -- Смещение по X
-        rayDirection + Vector3.new(0, 0.2, 0)  -- Смещение по Y
+        rayDirection + Vector3.new(0.1, 0, 0),
+        rayDirection + Vector3.new(-0.1, 0, 0),
+        rayDirection + Vector3.new(0, 0.1, 0),
+        rayDirection + Vector3.new(0, -0.1, 0)
     }
     for _, offsetDir in pairs(offsetDirections) do
         local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
@@ -160,16 +162,16 @@ local function CanAttack(player)
         return true
     end
     
-    -- Проверка друзей с синхронизацией и отладкой
+    -- Усиленная проверка FriendsList
     local isFriend = false
     if Core and Core.Services and Core.Services.FriendsList and type(Core.Services.FriendsList) == "table" then
         isFriend = Core.Services.FriendsList[player.Name:lower()] == true
         if isFriend then
-            DelayedPrint("Target " .. player.Name .. " is in FriendsList, skipping")
+            DelayedPrint("Target " .. player.Name .. " is in FriendsList, skipping attack")
             return false
         end
     else
-        DelayedPrint("FriendsList not initialized or invalid in Core.Services")
+        DelayedPrint("Warning: FriendsList not initialized or invalid in Core.Services")
     end
     
     return true
