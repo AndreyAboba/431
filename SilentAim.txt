@@ -19,12 +19,14 @@ local Settings = {
     PrintDelay = 1,
     FireDelay = 0.5,
     Method = "Packet",
-    SortMethod = "Auto" -- По умолчанию Auto
+    SortMethod = "Auto"
 }
 
 local lastPrintTime = 0
 local lastFireTime = 0
 local currentTarget = nil
+local isToolEquipped = false
+local currentTool = nil
 
 -- Создание FOV Circle с Drawing
 local fovCircle = Drawing.new("Circle")
@@ -44,14 +46,18 @@ local function DelayedPrint(message)
     end
 end
 
--- Функция проверки видимости
+-- Функция проверки видимости от позиции игрока
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then return true end
     
-    local rayOrigin = Camera.CFrame.Position
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+    
+    local rayOrigin = rootPart.Position
     local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    raycastParams.FilterDescendantsInstances = {character}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
@@ -67,27 +73,90 @@ local function IsVisible(targetPart)
     return true
 end
 
+-- Функция проверки нахождения в сейфзоне
+local function IsInSafezone(position)
+    local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
+    if not safezone then return false end
+    
+    local safezonePos = safezone.Position
+    local safezoneSize = safezone.Size / 2
+    
+    local relativePos = position - safezonePos
+    return math.abs(relativePos.X) <= safezoneSize.X and
+           math.abs(relativePos.Y) <= safezoneSize.Y and
+           math.abs(relativePos.Z) <= safezoneSize.Z
+end
+
+-- Функция проверки щита
+local function HasProtectionBubble(player)
+    if not player or not player.Character then return false end
+    
+    local protectionBubble = workspace:FindFirstChild("Entities") and workspace.Entities:FindFirstChild("ProtectionBubble")
+    if not protectionBubble then return false end
+    
+    local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+    if not targetPart then return false end
+    
+    local distance = (protectionBubble.Position - targetPart.Position).Magnitude
+    return distance < 10
+end
+
+-- Функция проверки Lasso
+local function HasLasso(player)
+    if not player then return false end
+
+    local charactersFolder = workspace:FindFirstChild("Characters")
+    if not charactersFolder then return false end
+
+    local playerName = player.Name
+    if not playerName then return false end
+
+    local playerContainer = charactersFolder:FindFirstChild(playerName)
+    if not playerContainer then return false end
+
+    local fakeLimbs = playerContainer:FindFirstChild("FakeLimbs")
+    return fakeLimbs ~= nil
+end
+
 -- Функция проверки возможности атаки
 local function CanAttack(player)
     if not player then return false end
     
-    if Settings.TeamCheck then
-        local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name
-        local theirTeam = player.Team and player.Team.Name
-        
-        if myTeam and theirTeam and myTeam == theirTeam then
+    if HasLasso(player) then return false end
+    if not Settings.TeamCheck then return true end
+    
+    local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name
+    local theirTeam = player.Team and player.Team.Name
+    
+    if not myTeam or not theirTeam then return true end
+    
+    if HasProtectionBubble(player) then return false end
+    
+    local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
+    if targetPart and IsInSafezone(targetPart.Position) then
+        if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
             return false
         end
+        return true
     end
     
+    if myTeam == "Shadow Wizards" then
+        return true
+    elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
+        if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
+            return false
+        end
+        return true
+    end
+    
+    -- Проверка друзей
     for _, friend in pairs(Core.Services.FriendsList) do
         if friend == player.Name then
             return false
         end
     end
     
-    local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
-    return targetPart and IsVisible(targetPart)
+    return true
 end
 
 -- Функция поиска ToolListener
@@ -115,7 +184,7 @@ local function GetToolListener()
     return toolListener, wand
 end
 
--- Функция поиска ближайшей цели с динамической сортировкой
+-- Функция поиска ближайшей цели с приоритетом на курсор и FOV
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local validTargets = {}
@@ -124,13 +193,14 @@ local function GetClosestTarget()
         if player ~= LocalPlayer and player.Character then
             local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
             local humanoid = player.Character:FindFirstChild("Humanoid")
+            local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
             
-            if targetPart and humanoid and humanoid.Health > 0 then
-                if CanAttack(player) then
-                    local worldDistance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                    if worldDistance <= Settings.FOV then
-                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+            if targetPart and humanoid and humanoidRoot and humanoid.Health > 0 then
+                if CanAttack(player) and IsVisible(targetPart) then
+                    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if mouseDistance <= Settings.FOV then -- Проверка внутри FOV круга
+                        local worldDistance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                         
                         table.insert(validTargets, {
                             Player = player,
@@ -152,11 +222,11 @@ local function GetClosestTarget()
         elseif Settings.SortMethod == "Crosshair" then
             return a.MouseDistance < b.MouseDistance
         elseif Settings.SortMethod == "Auto" then
-            local aScore = a.Health * 0.7 + a.WorldDistance * 0.3 -- Больший вес на здоровье (70%), меньший на дистанцию (30%)
+            local aScore = a.Health * 0.7 + a.WorldDistance * 0.3
             local bScore = b.Health * 0.7 + b.WorldDistance * 0.3
             return aScore < bScore
         end
-        return a.MouseDistance < b.MouseDistance -- По умолчанию Crosshair
+        return a.MouseDistance < b.MouseDistance
     end)
     
     return validTargets[1] and validTargets[1].Player or nil
@@ -234,6 +304,37 @@ local function SilentShot(target)
     else
         DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
+end
+
+-- Функция проверки экипировки инструмента
+local function CheckToolEquipped()
+    local character = LocalPlayer.Character
+    if not character then
+        if isToolEquipped then
+            isToolEquipped = false
+            currentTool = nil
+            DelayedPrint("Tool is unequipped (no character)")
+        end
+        return false
+    end
+
+    for _, item in pairs(character:GetChildren()) do
+        if item.ClassName == "Tool" then
+            if not isToolEquipped then
+                isToolEquipped = true
+                currentTool = item
+                DelayedPrint("Tool " .. (item.Name or "Unknown") .. " is equipped")
+            end
+            return true
+        end
+    end
+
+    if isToolEquipped then
+        isToolEquipped = false
+        currentTool = nil
+        DelayedPrint("Tool is unequipped")
+    end
+    return false
 end
 
 -- Инициализация модуля
@@ -351,12 +452,18 @@ function Init(ui, core, notification)
     }, "SilentSortMethod")
 end
 
--- Обновление позиции FOV Circle
+-- Обновление позиции FOV Circle и логика Silent Aim
 RunService.RenderStepped:Connect(function()
     if not UI or not Core then return end
 
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+
+    if not CheckToolEquipped() then
+        currentTarget = nil
+        Core.GunSilentTarget.CurrentTarget = nil
+        return
+    end
 
     local target = GetClosestTarget()
     currentTarget = target
