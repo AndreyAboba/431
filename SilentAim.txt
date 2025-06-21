@@ -25,6 +25,26 @@ local lastPrintTime = 0
 local lastFireTime = 0
 local currentTarget = nil
 
+-- Создание FOV Circle
+local fovCircleGui = Instance.new("ScreenGui")
+fovCircleGui.Name = "FOVCircleGui"
+fovCircleGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+fovCircleGui.ResetOnSpawn = false
+fovCircleGui.IgnoreGuiInset = true
+
+local fovCircle = Instance.new("Frame")
+fovCircle.Size = UDim2.new(0, Settings.FOV * 2, 0, Settings.FOV * 2)
+fovCircle.Position = UDim2.new(0.5, -Settings.FOV, 0.5, -Settings.FOV)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Parent = fovCircleGui
+
+local fovCircleOutline = Instance.new("UICircle")
+fovCircleOutline.Thickness = 2
+fovCircleOutline.Radius = Settings.FOV
+fovCircleOutline.Color = Color3.fromRGB(0, 255, 0)
+fovCircleOutline.Transparency = 0.7
+fovCircleOutline.Parent = fovCircle
+
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
     local currentTime = tick()
@@ -230,12 +250,16 @@ function Init(ui, core, notification)
     UI.Sections = UI.Sections or {}
     UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
 
+    -- Заголовок
+    UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
+
     -- Настройки Silent Aim
     UI.Sections.SilentAim:Toggle({
         Name = "Enabled",
         Default = Settings.Enabled,
         Callback = function(value)
             Settings.Enabled = value
+            fovCircleOutline.Visible = value
             notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
         end
     }, "SilentEnabled")
@@ -246,17 +270,21 @@ function Init(ui, core, notification)
         Maximum = 500,
         Default = Settings.FOV,
         Precision = 0,
+        Suffix = " studs",
         Callback = function(value)
             Settings.FOV = value
+            fovCircle.Size = UDim2.new(0, value * 2, 0, value * 2)
+            fovCircleOutline.Radius = value
         end
     }, "SilentFOV")
 
     UI.Sections.SilentAim:Slider({
-        Name = "Hit Chance (%)",
+        Name = "Hit Chance",
         Minimum = 0,
         Maximum = 100,
         Default = Settings.HitChance,
         Precision = 0,
+        Suffix = "%",
         Callback = function(value)
             Settings.HitChance = value
         end
@@ -294,6 +322,7 @@ function Init(ui, core, notification)
         Maximum = 5,
         Default = Settings.PrintDelay,
         Precision = 1,
+        Suffix = "s",
         Callback = function(value)
             Settings.PrintDelay = value
         end
@@ -305,15 +334,19 @@ function Init(ui, core, notification)
         Maximum = 2,
         Default = Settings.FireDelay,
         Precision = 1,
+        Suffix = "s",
         Callback = function(value)
             Settings.FireDelay = value
         end
     }, "SilentFireDelay")
 end
 
--- Основной цикл
+-- Обновление позиции FOV Circle
 RunService.RenderStepped:Connect(function()
     if not UI or not Core then return end
+
+    local mousePos = UserInputService:GetMouseLocation()
+    fovCircle.Position = UDim2.new(0, mousePos.X - Settings.FOV, 0, mousePos.Y - Settings.FOV)
 
     local target = GetClosestTarget()
     currentTarget = target
@@ -329,8 +362,14 @@ end)
 UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.F then
         Settings.Enabled = not Settings.Enabled
+        fovCircleOutline.Visible = Settings.Enabled
         notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), true)
     end
+end)
+
+-- Очистка при телепортации
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
+    fovCircleGui:Destroy()
 end)
 
 return {
