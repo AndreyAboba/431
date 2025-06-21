@@ -18,32 +18,22 @@ local Settings = {
     VisibilityCheck = true,
     PrintDelay = 1,
     FireDelay = 0.5,
-    Method = "Packet"
+    Method = "Packet",
+    SortMethod = "Auto" -- По умолчанию Auto
 }
 
 local lastPrintTime = 0
 local lastFireTime = 0
 local currentTarget = nil
 
--- Создание FOV Circle
-local fovCircleGui = Instance.new("ScreenGui")
-fovCircleGui.Name = "FOVCircleGui"
-fovCircleGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-fovCircleGui.ResetOnSpawn = false
-fovCircleGui.IgnoreGuiInset = true
-
-local fovCircle = Instance.new("Frame")
-fovCircle.Size = UDim2.new(0, Settings.FOV * 2, 0, Settings.FOV * 2)
-fovCircle.Position = UDim2.new(0.5, -Settings.FOV, 0.5, -Settings.FOV)
-fovCircle.BackgroundTransparency = 1
-fovCircle.Parent = fovCircleGui
-
-local fovCircleOutline = Instance.new("UICircle")
-fovCircleOutline.Thickness = 2
-fovCircleOutline.Radius = Settings.FOV
-fovCircleOutline.Color = Color3.fromRGB(0, 255, 0)
-fovCircleOutline.Transparency = 0.7
-fovCircleOutline.Parent = fovCircle
+-- Создание FOV Circle с Drawing
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 2
+fovCircle.Color = Color3.fromRGB(0, 255, 0)
+fovCircle.Transparency = 0.7
+fovCircle.Radius = Settings.FOV
+fovCircle.Visible = Settings.Enabled
+fovCircle.Filled = false
 
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
@@ -90,7 +80,6 @@ local function CanAttack(player)
         end
     end
     
-    -- Проверка друзей
     for _, friend in pairs(Core.Services.FriendsList) do
         if friend == player.Name then
             return false
@@ -126,7 +115,7 @@ local function GetToolListener()
     return toolListener, wand
 end
 
--- Функция поиска ближайшей цели с приоритетом на курсор
+-- Функция поиска ближайшей цели с динамической сортировкой
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local validTargets = {}
@@ -146,7 +135,8 @@ local function GetClosestTarget()
                         table.insert(validTargets, {
                             Player = player,
                             WorldDistance = worldDistance,
-                            MouseDistance = mouseDistance
+                            MouseDistance = mouseDistance,
+                            Health = humanoid.Health
                         })
                     end
                 end
@@ -155,7 +145,18 @@ local function GetClosestTarget()
     end
     
     table.sort(validTargets, function(a, b)
-        return a.MouseDistance < b.MouseDistance
+        if Settings.SortMethod == "Distance" then
+            return a.WorldDistance < b.WorldDistance
+        elseif Settings.SortMethod == "Health" then
+            return a.Health < b.Health
+        elseif Settings.SortMethod == "Crosshair" then
+            return a.MouseDistance < b.MouseDistance
+        elseif Settings.SortMethod == "Auto" then
+            local aScore = a.Health * 0.7 + a.WorldDistance * 0.3 -- Больший вес на здоровье (70%), меньший на дистанцию (30%)
+            local bScore = b.Health * 0.7 + b.WorldDistance * 0.3
+            return aScore < bScore
+        end
+        return a.MouseDistance < b.MouseDistance -- По умолчанию Crosshair
     end)
     
     return validTargets[1] and validTargets[1].Player or nil
@@ -259,7 +260,7 @@ function Init(ui, core, notification)
         Default = Settings.Enabled,
         Callback = function(value)
             Settings.Enabled = value
-            fovCircleOutline.Visible = value
+            fovCircle.Visible = value
             notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
         end
     }, "SilentEnabled")
@@ -273,8 +274,7 @@ function Init(ui, core, notification)
         Suffix = " studs",
         Callback = function(value)
             Settings.FOV = value
-            fovCircle.Size = UDim2.new(0, value * 2, 0, value * 2)
-            fovCircleOutline.Radius = value
+            fovCircle.Radius = value
         end
     }, "SilentFOV")
 
@@ -294,7 +294,7 @@ function Init(ui, core, notification)
         Name = "Target Part",
         Options = {"Head", "Torso", "LeftLeg", "RightLeg"},
         Default = Settings.TargetPart,
-        Multi = false,
+        MultiSelection = false,
         Callback = function(value)
             Settings.TargetPart = value
         end
@@ -339,6 +339,16 @@ function Init(ui, core, notification)
             Settings.FireDelay = value
         end
     }, "SilentFireDelay")
+
+    UI.Sections.SilentAim:Dropdown({
+        Name = "Sort Method",
+        Options = {"Distance", "Health", "Crosshair", "Auto"},
+        Default = Settings.SortMethod,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.SortMethod = value
+        end
+    }, "SilentSortMethod")
 end
 
 -- Обновление позиции FOV Circle
@@ -346,7 +356,7 @@ RunService.RenderStepped:Connect(function()
     if not UI or not Core then return end
 
     local mousePos = UserInputService:GetMouseLocation()
-    fovCircle.Position = UDim2.new(0, mousePos.X - Settings.FOV, 0, mousePos.Y - Settings.FOV)
+    fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 
     local target = GetClosestTarget()
     currentTarget = target
@@ -362,14 +372,14 @@ end)
 UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.F then
         Settings.Enabled = not Settings.Enabled
-        fovCircleOutline.Visible = Settings.Enabled
+        fovCircle.Visible = Settings.Enabled
         notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), true)
     end
 end)
 
 -- Очистка при телепортации
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
-    fovCircleGui:Destroy()
+    fovCircle:Remove()
 end)
 
 return {
