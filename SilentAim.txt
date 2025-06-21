@@ -1,0 +1,338 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local Core = nil
+local UI = nil
+local notify = nil
+
+-- Конфигурация Silent Aim
+local Settings = {
+    Enabled = true,
+    FOV = 300,
+    HitChance = 100,
+    TargetPart = "Head",
+    TeamCheck = true,
+    VisibilityCheck = true,
+    PrintDelay = 1,
+    FireDelay = 0.5,
+    Method = "Packet"
+}
+
+local lastPrintTime = 0
+local lastFireTime = 0
+local currentTarget = nil
+
+-- Функция для вывода сообщений с задержкой
+local function DelayedPrint(message)
+    local currentTime = tick()
+    if currentTime - lastPrintTime >= Settings.PrintDelay then
+        print("[SilentAim Debug]: " .. message)
+        lastPrintTime = currentTime
+    end
+end
+
+-- Функция проверки видимости
+local function IsVisible(targetPart)
+    if not Settings.VisibilityCheck then return true end
+    
+    local rayOrigin = Camera.CFrame.Position
+    local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    
+    if raycastResult then
+        local hitPart = raycastResult.Instance
+        if hitPart and hitPart:IsDescendantOf(targetPart.Parent) then
+            return true
+        end
+        return false
+    end
+    
+    return true
+end
+
+-- Функция проверки возможности атаки
+local function CanAttack(player)
+    if not player then return false end
+    
+    if Settings.TeamCheck then
+        local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name
+        local theirTeam = player.Team and player.Team.Name
+        
+        if myTeam and theirTeam and myTeam == theirTeam then
+            return false
+        end
+    end
+    
+    -- Проверка друзей
+    for _, friend in pairs(Core.Services.FriendsList) do
+        if friend == player.Name then
+            return false
+        end
+    end
+    
+    local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
+    return targetPart and IsVisible(targetPart)
+end
+
+-- Функция поиска ToolListener
+local function GetToolListener()
+    local toolListener = nil
+    local wand = nil
+    
+    local character = LocalPlayer.Character
+    if not character then return nil, nil end
+
+    for _, item in pairs(character:GetChildren()) do
+        if item.ClassName == "Tool" then
+            wand = item
+            toolListener = wand:FindFirstChild("ToolListnerEvent")
+            break
+        end
+    end
+    
+    if not toolListener then
+        DelayedPrint("GetToolListener: Could not find ToolListnerEvent")
+        return nil, nil
+    end
+    
+    DelayedPrint("GetToolListener: Found ToolListnerEvent")
+    return toolListener, wand
+end
+
+-- Функция поиска ближайшей цели с приоритетом на курсор
+local function GetClosestTarget()
+    local mousePos = UserInputService:GetMouseLocation()
+    local validTargets = {}
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            
+            if targetPart and humanoid and humanoid.Health > 0 then
+                if CanAttack(player) then
+                    local worldDistance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                    if worldDistance <= Settings.FOV then
+                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                        
+                        table.insert(validTargets, {
+                            Player = player,
+                            WorldDistance = worldDistance,
+                            MouseDistance = mouseDistance
+                        })
+                    end
+                end
+            end
+        end
+    end
+    
+    table.sort(validTargets, function(a, b)
+        return a.MouseDistance < b.MouseDistance
+    end)
+    
+    return validTargets[1] and validTargets[1].Player or nil
+end
+
+-- Функция отправки remote event (Packet Method)
+local function SilentShot(target)
+    if not target then
+        DelayedPrint("SilentShot: No target")
+        return
+    end
+
+    if not Settings.Enabled then
+        DelayedPrint("SilentShot: Silent Aim disabled")
+        return
+    end
+    
+    if not target.Character then
+        DelayedPrint("SilentShot: Target has no character")
+        return
+    end
+    
+    local currentTime = tick()
+    if currentTime - lastFireTime < Settings.FireDelay then
+        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.2f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
+        return
+    end
+    
+    if math.random(1, 100) > Settings.HitChance then
+        DelayedPrint("SilentShot: Hit chance failed (" .. Settings.HitChance .. "%)")
+        return
+    end
+    
+    local targetPart = target.Character:FindFirstChild(Settings.TargetPart)
+    local humanoidRoot = target.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid = target.Character:FindFirstChild("Humanoid")
+    
+    if not targetPart or not humanoidRoot or not humanoid then
+        DelayedPrint("SilentShot: Missing parts - TargetPart: " .. (targetPart and "Yes" or "No") .. ", HumanoidRoot: " .. (humanoidRoot and "Yes" or "No") .. ", Humanoid: " .. (humanoid and "Yes" or "No"))
+        return
+    end
+    
+    local toolListener, wand = GetToolListener()
+    if not toolListener then
+        DelayedPrint("SilentShot: ToolListener not found")
+        return
+    end
+    
+    local config = wand:FindFirstChild("PistolConfig") or LocalPlayer:FindFirstChild("PistolConfig")
+    if not config then
+        DelayedPrint("SilentShot: PistolConfig not found")
+        return
+    end
+    
+    local args = {
+        [1] = "Activate",
+        [2] = Camera.CFrame.Position,
+        [3] = targetPart.Position,
+        [4] = config,
+        [5] = { targetPart.Position },
+        [6] = { { humanoidRoot, targetPart.Position, (targetPart.Position - Camera.CFrame.Position).Unit, Settings.TargetPart } },
+        [7] = { humanoid },
+        [8] = {}
+    }
+    
+    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown"))
+    local success, err = pcall(function()
+        toolListener:FireServer(unpack(args))
+    end)
+    
+    if success then
+        DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown"))
+        lastFireTime = currentTime
+        Core.GunSilentTarget.CurrentTarget = target.Name
+    else
+        DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
+    end
+end
+
+-- Инициализация модуля
+function Init(ui, core, notification)
+    UI = ui
+    Core = core
+    notify = notification
+
+    -- Создание нового таба Combat
+    UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
+    UI.Tabs = UI.Tabs or {}
+    UI.Tabs.Combat = UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
+
+    -- Создание секции SilentAim
+    UI.Sections = UI.Sections or {}
+    UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
+
+    -- Настройки Silent Aim
+    UI.Sections.SilentAim:Toggle({
+        Name = "Enabled",
+        Default = Settings.Enabled,
+        Callback = function(value)
+            Settings.Enabled = value
+            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
+        end
+    }, "SilentEnabled")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "FOV",
+        Minimum = 50,
+        Maximum = 500,
+        Default = Settings.FOV,
+        Precision = 0,
+        Callback = function(value)
+            Settings.FOV = value
+        end
+    }, "SilentFOV")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Hit Chance (%)",
+        Minimum = 0,
+        Maximum = 100,
+        Default = Settings.HitChance,
+        Precision = 0,
+        Callback = function(value)
+            Settings.HitChance = value
+        end
+    }, "SilentHitChance")
+
+    UI.Sections.SilentAim:Dropdown({
+        Name = "Target Part",
+        Options = {"Head", "Torso", "LeftLeg", "RightLeg"},
+        Default = Settings.TargetPart,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.TargetPart = value
+        end
+    }, "SilentTargetPart")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Team Check",
+        Default = Settings.TeamCheck,
+        Callback = function(value)
+            Settings.TeamCheck = value
+        end
+    }, "SilentTeamCheck")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Visibility Check",
+        Default = Settings.VisibilityCheck,
+        Callback = function(value)
+            Settings.VisibilityCheck = value
+        end
+    }, "SilentVisibilityCheck")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Print Delay",
+        Minimum = 0.1,
+        Maximum = 5,
+        Default = Settings.PrintDelay,
+        Precision = 1,
+        Callback = function(value)
+            Settings.PrintDelay = value
+        end
+    }, "SilentPrintDelay")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Fire Delay",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = Settings.FireDelay,
+        Precision = 1,
+        Callback = function(value)
+            Settings.FireDelay = value
+        end
+    }, "SilentFireDelay")
+end
+
+-- Основной цикл
+RunService.RenderStepped:Connect(function()
+    if not UI or not Core then return end
+
+    local target = GetClosestTarget()
+    currentTarget = target
+    
+    if target then
+        SilentShot(target)
+    else
+        Core.GunSilentTarget.CurrentTarget = nil
+    end
+end)
+
+-- Переключение Silent Aim
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.F then
+        Settings.Enabled = not Settings.Enabled
+        notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), true)
+    end
+end)
+
+return {
+    Init = Init
+}
