@@ -294,7 +294,7 @@ function Init(ui, core, notification)
         Name = "Target Part",
         Options = {"Head", "Torso", "LeftLeg", "RightLeg"},
         Default = Settings.TargetPart,
-        MultiSelection = false,
+        Multi = false,
         Callback = function(value)
             Settings.TargetPart = value
         end
