@@ -46,7 +46,7 @@ local function DelayedPrint(message)
     end
 end
 
--- Восстановленная функция проверки видимости
+-- Адаптированная функция проверки видимости
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then return true end
     
@@ -57,33 +57,23 @@ local function IsVisible(targetPart)
     local rayOrigin = rootPart.Position
     local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {character, targetPart.Parent} -- Исключаем целевой персонаж
+    raycastParams.FilterDescendantsInstances = {character, targetPart.Parent} -- Фильтруем себя и цель
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
-    -- Основной луч
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
-        DelayedPrint("Visible: Main ray hit target " .. targetPart.Parent.Name)
-        return true
-    end
     
-    -- Четыре дополнительных луча для точности
-    local offsetDirections = {
-        rayDirection + Vector3.new(0.1, 0, 0),
-        rayDirection + Vector3.new(-0.1, 0, 0),
-        rayDirection + Vector3.new(0, 0.1, 0),
-        rayDirection + Vector3.new(0, -0.1, 0)
-    }
-    for _, offsetDir in pairs(offsetDirections) do
-        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
-        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
-            DelayedPrint("Visible: Offset ray hit target " .. targetPart.Parent.Name)
+    if raycastResult then
+        local hitPart = raycastResult.Instance
+        if hitPart and hitPart:IsDescendantOf(targetPart.Parent) then
+            DelayedPrint("Visible: Raycast hit target " .. targetPart.Parent.Name)
             return true
         end
+        DelayedPrint("Not visible: Raycast blocked by " .. (hitPart and hitPart.Name or "nothing"))
+        return false
     end
     
-    DelayedPrint("Not visible: Raycast blocked by " .. (raycastResult and raycastResult.Instance.Name or "nothing"))
-    return false
+    DelayedPrint("Visible: No raycast result")
+    return true
 end
 
 -- Функция проверки нахождения в сейфзоне
@@ -162,7 +152,7 @@ local function CanAttack(player)
         return true
     end
     
-    -- Усиленная проверка FriendsList
+    -- Проверка FriendsList
     local isFriend = false
     if Core and Core.Services and Core.Services.FriendsList and type(Core.Services.FriendsList) == "table" then
         isFriend = Core.Services.FriendsList[player.Name:lower()] == true
