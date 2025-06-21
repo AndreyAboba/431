@@ -46,7 +46,7 @@ local function DelayedPrint(message)
     end
 end
 
--- Функция проверки видимости от позиции игрока
+-- Улучшенная функция проверки видимости с несколькими лучами
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then return true end
     
@@ -60,17 +60,27 @@ local function IsVisible(targetPart)
     raycastParams.FilterDescendantsInstances = {character}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
+    -- Основной луч
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    
-    if raycastResult then
-        local hitPart = raycastResult.Instance
-        if hitPart and hitPart:IsDescendantOf(targetPart.Parent) then
-            return true
-        end
-        return false
+    if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
+        return true
     end
     
-    return true
+    -- Дополнительные лучи для точности (с небольшим смещением)
+    local offsetDirections = {
+        rayDirection + Vector3.new(0.1, 0, 0),
+        rayDirection + Vector3.new(-0.1, 0, 0),
+        rayDirection + Vector3.new(0, 0.1, 0),
+        rayDirection + Vector3.new(0, -0.1, 0)
+    }
+    for _, offsetDir in pairs(offsetDirections) do
+        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
+        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
+            return true
+        end
+    end
+    
+    return false
 end
 
 -- Функция проверки нахождения в сейфзоне
@@ -149,11 +159,10 @@ local function CanAttack(player)
         return true
     end
     
-    -- Проверка друзей
-    for _, friend in pairs(Core.Services.FriendsList) do
-        if friend == player.Name then
-            return false
-        end
+    -- Проверка друзей с учетом регистра (как в VisualsV2)
+    local isFriend = Core.Services.FriendsList and Core.Services.FriendsList[player.Name:lower()] or false
+    if isFriend then
+        return false
     end
     
     return true
@@ -199,7 +208,7 @@ local function GetClosestTarget()
                 if CanAttack(player) and IsVisible(targetPart) then
                     local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
                     local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if mouseDistance <= Settings.FOV then -- Проверка внутри FOV круга
+                    if mouseDistance <= Settings.FOV then
                         local worldDistance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                         
                         table.insert(validTargets, {
@@ -398,6 +407,7 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.TargetPart = value
+            notify("Silent Aim", "Target Part set to: " .. value, true)
         end
     }, "SilentTargetPart")
 
