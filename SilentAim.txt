@@ -19,7 +19,8 @@ local Settings = {
     PrintDelay = 1,
     FireDelay = 0.5,
     Method = "Packet",
-    SortMethod = "Auto"
+    SortMethod = "Auto",
+    LogInterval = 1 -- Интервал логирования в секундах
 }
 
 local lastPrintTime = 0
@@ -28,6 +29,7 @@ local currentTarget = nil
 local isToolEquipped = false
 local currentTool = nil
 local FriendsCache = {} -- Локальный кэш друзей
+local lastLogTime = 0 -- Последнее время логирования
 
 -- Создание FOV Circle с Drawing
 local fovCircle = Drawing.new("Circle")
@@ -355,138 +357,39 @@ local function CheckToolEquipped()
     return false
 end
 
+-- Функция для обновления и логирования FriendsCache
+local function UpdateAndLogFriends()
+    local currentTime = tick()
+    if currentTime - lastLogTime >= Settings.LogInterval then
+        DelayedPrint("Logging Core.Services.FriendsList at " .. os.date("%H:%M:%S", os.time()))
+        if Core and Core.Services and Core.Services.FriendsList then
+            if type(Core.Services.FriendsList) == "table" then
+                FriendsCache = {} -- Очистка кэша перед обновлением
+                for key, value in pairs(Core.Services.FriendsList) do
+                    DelayedPrint("  Key: " .. tostring(key) .. ", Value: " .. tostring(value))
+                    if type(key) == "string" and value == true then
+                        FriendsCache[key:lower()] = true
+                        DelayedPrint("  Added to FriendsCache: " .. key:lower())
+                    end
+                end
+            else
+                DelayedPrint("  Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
+            end
+        else
+            DelayedPrint("Warning: Core.Services.FriendsList is nil or invalid")
+        end
+        lastLogTime = currentTime
+    end
+end
+
 -- Инициализация модуля
 function Init(ui, core, notification)
     UI = ui
     Core = core
     notify = notification
 
-    -- Логирование и синхронизация FriendsCache
-    if Core and Core.Services and Core.Services.FriendsList then
-        DelayedPrint("Logging Core.Services.FriendsList at init:")
-        if type(Core.Services.FriendsList) == "table" then
-            for key, value in pairs(Core.Services.FriendsList) do
-                DelayedPrint("  Key: " .. tostring(key) .. ", Value: " .. tostring(value))
-                if type(key) == "string" and value == true then
-                    FriendsCache[key:lower()] = true
-                    DelayedPrint("  Added to FriendsCache: " .. key:lower())
-                end
-            end
-        else
-            DelayedPrint("  Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
-        end
-    else
-        DelayedPrint("Warning: Core.Services.FriendsList is nil or invalid")
-    end
-
-    -- Создание нового таба Combat
-    UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
-    UI.Tabs = UI.Tabs or {}
-    UI.Tabs.Combat = UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
-
-    -- Создание секции SilentAim
-    UI.Sections = UI.Sections or {}
-    UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
-
-    -- Заголовок
-    UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
-
-    -- Настройки Silent Aim
-    UI.Sections.SilentAim:Toggle({
-        Name = "Enabled",
-        Default = Settings.Enabled,
-        Callback = function(value)
-            Settings.Enabled = value
-            fovCircle.Visible = value
-            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
-        end
-    }, "SilentEnabled")
-
-    UI.Sections.SilentAim:Slider({
-        Name = "FOV",
-        Minimum = 50,
-        Maximum = 500,
-        Default = Settings.FOV,
-        Precision = 0,
-        Suffix = " studs",
-        Callback = function(value)
-            Settings.FOV = value
-            fovCircle.Radius = value
-        end
-    }, "SilentFOV")
-
-    UI.Sections.SilentAim:Slider({
-        Name = "Hit Chance",
-        Minimum = 0,
-        Maximum = 100,
-        Default = Settings.HitChance,
-        Precision = 0,
-        Suffix = "%",
-        Callback = function(value)
-            Settings.HitChance = value
-        end
-    }, "SilentHitChance")
-
-    UI.Sections.SilentAim:Dropdown({
-        Name = "Target Part",
-        Options = {"Head", "Torso", "LeftLeg", "RightLeg"},
-        Default = Settings.TargetPart,
-        MultiSelection = false,
-        Callback = function(value)
-            Settings.TargetPart = value
-            notify("Silent Aim", "Target Part set to: " .. value, true)
-        end
-    }, "SilentTargetPart")
-
-    UI.Sections.SilentAim:Toggle({
-        Name = "Team Check",
-        Default = Settings.TeamCheck,
-        Callback = function(value)
-            Settings.TeamCheck = value
-        end
-    }, "SilentTeamCheck")
-
-    UI.Sections.SilentAim:Toggle({
-        Name = "Visibility Check",
-        Default = Settings.VisibilityCheck,
-        Callback = function(value)
-            Settings.VisibilityCheck = value
-        end
-    }, "SilentVisibilityCheck")
-
-    UI.Sections.SilentAim:Slider({
-        Name = "Print Delay",
-        Minimum = 0.1,
-        Maximum = 5,
-        Default = Settings.PrintDelay,
-        Precision = 1,
-        Suffix = "s",
-        Callback = function(value)
-            Settings.PrintDelay = value
-        end
-    }, "SilentPrintDelay")
-
-    UI.Sections.SilentAim:Slider({
-        Name = "Fire Delay",
-        Minimum = 0.1,
-        Maximum = 2,
-        Default = Settings.FireDelay,
-        Precision = 1,
-        Suffix = "s",
-        Callback = function(value)
-            Settings.FireDelay = value
-        end
-    }, "SilentFireDelay")
-
-    UI.Sections.SilentAim:Dropdown({
-        Name = "Sort Method",
-        Options = {"Distance", "Health", "Crosshair", "Auto"},
-        Default = Settings.SortMethod,
-        MultiSelection = false,
-        Callback = function(value)
-            Settings.SortMethod = value
-        end
-    }, "SilentSortMethod")
+    -- Начальное логирование
+    UpdateAndLogFriends()
 end
 
 -- Обновление позиции FOV Circle и логика Silent Aim
@@ -501,6 +404,8 @@ RunService.RenderStepped:Connect(function()
         Core.GunSilentTarget.CurrentTarget = nil
         return
     end
+
+    UpdateAndLogFriends() -- Постоянное обновление и логирование
 
     local target = GetClosestTarget()
     currentTarget = target
