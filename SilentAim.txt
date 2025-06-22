@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-print('1')
+
 local Core = nil
 local UI = nil
 local notify = nil
@@ -361,15 +361,22 @@ function Init(ui, core, notification)
     Core = core
     notify = notification
 
-    -- Синхронизация FriendsCache с Core.Services.FriendsList
-    if Core and Core.Services and Core.Services.FriendsList and type(Core.Services.FriendsList) == "table" then
-        for playerName, isFriend in pairs(Core.Services.FriendsList) do
-            if type(playerName) == "string" and isFriend == true then
-                FriendsCache[playerName:lower()] = true
+    -- Логирование и синхронизация FriendsCache
+    if Core and Core.Services and Core.Services.FriendsList then
+        DelayedPrint("Logging Core.Services.FriendsList at init:")
+        if type(Core.Services.FriendsList) == "table" then
+            for key, value in pairs(Core.Services.FriendsList) do
+                DelayedPrint("  Key: " .. tostring(key) .. ", Value: " .. tostring(value))
+                if type(key) == "string" and value == true then
+                    FriendsCache[key:lower()] = true
+                    DelayedPrint("  Added to FriendsCache: " .. key:lower())
+                end
             end
+        else
+            DelayedPrint("  Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
         end
     else
-        DelayedPrint("Warning: Initial FriendsList not found, using empty cache")
+        DelayedPrint("Warning: Core.Services.FriendsList is nil or invalid")
     end
 
     -- Создание нового таба Combat
