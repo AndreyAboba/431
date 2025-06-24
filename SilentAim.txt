@@ -388,13 +388,133 @@ function Init(ui, core, notification)
     Core = core
     notify = notification
 
+    DelayedPrint("SilentAim module initializing...")
+    if not UI or not Core or not notify then
+        DelayedPrint("Warning: UI, Core, or notification is nil during initialization")
+        return
+    end
+
     -- Начальное логирование
     UpdateAndLogFriends()
+
+    -- Создание нового таба Combat
+    UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
+    UI.Tabs = UI.Tabs or {}
+    UI.Tabs.Combat = UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
+
+    -- Создание секции SilentAim
+    UI.Sections = UI.Sections or {}
+    UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
+
+    -- Заголовок
+    UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
+
+    -- Настройки Silent Aim
+    UI.Sections.SilentAim:Toggle({
+        Name = "Enabled",
+        Default = Settings.Enabled,
+        Callback = function(value)
+            Settings.Enabled = value
+            fovCircle.Visible = value
+            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
+        end
+    }, "SilentEnabled")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "FOV",
+        Minimum = 50,
+        Maximum = 500,
+        Default = Settings.FOV,
+        Precision = 0,
+        Suffix = " studs",
+        Callback = function(value)
+            Settings.FOV = value
+            fovCircle.Radius = value
+        end
+    }, "SilentFOV")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Hit Chance",
+        Minimum = 0,
+        Maximum = 100,
+        Default = Settings.HitChance,
+        Precision = 0,
+        Suffix = "%",
+        Callback = function(value)
+            Settings.HitChance = value
+        end
+    }, "SilentHitChance")
+
+    UI.Sections.SilentAim:Dropdown({
+        Name = "Target Part",
+        Options = {"Head", "Torso", "LeftLeg", "RightLeg"},
+        Default = Settings.TargetPart,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.TargetPart = value
+            notify("Silent Aim", "Target Part set to: " .. value, true)
+        end
+    }, "SilentTargetPart")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Team Check",
+        Default = Settings.TeamCheck,
+        Callback = function(value)
+            Settings.TeamCheck = value
+        end
+    }, "SilentTeamCheck")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Visibility Check",
+        Default = Settings.VisibilityCheck,
+        Callback = function(value)
+            Settings.VisibilityCheck = value
+        end
+    }, "SilentVisibilityCheck")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Print Delay",
+        Minimum = 0.1,
+        Maximum = 5,
+        Default = Settings.PrintDelay,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            Settings.PrintDelay = value
+        end
+    }, "SilentPrintDelay")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Fire Delay",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = Settings.FireDelay,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            Settings.FireDelay = value
+        end
+    }, "SilentFireDelay")
+
+    UI.Sections.SilentAim:Dropdown({
+        Name = "Sort Method",
+        Options = {"Distance", "Health", "Crosshair", "Auto"},
+        Default = Settings.SortMethod,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.SortMethod = value
+        end
+    }, "SilentSortMethod")
+
+    DelayedPrint("SilentAim module initialized successfully")
 end
 
 -- Обновление позиции FOV Circle и логика Silent Aim
 RunService.RenderStepped:Connect(function()
-    if not UI or not Core then return end
+    if not UI or not Core then
+        DelayedPrint("Warning: UI or Core is nil during RenderStepped")
+        return
+    end
 
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
