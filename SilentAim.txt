@@ -10,7 +10,7 @@ local notify = nil
 
 -- Конфигурация Silent Aim
 local Settings = {
-    Enabled = true,
+    Enabled = false,
     FOV = 300,
     HitChance = 100,
     TargetPart = "Head",
