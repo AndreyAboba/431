@@ -366,13 +366,12 @@ local function UpdateAndLogFriends()
             if type(Core.Services.FriendsList) == "table" then
                 FriendsCache = {} -- Очистка кэша перед обновлением
                 for key, value in pairs(Core.Services.FriendsList) do
-                    DelayedPrint("  Core.Services.FriendsList - Key: " .. tostring(key) .. ", Value: " .. tostring(value))
+                    DelayedPrint("  Key: " .. tostring(key) .. ", Value: " .. tostring(value))
                     if type(key) == "string" and value == true then
                         FriendsCache[key:lower()] = true
                         DelayedPrint("  Added to FriendsCache: " .. key:lower())
                     end
                 end
-                DelayedPrint("Current FriendsCache: " .. table.concat(table.keys(FriendsCache), ", "))
             else
                 DelayedPrint("  Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
             end
