@@ -39,12 +39,6 @@ fovCircle.Radius = Settings.FOV
 fovCircle.Visible = Settings.Enabled
 fovCircle.Filled = false
 
--- Кэш для оптимизации
-local Cache = {
-    PlayerFriendCache = {},
-    FriendsListVersion = 0
-}
-
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
     local currentTime = tick()
@@ -139,8 +133,8 @@ end
 
 -- Функция проверки возможности атаки
 local function CanAttack(player)
-    if not player then
-        DelayedPrint("CanAttack: No player provided")
+    if not player or not player.Name then
+        DelayedPrint("CanAttack: No player or player name provided")
         return false
     end
     
@@ -150,62 +144,51 @@ local function CanAttack(player)
     end
     
     if not Settings.TeamCheck then
-        DelayedPrint("CanAttack: TeamCheck disabled, allowing attack on " .. player.Name)
-        return true
-    end
-    
-    local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name
-    local theirTeam = player.Team and player.Team.Name
-    
-    if not myTeam or not theirTeam then
-        DelayedPrint("CanAttack: Team data missing, allowing attack on " .. player.Name)
-        return true
-    end
-    
-    if HasProtectionBubble(player) then
-        DelayedPrint("CanAttack: Player " .. player.Name .. " has ProtectionBubble")
-        return false
-    end
-    
-    local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
-    if targetPart and IsInSafezone(targetPart.Position) then
-        if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
-            return false
+        DelayedPrint("CanAttack: TeamCheck disabled, checking FriendsList for " .. player.Name)
+    else
+        local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name
+        local theirTeam = player.Team and player.Team.Name
+        
+        if not myTeam or not theirTeam then
+            DelayedPrint("CanAttack: Team data missing for " .. player.Name .. ", checking FriendsList")
+        else
+            if HasProtectionBubble(player) then
+                DelayedPrint("CanAttack: Player " .. player.Name .. " has ProtectionBubble")
+                return false
+            end
+            
+            local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
+            if targetPart and IsInSafezone(targetPart.Position) then
+                if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
+                    DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
+                    return false
+                end
+                DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone, checking FriendsList")
+            end
+            
+            if myTeam == "Shadow Wizards" then
+                DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, checking FriendsList for " .. player.Name)
+            elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
+                if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
+                    DelayedPrint("CanAttack: Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
+                    return false
+                end
+                DelayedPrint("CanAttack: Different team for " .. player.Name .. ", checking FriendsList")
+            end
         end
-        DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone, allowing attack")
-        return true
-    end
-    
-    if myTeam == "Shadow Wizards" then
-        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
-        return true
-    elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
-        if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
-            return false
-        end
-        DelayedPrint("CanAttack: Allowing attack on " .. player.Name .. " (different team)")
-        return true
     end
     
     -- Проверка FriendsList
     if Core and Core.Services and Core.Services.FriendsList then
         local playerNameLower = player.Name:lower()
-        local isFriend = Cache.PlayerFriendCache[playerNameLower]
-        if isFriend == nil then
-            isFriend = Core.Services.FriendsList[playerNameLower] == true
-            Cache.PlayerFriendCache[playerNameLower] = isFriend
-            DelayedPrint("CanAttack: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
-        end
-        if isFriend then
-            DelayedPrint("CanAttack: Blocked attack on friend " .. player.Name)
+        if Core.Services.FriendsList[playerNameLower] then
+            DelayedPrint("CanAttack: Blocked attack on friend " .. player.Name .. " (in FriendsList)")
             return false
         end
-        DelayedPrint("CanAttack: Player " .. player.Name .. " is not a friend")
+        DelayedPrint("CanAttack: Player " .. player.Name .. " is not in FriendsList, allowing attack")
     else
-        DelayedPrint("CanAttack: Warning: Core.Services.FriendsList is unavailable")
-        return true -- Если FriendsList недоступен, разрешаем атаку
+        DelayedPrint("CanAttack: Warning: Core.Services.FriendsList is unavailable, allowing attack on " .. player.Name)
+        return true
     end
     
     return true
@@ -400,11 +383,9 @@ local function UpdateFriendsCheck()
         if Core and Core.Services and Core.Services.FriendsList then
             local count = 0
             local friends = {}
-            for name, isFriend in pairs(Core.Services.FriendsList) do
-                if isFriend then
-                    count = count + 1
-                    table.insert(friends, name)
-                end
+            for name, _ in pairs(Core.Services.FriendsList) do
+                count = count + 1
+                table.insert(friends, name)
             end
             DelayedPrint("FriendsList check: Valid, Count: " .. tostring(count) .. ", Friends: " .. (#friends > 0 and table.concat(friends, ", ") or "None"))
         else
@@ -429,9 +410,7 @@ function Init(ui, core, notification)
     -- Инициализация FriendsList
     if Core and Core.Services then
         Core.Services.FriendsList = Core.Services.FriendsList or {}
-        Cache.FriendsListVersion = Cache.FriendsListVersion + 1
-        Cache.PlayerFriendCache = {} -- Сброс кэша при инициализации
-        DelayedPrint("Initialized FriendsList, version: " .. Cache.FriendsListVersion)
+        DelayedPrint("Initialized FriendsList")
     end
 
     -- Начальная проверка
@@ -546,19 +525,6 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    -- Подписка на обновления FriendsList
-    if Core and Core.Services then
-        local lastFriendsList = Core.Services.FriendsList
-        RunService.Heartbeat:Connect(function()
-            if Core.Services.FriendsList ~= lastFriendsList then
-                Cache.FriendsListVersion = Cache.FriendsListVersion + 1
-                Cache.PlayerFriendCache = {}
-                lastFriendsList = Core.Services.FriendsList
-                DelayedPrint("FriendsList updated, resetting cache, new version: " .. Cache.FriendsListVersion)
-            end
-        end)
-    end
-
     DelayedPrint("SilentAim module initialized successfully")
 end
 
@@ -595,7 +561,7 @@ UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.F then
         Settings.Enabled = not Settings.Enabled
         fovCircle.Visible = Settings.Enabled
-        notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), true)
+        notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
     end
 end)
 
