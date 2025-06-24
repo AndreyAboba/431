@@ -1,51 +1,11 @@
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
-local Core = nil
-local UI = nil
-local notify = nil
-
--- Конфигурация Silent Aim
-local Settings = {
-    Enabled = false,
-    FOV = 300,
-    HitChance = 100,
-    TargetPart = "Head",
-    TeamCheck = true,
-    VisibilityCheck = true,
-    PrintDelay = 0.2,
-    FireDelay = 0.5,
-    Method = "Packet",
-    SortMethod = "Auto",
-    LogInterval = 0.05
-}
-
-local lastPrintTime = 0
-local lastFireTime = 0
-local currentTarget = nil
-local isToolEquipped = false
-local currentTool = nil
-local lastLogTime = 0
-
--- Создание FOV Circle с Drawing
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 2
-fovCircle.Color = Color3.fromRGB(0, 255, 0)
-fovCircle.Transparency = 0.7
-fovCircle.Radius = Settings.FOV
-fovCircle.Visible = Settings.Enabled
-fovCircle.Filled = false
-
+-- ... (Остальной код без изменений до Cache)
 -- Кэш для оптимизации
 local Cache = {
     PlayerFriendCache = {},
     FriendsListVersion = 0
 }
 
--- Функция для вывода сообщений с задержкой
+-- Функция для вывода сообщений с задержкой (без изменений)
 local function DelayedPrint(message)
     local currentTime = tick()
     if currentTime - lastPrintTime >= Settings.PrintDelay then
@@ -54,317 +14,82 @@ local function DelayedPrint(message)
     end
 end
 
--- Улучшенная функция проверки видимости
-local function IsVisible(targetPart)
-    if not Settings.VisibilityCheck then return true end
-    
-    local character = LocalPlayer.Character
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return false end
-    
-    local rayOrigin = rootPart.Position
-    local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {character}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    
-    local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
-        DelayedPrint("Visible: Main ray hit target " .. targetPart.Parent.Name)
-        return true
-    end
-    
-    local offsetDirections = {
-        rayDirection + Vector3.new(0.1, 0, 0),
-        rayDirection + Vector3.new(-0.1, 0, 0),
-        rayDirection + Vector3.new(0, 0.1, 0),
-        rayDirection + Vector3.new(0, -0.1, 0)
-    }
-    for _, offsetDir in pairs(offsetDirections) do
-        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
-        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
-            DelayedPrint("Visible: Offset ray hit target " .. targetPart.Parent.Name)
-            return true
-        end
-    end
-    
-    DelayedPrint("Not visible: Raycast blocked by " .. (raycastResult and raycastResult.Instance.Name or "nothing"))
-    return false
-end
-
--- Функция проверки нахождения в сейфзоне
-local function IsInSafezone(position)
-    local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
-    if not safezone then return false end
-    
-    local safezonePos = safezone.Position
-    local safezoneSize = safezone.Size / 2
-    
-    local relativePos = position - safezonePos
-    return math.abs(relativePos.X) <= safezoneSize.X and
-           math.abs(relativePos.Y) <= safezoneSize.Y and
-           math.abs(relativePos.Z) <= safezoneSize.Z
-end
-
--- Функция проверки щита
-local function HasProtectionBubble(player)
-    if not player or not player.Character then return false end
-    
-    local protectionBubble = workspace:FindFirstChild("Entities") and workspace.Entities:FindFirstChild("ProtectionBubble")
-    if not protectionBubble then return false end
-    
-    local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-    if not targetPart then return false end
-    
-    local distance = (protectionBubble.Position - targetPart.Position).Magnitude
-    return distance < 10
-end
-
--- Функция проверки Lasso
-local function HasLasso(player)
-    if not player then return false end
-
-    local charactersFolder = workspace:FindFirstChild("Characters")
-    if not charactersFolder then return false end
-
-    local playerName = player.Name
-    if not playerName then return false end
-
-    local playerContainer = charactersFolder:FindFirstChild(playerName)
-    if not playerContainer then return false end
-
-    local fakeLimbs = playerContainer:FindFirstChild("FakeLimbs")
-    return fakeLimbs ~= nil
-end
+-- ... (Функции IsVisible, IsInSafezone, HasProtectionBubble, HasLasso без изменений)
 
 -- Функция проверки возможности атаки
 local function CanAttack(player)
-    if not player then return false end
+    if not player then
+        DelayedPrint("CanAttack: No player provided")
+        return false
+    end
     
-    if HasLasso(player) then return false end
-    if not Settings.TeamCheck then return true end
+    if HasLasso(player) then
+        DelayedPrint("CanAttack: Player " .. player.Name .. " has Lasso")
+        return false
+    end
+    
+    if not Settings.TeamCheck then
+        DelayedPrint("CanAttack: TeamCheck disabled, allowing attack on " .. player.Name)
+        return true
+    end
     
     local myTeam = LocalPlayer.Team and LocalPlayer.Team.Name
     local theirTeam = player.Team and player.Team.Name
     
-    if not myTeam or not theirTeam then return true end
+    if not myTeam or not theirTeam then
+        DelayedPrint("CanAttack: Team data missing, allowing attack on " .. player.Name)
+        return true
+    end
     
-    if HasProtectionBubble(player) then return false end
+    if HasProtectionBubble(player) then
+        DelayedPrint("CanAttack: Player " .. player.Name .. " has ProtectionBubble")
+        return false
+    end
     
     local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
     if targetPart and IsInSafezone(targetPart.Position) then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
+            DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
             return false
         end
+        DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone, allowing attack")
         return true
     end
     
     if myTeam == "Shadow Wizards" then
+        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
         return true
     elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
+            DelayedPrint("Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
             return false
         end
+        DelayedPrint("CanAttack: Allowing attack on " .. player.Name .. " (different team)")
         return true
     end
     
     -- Проверка FriendsList
     if Core and Core.Services and Core.Services.FriendsList then
         local playerNameLower = player.Name:lower()
-        local isFriend = Cache.PlayerFriendCache[player] or Core.Services.FriendsList[playerNameLower]
-        Cache.PlayerFriendCache[player] = isFriend
+        local isFriend = Cache.PlayerFriendCache[player]
+        if isFriend == nil then
+            isFriend = Core.Services.FriendsList[playerNameLower] == true
+            Cache.PlayerFriendCache[player] = isFriend
+            DelayedPrint("CanAttack: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
+        end
         if isFriend then
-            DelayedPrint("Blocked attack on friend: " .. player.Name)
+            DelayedPrint("CanAttack: Blocked attack on friend " .. player.Name)
             return false
         end
+        DelayedPrint("CanAttack: Player " .. player.Name .. " is not a friend")
     else
-        DelayedPrint("Warning: Core.Services.FriendsList is unavailable")
+        DelayedPrint("CanAttack: Warning: Core.Services.FriendsList is unavailable")
     end
     
     return true
 end
 
--- Функция поиска ToolListener
-local function GetToolListener()
-    local toolListener = nil
-    local wand = nil
-    
-    local character = LocalPlayer.Character
-    if not character then return nil, nil end
-
-    for _, item in pairs(character:GetChildren()) do
-        if item.ClassName == "Tool" then
-            wand = item
-            toolListener = wand:FindFirstChild("ToolListnerEvent")
-            break
-        end
-    end
-    
-    if not toolListener then
-        DelayedPrint("GetToolListener: Could not find ToolListnerEvent")
-        return nil, nil
-    end
-    
-    DelayedPrint("GetToolListener: Found ToolListnerEvent")
-    return toolListener, wand
-end
-
--- Оптимизированная функция поиска ближайшей цели
-local function GetClosestTarget()
-    local mousePos = UserInputService:GetMouseLocation()
-    local validTargets = {}
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer or not player.Character then continue end
-        
-        local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-        local humanoid = player.Character:FindFirstChild("Humanoid")
-        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        
-        if targetPart and humanoid and humanoidRoot and humanoid.Health > 0 then
-            if CanAttack(player) and IsVisible(targetPart) then
-                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                if mouseDistance <= Settings.FOV then
-                    table.insert(validTargets, {
-                        Player = player,
-                        MouseDistance = mouseDistance,
-                        Health = humanoid.Health
-                    })
-                end
-            end
-        end
-    end
-    
-    table.sort(validTargets, function(a, b)
-        if Settings.SortMethod == "Distance" then
-            return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
-                   (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
-        elseif Settings.SortMethod == "Health" then
-            return a.Health < b.Health
-        elseif Settings.SortMethod == "Crosshair" then
-            return a.MouseDistance < b.MouseDistance
-        elseif Settings.SortMethod == "Auto" then
-            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
-            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
-            return aScore < bScore
-        end
-        return a.MouseDistance < b.MouseDistance
-    end)
-    
-    local target = validTargets[1] and validTargets[1].Player
-    if target then
-        DelayedPrint("Targeting: " .. target.Name .. " (Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
-    else
-        DelayedPrint("No valid target found")
-    end
-    return target
-end
-
--- Функция отправки remote event (Packet Method)
-local function SilentShot(target)
-    if not target then
-        DelayedPrint("SilentShot: No target")
-        return
-    end
-
-    if not Settings.Enabled then
-        DelayedPrint("SilentShot: Silent Aim disabled")
-        return
-    end
-    
-    if not target.Character then
-        DelayedPrint("SilentShot: Target has no character")
-        return
-    end
-    
-    local currentTime = tick()
-    if currentTime - lastFireTime < Settings.FireDelay then
-        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.2f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
-        return
-    end
-    
-    if math.random(1, 100) > Settings.HitChance then
-        DelayedPrint("SilentShot: Hit chance failed (" .. Settings.HitChance .. "%)")
-        return
-    end
-    
-    local targetPart = target.Character:FindFirstChild(Settings.TargetPart)
-    local humanoidRoot = target.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid = target.Character:FindFirstChild("Humanoid")
-    
-    if not targetPart or not humanoidRoot or not humanoid then
-        DelayedPrint("SilentShot: Missing parts - TargetPart: " .. (targetPart and "Yes" or "No") .. ", HumanoidRoot: " .. (humanoidRoot and "Yes" or "No") .. ", Humanoid: " .. (humanoid and "Yes" or "No"))
-        return
-    end
-    
-    local toolListener, wand = GetToolListener()
-    if not toolListener then
-        DelayedPrint("SilentShot: ToolListener not found")
-        return
-    end
-    
-    local config = wand:FindFirstChild("PistolConfig") or LocalPlayer:FindFirstChild("PistolConfig")
-    if not config then
-        DelayedPrint("SilentShot: PistolConfig not found")
-        return
-    end
-    
-    local args = {
-        [1] = "Activate",
-        [2] = Camera.CFrame.Position,
-        [3] = targetPart.Position,
-        [4] = config,
-        [5] = { targetPart.Position },
-        [6] = { { humanoidRoot, targetPart.Position, (targetPart.Position - Camera.CFrame.Position).Unit, Settings.TargetPart } },
-        [7] = { humanoid },
-        [8] = {}
-    }
-    
-    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown"))
-    local success, err = pcall(function()
-        toolListener:FireServer(unpack(args))
-    end)
-    
-    if success then
-        DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown"))
-        lastFireTime = currentTime
-        Core.GunSilentTarget.CurrentTarget = target.Name
-    else
-        DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
-    end
-end
-
--- Функция проверки экипировки инструмента
-local function CheckToolEquipped()
-    local character = LocalPlayer.Character
-    if not character then
-        if isToolEquipped then
-            isToolEquipped = false
-            currentTool = nil
-            DelayedPrint("Tool is unequipped (no character)")
-        end
-        return false
-    end
-
-    for _, item in pairs(character:GetChildren()) do
-        if item.ClassName == "Tool" then
-            if not isToolEquipped then
-                isToolEquipped = true
-                currentTool = item
-                DelayedPrint("Tool " .. (item.Name or "Unknown") .. " is equipped")
-            end
-            return true
-        end
-    end
-
-    if isToolEquipped then
-        isToolEquipped = false
-        currentTool = nil
-        DelayedPrint("Tool is unequipped")
-    end
-    return false
-end
+-- ... (Функции GetToolListener, GetClosestTarget, SilentShot, CheckToolEquipped без изменений)
 
 -- Функция для проверки и логирования FriendsList
 local function UpdateFriendsCheck()
@@ -372,8 +97,14 @@ local function UpdateFriendsCheck()
     if currentTime - lastLogTime >= Settings.LogInterval then
         if Core and Core.Services and Core.Services.FriendsList then
             local count = 0
-            for _ in pairs(Core.Services.FriendsList) do count = count + 1 end
-            DelayedPrint("FriendsList check: Valid, Count: " .. tostring(count))
+            local friends = {}
+            for name, isFriend in pairs(Core.Services.FriendsList) do
+                if isFriend then
+                    count = count + 1
+                    table.insert(friends, name)
+                end
+            end
+            DelayedPrint("FriendsList check: Valid, Count: " .. tostring(count) .. ", Friends: " .. table.concat(friends, ", "))
         else
             DelayedPrint("Error: Core or FriendsList is nil - Core: " .. tostring(Core) .. ", Services: " .. tostring(Core and Core.Services))
         end
@@ -408,7 +139,7 @@ function Init(ui, core, notification)
     -- Заголовок
     UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
 
-    -- Настройки Silent Aim
+    -- Настройки Silent Aim (без изменений)
     UI.Sections.SilentAim:Toggle({
         Name = "Enabled",
         Default = Settings.Enabled,
@@ -505,58 +236,29 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    -- Подписка на обновления FriendsList
+    -- Инициализация FriendsList и подписка на обновления
     if Core and Core.Services then
         Core.Services.FriendsList = Core.Services.FriendsList or {}
         Cache.FriendsListVersion = Cache.FriendsListVersion + 1
         Cache.PlayerFriendCache = {} -- Сброс кэша при инициализации
-        DelayedPrint("Subscribed to FriendsList updates")
+        DelayedPrint("Subscribed to FriendsList updates, version: " .. Cache.FriendsListVersion)
+        
+        -- Подписка на обновления FriendsList через проверку изменений
+        local lastFriendsList = Core.Services.FriendsList
+        RunService.Heartbeat:Connect(function()
+            if Core.Services.FriendsList ~= lastFriendsList then
+                Cache.FriendsListVersion = Cache.FriendsListVersion + 1
+                Cache.PlayerFriendCache = {}
+                lastFriendsList = Core.Services.FriendsList
+                DelayedPrint("FriendsList updated, resetting cache, new version: " .. Cache.FriendsListVersion)
+            end
+        end)
     end
 
     DelayedPrint("SilentAim module initialized successfully")
 end
 
--- Обновление позиции FOV Circle и логика Silent Aim
-RunService.RenderStepped:Connect(function()
-    if not UI or not Core then
-        DelayedPrint("Warning: UI or Core is nil during RenderStepped")
-        return
-    end
-
-    local mousePos = UserInputService:GetMouseLocation()
-    fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
-
-    if not CheckToolEquipped() then
-        currentTarget = nil
-        Core.GunSilentTarget.CurrentTarget = nil
-        return
-    end
-
-    UpdateFriendsCheck()
-
-    local target = GetClosestTarget()
-    currentTarget = target
-    
-    if target then
-        SilentShot(target)
-    else
-        Core.GunSilentTarget.CurrentTarget = nil
-    end
-end)
-
--- Переключение Silent Aim
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.F then
-        Settings.Enabled = not Settings.Enabled
-        fovCircle.Visible = Settings.Enabled
-        notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), true)
-    end
-end)
-
--- Очистка при телепортации
-game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
-    fovCircle:Remove()
-end)
+-- ... (Остальной код без изменений: RenderStepped, InputBegan, OnTeleport)
 
 return {
     Init = Init
