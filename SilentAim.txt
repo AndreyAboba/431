@@ -10,17 +10,17 @@ local notify = nil
 
 -- Конфигурация Silent Aim
 local Settings = {
-    Enabled = true,
+    Enabled = false,
     FOV = 300,
     HitChance = 100,
     TargetPart = "Head",
     TeamCheck = true,
     VisibilityCheck = true,
-    PrintDelay = 1,
+    PrintDelay = 0.5, -- Уменьшил для более частых логов
     FireDelay = 0.5,
     Method = "Packet",
     SortMethod = "Auto",
-    LogInterval = 1 -- Интервал логирования в секундах
+    LogInterval = 0.1 -- Уменьшил интервал для частой проверки
 }
 
 local lastPrintTime = 0
@@ -28,8 +28,7 @@ local lastFireTime = 0
 local currentTarget = nil
 local isToolEquipped = false
 local currentTool = nil
-local FriendsCache = {} -- Локальный кэш друзей
-local lastLogTime = 0 -- Последнее время логирования
+local lastLogTime = 0
 
 -- Создание FOV Circle с Drawing
 local fovCircle = Drawing.new("Circle")
@@ -132,7 +131,7 @@ local function HasLasso(player)
     return fakeLimbs ~= nil
 end
 
--- Функция проверки возможности атаки
+-- Функция проверки возможности атаки с жёсткой проверкой FriendsList
 local function CanAttack(player)
     if not player then return false end
     
@@ -163,11 +162,15 @@ local function CanAttack(player)
         return true
     end
     
-    -- Проверка FriendsList через локальный кэш
+    -- Жёсткая проверка FriendsList
     local playerNameLower = player.Name:lower()
-    if Core and Core.Services and Core.Services.FriendsList and Core.Services.FriendsList[playerNameLower] then
-        DelayedPrint("Target " .. player.Name .. " is in FriendsList, skipping attack")
-        return false
+    if Core and Core.Services and Core.Services.FriendsList then
+        if Core.Services.FriendsList[playerNameLower] == true then
+            DelayedPrint("Blocked attack on friend: " .. player.Name)
+            return false
+        end
+    else
+        DelayedPrint("Warning: Core.Services.FriendsList is unavailable")
     end
     
     return true
@@ -355,29 +358,17 @@ local function CheckToolEquipped()
     return false
 end
 
--- Функция для обновления и логирования FriendsCache
-local function UpdateAndLogFriends()
+-- Функция для проверки и логирования FriendsList
+local function UpdateFriendsCheck()
     local currentTime = tick()
     if currentTime - lastLogTime >= Settings.LogInterval then
-        DelayedPrint("Attempting to log Core.Services.FriendsList")
         if Core and Core.Services and Core.Services.FriendsList then
-            DelayedPrint("Core.Services.FriendsList exists, type: " .. type(Core.Services.FriendsList))
-            if type(Core.Services.FriendsList) == "table" then
-                FriendsCache = {} -- Очистка кэша перед обновлением
-                local friendCount = 0
-                for key, value in pairs(Core.Services.FriendsList) do
-                    if type(key) == "string" and value == true then
-                        FriendsCache[key:lower()] = true
-                        friendCount = friendCount + 1
-                        DelayedPrint("  Added to FriendsCache: " .. key:lower())
-                    end
-                end
-                DelayedPrint("Total friends in FriendsCache: " .. friendCount)
-            else
-                DelayedPrint("Warning: Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
+            DelayedPrint("Checking FriendsList: " .. (type(Core.Services.FriendsList) == "table" and "Valid" or "Invalid"))
+            if type(Core.Services.FriendsList) ~= "table" then
+                DelayedPrint("Error: FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
             end
         else
-            DelayedPrint("Error: Core.Services.FriendsList is nil or Core/Services is invalid")
+            DelayedPrint("Error: Core or FriendsList is nil")
         end
         lastLogTime = currentTime
     end
@@ -395,8 +386,8 @@ function Init(ui, core, notification)
         return
     end
 
-    -- Начальное логирование
-    UpdateAndLogFriends()
+    -- Начальная проверка
+    UpdateFriendsCheck()
 
     -- Создание нового таба Combat
     UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
@@ -526,7 +517,7 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    UpdateAndLogFriends() -- Постоянное обновление и логирование
+    UpdateFriendsCheck() -- Проверка FriendsList на каждом кадре
 
     local target = GetClosestTarget()
     currentTarget = target
