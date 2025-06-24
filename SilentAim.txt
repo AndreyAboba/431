@@ -26,9 +26,6 @@ local Settings = {
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    Backtrack = false,
-    BacktrackDelay = 0.5,
-    WallBang = false,
     NPCSupport = false,
     SelectedTarget = "Entities"
 }
@@ -39,14 +36,11 @@ local currentTarget = nil
 local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
-local pulseFactor = 1
-local pulseDirection = 1
 
--- Кэш для бэктрэкинга, FriendsList и мобов
+-- Кэш для FriendsList и мобов
 local Cache = {
     PlayerFriendCache = {},
     FriendsListVersion = 0,
-    PositionHistory = {}, -- История позиций игроков для бэктрэкинга
     MobCache = setmetatable({}, { __mode = "v" }), -- Кэш для мобов
     LastCacheUpdate = 0,
     CacheInterval = 1.0
@@ -60,14 +54,6 @@ fovCircle.Transparency = 0.7
 fovCircle.Radius = Settings.FOV
 fovCircle.Visible = Settings.Enabled
 fovCircle.Filled = false
-
--- Создание визуализации Backtrack (точка)
-local backtrackCircle = Drawing.new("Circle")
-backtrackCircle.Thickness = 2
-backtrackCircle.Transparency = 0.7
-backtrackCircle.Radius = 5
-backtrackCircle.Visible = false
-backtrackCircle.Filled = true
 
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
@@ -271,44 +257,6 @@ local function GetToolListener()
     return toolListener, pistolConfig
 end
 
--- Функция для сохранения истории позиций (для бэктрэкинга)
-local function UpdatePositionHistory(player)
-    if not player or not player.Character then
-        return
-    end
-    
-    local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRoot then
-        return
-    end
-    
-    Cache.PositionHistory[player.Name] = Cache.PositionHistory[player.Name] or {}
-    table.insert(Cache.PositionHistory[player.Name], {
-        Time = tick(),
-        Position = humanoidRoot.Position
-    })
-    
-    while #Cache.PositionHistory[player.Name] > 0 and (tick() - Cache.PositionHistory[player.Name][1].Time) > 5 do
-        table.remove(Cache.PositionHistory[player.Name], 1)
-    end
-end
-
--- Функция получения позиции с бэктрэкингом
-local function GetBacktrackedPosition(player, targetPart)
-    if not Settings.Backtrack or not Cache.PositionHistory[player.Name] or #Cache.PositionHistory[player.Name] == 0 then
-        return targetPart.Position
-    end
-    
-    local targetTime = tick() - Settings.BacktrackDelay
-    for i = #Cache.PositionHistory[player.Name], 1, -1 do
-        local entry = Cache.PositionHistory[player.Name][i]
-        if entry.Time <= targetTime then
-            return entry.Position
-        end
-    end
-    return targetPart.Position
-end
-
 -- Оптимизированная функция поиска ближайшей цели (игроки)
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
@@ -332,8 +280,6 @@ local function GetClosestTarget()
         
         local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
         if distance > Settings.DistanceLimit then continue end
-        
-        UpdatePositionHistory(player)
         
         local targetPart = nil
         if Settings.SmartHitbox then
@@ -383,6 +329,7 @@ local function GetClosestTarget()
     local target = validTargets[1] and validTargets[1].Player
     local selectedPart = validTargets[1] and validTargets[1].TargetPart
     if target then
+        DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
         return target, selectedPart
     end
     return nil, nil
@@ -401,7 +348,7 @@ local function GetClosestMob()
             if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("Humanoid").Health > 0 then
                 local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
                 if targetPart and not IsInSafezone(targetPart.Position) then
-                    return mob, targetPart, mob:FindFirstChild("Humanoid")
+                    return mob, targetPart
                 end
             end
         end
@@ -489,7 +436,7 @@ local function GetClosestMob()
     return nil, nil
 end
 
--- Функция отправки remote event (Packet Method с WallBang)
+-- Функция отправки remote event
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
         DelayedPrint("SilentShot: No target or targetPart")
@@ -498,11 +445,6 @@ local function SilentShot(target, targetPart)
 
     if not Settings.Enabled then
         DelayedPrint("SilentShot: Silent Aim disabled")
-        return
-    end
-    
-    if not target.Parent then
-        DelayedPrint("SilentShot: Target has no parent")
         return
     end
     
@@ -531,24 +473,30 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local targetPosition = GetBacktrackedPosition(target, targetPart)
-    
-    if Settings.WallBang then
-        local offset = Vector3.new(math.random(-2, 2), math.random(-2, 2), math.random(-2, 2))
-        targetPosition = targetPosition + offset
-        DelayedPrint("WallBang: Using offset position " .. tostring(targetPosition) .. " for " .. (target.Name or "Unknown"))
+    if not IsVisible(targetPart) then
+        DelayedPrint("SilentShot: Target not visible")
+        return
     end
     
     local originPosition = Camera.CFrame.Position
+    local targetPosition = targetPart.Position
     local direction = (targetPosition - originPosition).Unit
+    local hitPosition = targetPosition - direction * 1
     
     local args = {
         [1] = "Activate",
         [2] = originPosition,
         [3] = targetPosition,
-        [4] = pistolConfig or {},
-        [5] = { targetPosition },
-        [6] = { { humanoidRoot, targetPosition, direction, targetPart.Name } },
+        [4] = pistolConfig or game:GetService("Players").LocalPlayer:WaitForChild("PistolConfig"),
+        [5] = { hitPosition },
+        [6] = {
+            [1] = {
+                [1] = targetPart,
+                [2] = hitPosition,
+                [3] = direction,
+                [4] = "Humanoid"
+            }
+        },
         [7] = { humanoid },
         [8] = {}
     }
@@ -795,37 +743,6 @@ function Init(ui, core, notification)
     }, "SilentSortMethod")
 
     UI.Sections.SilentAim:Toggle({
-        Name = "Backtrack",
-        Default = Settings.Backtrack,
-        Callback = function(value)
-            Settings.Backtrack = value
-            notify("Silent Aim", "Backtrack " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentBacktrack")
-
-    UI.Sections.SilentAim:Slider({
-        Name = "Backtrack Delay",
-        Minimum = 0.1,
-        Maximum = 1,
-        Default = Settings.BacktrackDelay,
-        Precision = 2,
-        Suffix = "s",
-        Callback = function(value)
-            Settings.BacktrackDelay = value
-            notify("Silent Aim", "Backtrack Delay set to: " .. value .. "s", false)
-        end
-    }, "SilentBacktrackDelay")
-
-    UI.Sections.SilentAim:Toggle({
-        Name = "WallBang",
-        Default = Settings.WallBang,
-        Callback = function(value)
-            Settings.WallBang = value
-            notify("Silent Aim", "WallBang " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentWallBang")
-
-    UI.Sections.SilentAim:Toggle({
         Name = "NPC Support",
         Default = Settings.NPCSupport,
         Callback = function(value)
@@ -869,7 +786,7 @@ function Init(ui, core, notification)
 end
 
 -- Обновление позиции FOV Circle и логика Silent Aim
-RunService.RenderStepped:Connect(function(deltaTime)
+RunService.RenderStepped:Connect(function()
     if not UI or not Core then
         DelayedPrint("Warning: UI or Core is nil during RenderStepped")
         return
@@ -878,13 +795,9 @@ RunService.RenderStepped:Connect(function(deltaTime)
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 
-    pulseFactor = pulseFactor + pulseDirection * deltaTime * 2
-    if pulseFactor > 1.5 then pulseDirection = -1 elseif pulseFactor < 0.5 then pulseDirection = 1 end
-
     if not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
-        backtrackCircle.Visible = false
         return
     end
 
@@ -896,17 +809,6 @@ RunService.RenderStepped:Connect(function(deltaTime)
     end
     currentTarget = target
     
-    if target and Settings.Backtrack and targetPart then
-        local backtrackPos = GetBacktrackedPosition(target, targetPart)
-        local screenPos = Camera:WorldToViewportPoint(backtrackPos)
-        backtrackCircle.Position = Vector2.new(screenPos.X, screenPos.Y)
-        backtrackCircle.Radius = 5 * pulseFactor
-        backtrackCircle.Color = IsVisible(targetPart) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-        backtrackCircle.Visible = true
-    else
-        backtrackCircle.Visible = false
-    end
-    
     if target and targetPart then
         SilentShot(target, targetPart)
     else
@@ -917,7 +819,6 @@ end)
 -- Очистка при телепортации
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     fovCircle:Remove()
-    backtrackCircle:Remove()
 end)
 
 return {
