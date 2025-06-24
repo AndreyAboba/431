@@ -44,7 +44,7 @@ fovCircle.Filled = false
 local function DelayedPrint(message)
     local currentTime = tick()
     if currentTime - lastPrintTime >= Settings.PrintDelay then
-        print("[SilentAim Debug]: " .. message)
+        print("[SilentAim Debug] " .. os.date("%H:%M:%S", os.time()) .. ": " .. message)
         lastPrintTime = currentTime
     end
 end
@@ -63,14 +63,12 @@ local function IsVisible(targetPart)
     raycastParams.FilterDescendantsInstances = {character}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
-    -- Основной луч
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
         DelayedPrint("Visible: Main ray hit target " .. targetPart.Parent.Name)
         return true
     end
     
-    -- Четыре дополнительных луча для точности
     local offsetDirections = {
         rayDirection + Vector3.new(0.1, 0, 0),
         rayDirection + Vector3.new(-0.1, 0, 0),
@@ -361,22 +359,26 @@ end
 local function UpdateAndLogFriends()
     local currentTime = tick()
     if currentTime - lastLogTime >= Settings.LogInterval then
-        DelayedPrint("Logging Core.Services.FriendsList at " .. os.date("%H:%M:%S", os.time()))
+        DelayedPrint("Attempting to log Core.Services.FriendsList")
         if Core and Core.Services and Core.Services.FriendsList then
+            DelayedPrint("Core.Services.FriendsList exists, type: " .. type(Core.Services.FriendsList))
             if type(Core.Services.FriendsList) == "table" then
                 FriendsCache = {} -- Очистка кэша перед обновлением
+                local friendCount = 0
                 for key, value in pairs(Core.Services.FriendsList) do
                     DelayedPrint("  Key: " .. tostring(key) .. ", Value: " .. tostring(value))
                     if type(key) == "string" and value == true then
                         FriendsCache[key:lower()] = true
+                        friendCount = friendCount + 1
                         DelayedPrint("  Added to FriendsCache: " .. key:lower())
                     end
                 end
+                DelayedPrint("Total friends in FriendsCache: " .. friendCount)
             else
-                DelayedPrint("  Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
+                DelayedPrint("Warning: Core.Services.FriendsList is not a table, type: " .. type(Core.Services.FriendsList))
             end
         else
-            DelayedPrint("Warning: Core.Services.FriendsList is nil or invalid")
+            DelayedPrint("Error: Core.Services.FriendsList is nil or Core/Services is invalid")
         end
         lastLogTime = currentTime
     end
@@ -388,7 +390,7 @@ function Init(ui, core, notification)
     Core = core
     notify = notification
 
-    DelayedPrint("SilentAim module initializing...")
+    DelayedPrint("SilentAim module initializing with Core: " .. tostring(Core))
     if not UI or not Core or not notify then
         DelayedPrint("Warning: UI, Core, or notification is nil during initialization")
         return
