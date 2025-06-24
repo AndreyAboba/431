@@ -223,7 +223,7 @@ local function CanAttack(player)
     return true
 end
 
--- Функция поиска ToolListener
+-- Функция поиска ToolListener и PistolConfig
 local function GetToolListener()
     local toolListener = nil
     local wand = nil
@@ -241,13 +241,21 @@ local function GetToolListener()
         end
     end
     
-    if not toolListener then
-        DelayedPrint("GetToolListener: Could not find ToolListnerEvent")
+    if not toolListener or not wand then
+        DelayedPrint("GetToolListener: Could not find ToolListnerEvent or wand")
         return nil, nil
     end
     
-    DelayedPrint("GetToolListener: Found ToolListnerEvent on " .. (wand and wand.Name or "Unknown"))
-    return toolListener, wand
+    -- Поиск PistolConfig в workspace.Characters
+    local playerContainer = workspace:FindFirstChild("Characters") and workspace.Characters:FindFirstChild(LocalPlayer.Name)
+    local pistolConfig = playerContainer and playerContainer:FindFirstChild(wand.Name) and playerContainer[wand.Name]:FindFirstChild("PistolConfig")
+    if not pistolConfig then
+        DelayedPrint("GetToolListener: PistolConfig not found for " .. (wand and wand.Name or "Unknown"))
+        return toolListener, nil
+    end
+    
+    DelayedPrint("GetToolListener: Found ToolListnerEvent and PistolConfig for " .. wand.Name)
+    return toolListener, pistolConfig
 end
 
 -- Функция для сохранения истории позиций (для бэктрэкинга)
@@ -438,28 +446,31 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local toolListener, wand = GetToolListener()
-    if not toolListener or not wand then
-        DelayedPrint("SilentShot: ToolListener or wand not found")
+    local toolListener, pistolConfig = GetToolListener()
+    if not toolListener or not pistolConfig then
+        DelayedPrint("SilentShot: ToolListener or PistolConfig not found")
         return
     end
     
-    local config = wand:FindFirstChild("PistolConfig")
-    if not config then
-        DelayedPrint("SilentShot: PistolConfig not found")
-        return
-    end
-    
-    -- Применение эксплойтов к PistolConfig
+    -- Применение клиентских изменений к PistolConfig
     if Settings.FastAttack then
-        config.FireRate = 9999 -- Если атрибут существует
+        if pistolConfig:FindFirstChild("FireRate") then
+            pistolConfig.FireRate.Value = 9999
+            DelayedPrint("FastAttack: Set FireRate to 9999")
+        end
     end
     if Settings.MaxAmmo then
-        config.Ammo = 20
-        config.MaxAmmo = 20
+        if pistolConfig:FindFirstChild("Ammo") and pistolConfig:FindFirstChild("MaxAmmo") then
+            pistolConfig.Ammo.Value = 20
+            pistolConfig.MaxAmmo.Value = 20
+            DelayedPrint("MaxAmmo: Set Ammo and MaxAmmo to 20")
+        end
     end
     if Settings.FastReload then
-        config.ReloadTime = 0.001
+        if pistolConfig:FindFirstChild("ReloadTime") then
+            pistolConfig.ReloadTime.Value = 0.001
+            DelayedPrint("FastReload: Set ReloadTime to 0.001")
+        end
     end
     
     -- Используем бэктрэкинг для позиции, если включен
@@ -469,7 +480,7 @@ local function SilentShot(target, targetPart)
         [1] = "Activate",
         [2] = Camera.CFrame.Position,
         [3] = targetPosition,
-        [4] = config,
+        [4] = pistolConfig,
         [5] = { targetPosition },
         [6] = { { humanoidRoot, targetPosition, (targetPosition - Camera.CFrame.Position).Unit, targetPart.Name } },
         [7] = { humanoid },
