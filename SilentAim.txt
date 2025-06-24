@@ -42,7 +42,7 @@ fovCircle.Filled = false
 -- Кэш для оптимизации
 local Cache = {
     PlayerFriendCache = {},
-    LastFriendsList = nil
+    FriendsListVersion = 0
 }
 
 -- Функция для вывода сообщений с задержкой
@@ -137,7 +137,7 @@ local function HasLasso(player)
     return fakeLimbs ~= nil
 end
 
--- Функция проверки возможности атаки (как в AutoFinish и VisualsV2)
+-- Функция проверки возможности атаки
 local function CanAttack(player)
     if not player then return false end
     
@@ -168,23 +168,17 @@ local function CanAttack(player)
         return true
     end
     
-    -- Проверка FriendsList как в AutoFinish и VisualsV2
-    local playerNameLower = player.Name:lower()
-    local isFriend = Cache.PlayerFriendCache[player]
-    if isFriend == nil or (Core and Core.Services and Core.Services.FriendsList and Cache.LastFriendsList ~= Core.Services.FriendsList) then
-        if Core and Core.Services and Core.Services.FriendsList then
-            isFriend = Core.Services.FriendsList[playerNameLower] or false
-            Cache.PlayerFriendCache[player] = isFriend
-            Cache.LastFriendsList = Core.Services.FriendsList
-            DelayedPrint("Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
-        else
-            DelayedPrint("Warning: Core.Services.FriendsList is unavailable")
+    -- Проверка FriendsList
+    if Core and Core.Services and Core.Services.FriendsList then
+        local playerNameLower = player.Name:lower()
+        local isFriend = Cache.PlayerFriendCache[player] or Core.Services.FriendsList[playerNameLower]
+        Cache.PlayerFriendCache[player] = isFriend
+        if isFriend then
+            DelayedPrint("Blocked attack on friend: " .. player.Name)
+            return false
         end
-    end
-    
-    if isFriend then
-        DelayedPrint("Blocked attack on friend: " .. player.Name)
-        return false
+    else
+        DelayedPrint("Warning: Core.Services.FriendsList is unavailable")
     end
     
     return true
@@ -377,7 +371,9 @@ local function UpdateFriendsCheck()
     local currentTime = tick()
     if currentTime - lastLogTime >= Settings.LogInterval then
         if Core and Core.Services and Core.Services.FriendsList then
-            DelayedPrint("FriendsList check: Valid, Count: " .. tostring(#(next(Core.Services.FriendsList) and Core.Services.FriendsList or {})))
+            local count = 0
+            for _ in pairs(Core.Services.FriendsList) do count = count + 1 end
+            DelayedPrint("FriendsList check: Valid, Count: " .. tostring(count))
         else
             DelayedPrint("Error: Core or FriendsList is nil - Core: " .. tostring(Core) .. ", Services: " .. tostring(Core and Core.Services))
         end
@@ -508,6 +504,14 @@ function Init(ui, core, notification)
             Settings.SortMethod = value
         end
     }, "SilentSortMethod")
+
+    -- Подписка на обновления FriendsList
+    if Core and Core.Services then
+        Core.Services.FriendsList = Core.Services.FriendsList or {}
+        Cache.FriendsListVersion = Cache.FriendsListVersion + 1
+        Cache.PlayerFriendCache = {} -- Сброс кэша при инициализации
+        DelayedPrint("Subscribed to FriendsList updates")
+    end
 
     DelayedPrint("SilentAim module initialized successfully")
 end
