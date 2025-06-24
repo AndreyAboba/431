@@ -79,9 +79,9 @@ local function IsVisible(targetPart)
         if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
             DelayedPrint("Visible: Offset ray hit target " .. targetPart.Parent.Name)
             return true
-        end
-    }
-    
+   end
+end
+ 
     DelayedPrint("Not visible: Raycast blocked by " .. (raycastResult and raycastResult.Instance.Name or "nothing"))
     return false
 end
