@@ -26,7 +26,10 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     Backtrack = false,
-    BacktrackDelay = 0.5 -- Задержка бэктрэкинга в секундах (0.5с = 500мс в прошлом)
+    BacktrackDelay = 0.5,
+    FastAttack = false,
+    MaxAmmo = false,
+    FastReload = false
 }
 
 local lastPrintTime = 0
@@ -243,7 +246,7 @@ local function GetToolListener()
         return nil, nil
     end
     
-    DelayedPrint("GetToolListener: Found ToolListnerEvent")
+    DelayedPrint("GetToolListener: Found ToolListnerEvent on " .. (wand and wand.Name or "Unknown"))
     return toolListener, wand
 end
 
@@ -264,15 +267,18 @@ local function UpdatePositionHistory(player)
         Position = humanoidRoot.Position
     })
     
-    -- Очистка старых позиций (храним только последние 2 секунды)
-    while #Cache.PositionHistory[player.Name] > 0 and (tick() - Cache.PositionHistory[player.Name][1].Time) > 2 do
+    -- Очистка старых позиций (храним последние 5 секунд)
+    while #Cache.PositionHistory[player.Name] > 0 and (tick() - Cache.PositionHistory[player.Name][1].Time) > 5 do
         table.remove(Cache.PositionHistory[player.Name], 1)
     end
+    
+    DelayedPrint("UpdatePositionHistory: Updated for " .. player.Name .. ", entries: " .. #Cache.PositionHistory[player.Name])
 end
 
 -- Функция получения позиции с бэктрэкингом
 local function GetBacktrackedPosition(player, targetPart)
-    if not Settings.Backtrack or not Cache.PositionHistory[player.Name] then
+    if not Settings.Backtrack or not Cache.PositionHistory[player.Name] or #Cache.PositionHistory[player.Name] == 0 then
+        DelayedPrint("GetBacktrackedPosition: Backtrack disabled or no history for " .. player.Name)
         return targetPart.Position
     end
     
@@ -280,12 +286,13 @@ local function GetBacktrackedPosition(player, targetPart)
     for i = #Cache.PositionHistory[player.Name], 1, -1 do
         local entry = Cache.PositionHistory[player.Name][i]
         if entry.Time <= targetTime then
-            DelayedPrint("Backtrack: Using position from " .. string.format("%.2f", tick() - entry.Time) .. "s ago for " .. player.Name)
+            DelayedPrint("GetBacktrackedPosition: Using position from " .. string.format("%.2f", tick() - entry.Time) .. "s ago for " .. player.Name)
             return entry.Position
         end
     end
     
-    return targetPart.Position -- Возвращаем текущую позицию, если нет подходящих старых
+    DelayedPrint("GetBacktrackedPosition: No valid backtrack position, using current for " .. player.Name)
+    return targetPart.Position
 end
 
 -- Оптимизированная функция поиска ближайшей цели
@@ -412,8 +419,9 @@ local function SilentShot(target, targetPart)
     end
     
     local currentTime = tick()
-    if currentTime - lastFireTime < Settings.FireDelay then
-        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.2f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
+    local effectiveFireDelay = Settings.FastAttack and 0.0001 or Settings.FireDelay
+    if currentTime - lastFireTime < effectiveFireDelay then
+        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.4f", currentTime - lastFireTime) .. " < " .. effectiveFireDelay .. ")")
         return
     end
     
@@ -431,15 +439,27 @@ local function SilentShot(target, targetPart)
     end
     
     local toolListener, wand = GetToolListener()
-    if not toolListener then
-        DelayedPrint("SilentShot: ToolListener not found")
+    if not toolListener or not wand then
+        DelayedPrint("SilentShot: ToolListener or wand not found")
         return
     end
     
-    local config = wand:FindFirstChild("PistolConfig") or LocalPlayer:FindFirstChild("PistolConfig")
+    local config = wand:FindFirstChild("PistolConfig")
     if not config then
         DelayedPrint("SilentShot: PistolConfig not found")
         return
+    end
+    
+    -- Применение эксплойтов к PistolConfig
+    if Settings.FastAttack then
+        config.FireRate = 9999 -- Если атрибут существует
+    end
+    if Settings.MaxAmmo then
+        config.Ammo = 20
+        config.MaxAmmo = 20
+    end
+    if Settings.FastReload then
+        config.ReloadTime = 0.001
     end
     
     -- Используем бэктрэкинг для позиции, если включен
@@ -666,24 +686,11 @@ function Init(ui, core, notification)
     }, "SilentDistanceLimit")
 
     UI.Sections.SilentAim:Slider({
-        Name = "Print Delay",
-        Minimum = 0.1,
-        Maximum = 5,
-        Default = Settings.PrintDelay,
-        Precision = 1,
-        Suffix = "s",
-        Callback = function(value)
-            Settings.PrintDelay = value
-            notify("Silent Aim", "Print Delay set to: " .. value .. "s", false)
-        end
-    }, "SilentPrintDelay")
-
-    UI.Sections.SilentAim:Slider({
         Name = "Fire Delay",
-        Minimum = 0.1,
+        Minimum = 0.001,
         Maximum = 2,
         Default = Settings.FireDelay,
-        Precision = 1,
+        Precision = 2,
         Suffix = "s",
         Callback = function(value)
             Settings.FireDelay = value
@@ -714,15 +721,42 @@ function Init(ui, core, notification)
     UI.Sections.SilentAim:Slider({
         Name = "Backtrack Delay",
         Minimum = 0.1,
-        Maximum = 2,
+        Maximum = 1,
         Default = Settings.BacktrackDelay,
-        Precision = 1,
+        Precision = 2,
         Suffix = "s",
         Callback = function(value)
             Settings.BacktrackDelay = value
             notify("Silent Aim", "Backtrack Delay set to: " .. value .. "s", false)
         end
     }, "SilentBacktrackDelay")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Fast Attack",
+        Default = Settings.FastAttack,
+        Callback = function(value)
+            Settings.FastAttack = value
+            notify("Silent Aim", "Fast Attack " .. (value and "ON" or "OFF"), false)
+        end
+    }, "SilentFastAttack")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Max Ammo",
+        Default = Settings.MaxAmmo,
+        Callback = function(value)
+            Settings.MaxAmmo = value
+            notify("Silent Aim", "Max Ammo " .. (value and "ON" or "OFF"), false)
+        end
+    }, "SilentMaxAmmo")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Fast Reload",
+        Default = Settings.FastReload,
+        Callback = function(value)
+            Settings.FastReload = value
+            notify("Silent Aim", "Fast Reload " .. (value and "ON" or "OFF"), false)
+        end
+    }, "SilentFastReload")
 
     -- Подписка на обновления FriendsList
     if Core and Core.Services then
