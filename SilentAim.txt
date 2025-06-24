@@ -21,8 +21,7 @@ local Settings = {
     Method = "Packet",
     SortMethod = "Auto",
     LogInterval = 0.05,
-    DistanceLimit = 2000, -- 200 метров для игроков
-    MobDistanceLimit = 400, -- 400 студов для мобов
+    DistanceLimit = 1000,
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
@@ -264,22 +263,33 @@ local function GetClosestTarget()
     local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
     
     for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer or not player.Character then continue end
+        if player == LocalPlayer or not player.Character then
+            continue
+        end
         
         local playerNameLower = player.Name:lower()
         local isFriend = Cache.PlayerFriendCache[playerNameLower]
         if isFriend == nil and Core and Core.Services and Core.Services.FriendsList then
             isFriend = Core.Services.FriendsList[playerNameLower] == true
             Cache.PlayerFriendCache[playerNameLower] = isFriend
+            DelayedPrint("GetClosestTarget: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
         end
-        if isFriend then continue end
+        if isFriend then
+            DelayedPrint("GetClosestTarget: Excluded friend " .. player.Name .. " from targets")
+            continue
+        end
         
         local humanoid = player.Character:FindFirstChild("Humanoid")
         local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then continue end
+        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
+            continue
+        end
         
         local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
-        if distance > Settings.DistanceLimit then continue end
+        if distance > Settings.DistanceLimit then
+            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to distance (" .. math.floor(distance) .. " > " .. Settings.DistanceLimit .. ")")
+            continue
+        end
         
         local targetPart = nil
         if Settings.SmartHitbox then
@@ -294,9 +304,12 @@ local function GetClosestTarget()
             targetPart = player.Character:FindFirstChild(Settings.TargetPart)
         end
         
-        if not targetPart then continue end
+        if not targetPart then
+            DelayedPrint("GetClosestTarget: No valid hitbox found for " .. player.Name)
+            continue
+        end
         
-        if CanAttack(player) and (Settings.WallBang or IsVisible(targetPart)) and not (IsInSafezone(targetPart.Position) and (player.Team and (player.Team.Name == "Wizards" or player.Team.Name == "Royal Wizards"))) then
+        if CanAttack(player) and IsVisible(targetPart) then
             local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
             local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
             if mouseDistance <= Settings.FOV then
@@ -331,8 +344,10 @@ local function GetClosestTarget()
     if target then
         DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
         return target, selectedPart
+    else
+        DelayedPrint("No valid target found")
+        return nil, nil
     end
-    return nil, nil
 end
 
 -- Функция поиска ближайшего моба
@@ -393,10 +408,10 @@ local function GetClosestMob()
                 end
                 if targetPart then
                     local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                    if distance <= Settings.MobDistanceLimit and not IsInSafezone(targetPart.Position) then
+                    if distance <= 400 and not IsInSafezone(targetPart.Position) then
                         local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
                         local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                        if mouseDistance <= Settings.FOV and (Settings.WallBang or IsVisible(targetPart)) then
+                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
                             table.insert(validTargets, {
                                 Mob = mob,
                                 MouseDistance = mouseDistance,
@@ -431,9 +446,12 @@ local function GetClosestMob()
     if target then
         Cache.MobCache[target.Name] = { Mob = target, LastSeen = currentTime }
         Cache.LastCacheUpdate = currentTime
+        DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
         return target, selectedPart
+    else
+        DelayedPrint("No valid mob target found")
+        return nil, nil
     end
-    return nil, nil
 end
 
 -- Функция отправки remote event
@@ -448,6 +466,11 @@ local function SilentShot(target, targetPart)
         return
     end
     
+    if not target.Character and not target.Parent then
+        DelayedPrint("SilentShot: Target has no character or parent")
+        return
+    end
+    
     local currentTime = tick()
     if currentTime - lastFireTime < Settings.FireDelay then
         DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.4f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
@@ -459,8 +482,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoidRoot = target:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("UpperTorso")
-    local humanoid = target:FindFirstChild("Humanoid")
+    local humanoidRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("HumanoidRootPart")
+    local humanoid = target.Character and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
     
     if not targetPart or not humanoidRoot or not humanoid then
         DelayedPrint("SilentShot: Missing parts - TargetPart: " .. (targetPart and "Yes" or "No") .. ", HumanoidRoot: " .. (humanoidRoot and "Yes" or "No") .. ", Humanoid: " .. (humanoid and "Yes" or "No"))
@@ -470,11 +493,6 @@ local function SilentShot(target, targetPart)
     local toolListener, pistolConfig = GetToolListener()
     if not toolListener then
         DelayedPrint("SilentShot: ToolListener not found")
-        return
-    end
-    
-    if not IsVisible(targetPart) then
-        DelayedPrint("SilentShot: Target not visible")
         return
     end
     
@@ -708,7 +726,7 @@ function Init(ui, core, notification)
     UI.Sections.SilentAim:Slider({
         Name = "Distance Limit",
         Minimum = 50,
-        Maximum = 2000,
+        Maximum = 1000,
         Default = Settings.DistanceLimit,
         Precision = 0,
         Suffix = "s",
