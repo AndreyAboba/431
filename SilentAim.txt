@@ -25,9 +25,7 @@ local Settings = {
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    Backtrack = false,
-    BacktrackDelay = 0.5,
-    WallBang = false
+    SelectedMob = "None"
 }
 
 local lastPrintTime = 0
@@ -36,14 +34,11 @@ local currentTarget = nil
 local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
-local pulseFactor = 1
-local pulseDirection = 1
 
--- Кэш для бэктрэкинга и FriendsList
+-- Кэш для FriendsList
 local Cache = {
     PlayerFriendCache = {},
-    FriendsListVersion = 0,
-    PositionHistory = {} -- История позиций игроков для бэктрэкинга
+    FriendsListVersion = 0
 }
 
 -- Создание FOV Circle с Drawing
@@ -55,14 +50,6 @@ fovCircle.Radius = Settings.FOV
 fovCircle.Visible = Settings.Enabled
 fovCircle.Filled = false
 
--- Создание визуализации Backtrack (точка)
-local backtrackCircle = Drawing.new("Circle")
-backtrackCircle.Thickness = 2
-backtrackCircle.Transparency = 0.7
-backtrackCircle.Radius = 5
-backtrackCircle.Visible = false
-backtrackCircle.Filled = true
-
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
     local currentTime = tick()
@@ -72,7 +59,16 @@ local function DelayedPrint(message)
     end
 end
 
--- Улучшенная функция проверки видимости
+-- Функция для поиска скрытых объектов
+local getNil = function(name, class)
+    for _, v in next, getnilinstances() do
+        if v.ClassName == class and v.Name == name then
+            return v
+        end
+    end
+end
+
+-- Функция проверки видимости
 local function IsVisible(targetPart)
     if not Settings.VisibilityCheck then
         return true
@@ -266,158 +262,61 @@ local function GetToolListener()
     return toolListener, pistolConfig
 end
 
--- Функция для сохранения истории позиций (для бэктрэкинга)
-local function UpdatePositionHistory(player)
-    if not player or not player.Character then
-        return
-    end
-    
-    local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRoot then
-        return
-    end
-    
-    Cache.PositionHistory[player.Name] = Cache.PositionHistory[player.Name] or {}
-    table.insert(Cache.PositionHistory[player.Name], {
-        Time = tick(),
-        Position = humanoidRoot.Position
-    })
-    
-    -- Очистка старых позиций (храним последние 5 секунд)
-    while #Cache.PositionHistory[player.Name] > 0 and (tick() - Cache.PositionHistory[player.Name][1].Time) > 5 do
-        table.remove(Cache.PositionHistory[player.Name], 1)
-    end
-    
-    DelayedPrint("UpdatePositionHistory: Updated for " .. player.Name .. ", entries: " .. #Cache.PositionHistory[player.Name])
-end
-
--- Функция получения позиции с бэктрэкингом
-local function GetBacktrackedPosition(player, targetPart)
-    if not Settings.Backtrack or not Cache.PositionHistory[player.Name] or #Cache.PositionHistory[player.Name] == 0 then
-        DelayedPrint("GetBacktrackedPosition: Backtrack disabled or no history for " .. player.Name)
-        return targetPart.Position
-    end
-    
-    local targetTime = tick() - Settings.BacktrackDelay
-    for i = #Cache.PositionHistory[player.Name], 1, -1 do
-        local entry = Cache.PositionHistory[player.Name][i]
-        if entry.Time <= targetTime then
-            DelayedPrint("GetBacktrackedPosition: Using position from " .. string.format("%.2f", tick() - entry.Time) .. "s ago for " .. player.Name)
-            return entry.Position
-        end
-    end
-    
-    DelayedPrint("GetBacktrackedPosition: No valid backtrack position, using current for " .. player.Name)
-    return targetPart.Position
-end
-
--- Оптимизированная функция поиска ближайшей цели
-local function GetClosestTarget()
-    local mousePos = UserInputService:GetMouseLocation()
-    local validTargets = {}
-    local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer or not player.Character then
-            continue
-        end
-        
-        -- Проверка FriendsList
-        local playerNameLower = player.Name:lower()
-        local isFriend = false
-        if Core and Core.Services and Core.Services.FriendsList then
-            isFriend = Cache.PlayerFriendCache[playerNameLower]
-            if isFriend == nil then
-                isFriend = Core.Services.FriendsList[playerNameLower] == true
-                Cache.PlayerFriendCache[playerNameLower] = isFriend
-                DelayedPrint("GetClosestTarget: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
-            end
-            if isFriend then
-                DelayedPrint("GetClosestTarget: Excluded friend " .. player.Name .. " from targets")
-                continue
-            end
-        else
-            DelayedPrint("GetClosestTarget: Warning: Core.Services.FriendsList is unavailable")
-        end
-        
-        local humanoid = player.Character:FindFirstChild("Humanoid")
-        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
-            continue
-        end
-        
-        -- Проверка дистанции
-        local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
-        if distance > Settings.DistanceLimit then
-            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to distance (" .. math.floor(distance) .. " > " .. Settings.DistanceLimit .. ")")
-            continue
-        end
-        
-        -- Обновление истории позиций для бэктрэкинга
-        UpdatePositionHistory(player)
-        
-        local targetPart = nil
-        if Settings.SmartHitbox then
-            -- Умный выбор хитбокса: проверяем все части тела
-            for _, partName in ipairs(possibleParts) do
-                local part = player.Character:FindFirstChild(partName)
-                if part then
-                    targetPart = part
-                    break
-                end
-            end
-        else
-            -- Обычный режим: используем выбранную часть
-            targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-        end
-        
-        if not targetPart then
-            DelayedPrint("GetClosestTarget: No valid hitbox found for " .. player.Name)
-            continue
-        end
-        
-        if CanAttack(player) and (Settings.WallBang or IsVisible(targetPart)) then
-            local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-            local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-            if mouseDistance <= Settings.FOV then
-                table.insert(validTargets, {
-                    Player = player,
-                    MouseDistance = mouseDistance,
-                    Health = humanoid.Health,
-                    TargetPart = targetPart
-                })
-            end
-        end
-    end
-    
-    table.sort(validTargets, function(a, b)
-        if Settings.SortMethod == "Distance" then
-            return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
-                   (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
-        elseif Settings.SortMethod == "Health" then
-            return a.Health < b.Health
-        elseif Settings.SortMethod == "Crosshair" then
-            return a.MouseDistance < b.MouseDistance
-        elseif Settings.SortMethod == "Auto" then
-            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
-            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
-            return aScore < bScore
-        end
-        return a.MouseDistance < b.MouseDistance
-    end)
-    
-    local target = validTargets[1] and validTargets[1].Player
-    local selectedPart = validTargets[1] and validTargets[1].TargetPart
-    if target then
-        DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
-        return target, selectedPart
-    else
-        DelayedPrint("No valid target found")
+-- Функция поиска ближайшего моба
+local function GetMobTarget()
+    local missions = workspace:FindFirstChild("Missions")
+    if not missions then
+        DelayedPrint("GetMobTarget: Missions folder not found")
         return nil, nil
     end
+
+    local targetMob = nil
+    local targetPart = nil
+    local targetHumanoid = nil
+    local minDistance = math.huge
+    local origin = Camera.CFrame.Position
+
+    local mobTypes = {
+        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial"
+    }
+
+    for _, mission in pairs(missions:GetChildren()) do
+        local aiSpawners = mission:FindFirstChild("AISpawners")
+        if aiSpawners then
+            for _, spawner in pairs(aiSpawners:GetChildren()) do
+                for _, mobType in pairs(mobTypes) do
+                    local mob = spawner:FindFirstChild(mobType)
+                    if not mob then
+                        mob = getNil(mobType, "Model")
+                    end
+                    if mob then
+                        local humanoidRoot = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                        local humanoid = mob:FindFirstChild("Humanoid")
+                        if humanoidRoot and humanoid and humanoid.Health > 0 then
+                            local distance = (origin - humanoidRoot.Position).Magnitude
+                            if distance < minDistance and distance <= Settings.DistanceLimit then
+                                minDistance = distance
+                                targetMob = mob
+                                targetPart = humanoidRoot
+                                targetHumanoid = humanoid
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if targetMob then
+        DelayedPrint("GetMobTarget: Found " .. targetMob.Name .. " at distance " .. math.floor(minDistance))
+        return targetMob, targetPart, targetHumanoid
+    else
+        DelayedPrint("GetMobTarget: No valid mob found")
+        return nil, nil, nil
+    end
 end
 
--- Функция отправки remote event (Packet Method с WallBang)
+-- Функция отправки remote event
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
         DelayedPrint("SilentShot: No target or targetPart")
@@ -426,11 +325,6 @@ local function SilentShot(target, targetPart)
 
     if not Settings.Enabled then
         DelayedPrint("SilentShot: Silent Aim disabled")
-        return
-    end
-    
-    if not target.Character then
-        DelayedPrint("SilentShot: Target has no character")
         return
     end
     
@@ -445,42 +339,32 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoidRoot = target.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid = target.Character:FindFirstChild("Humanoid")
-    
-    if not targetPart or not humanoidRoot or not humanoid then
-        DelayedPrint("SilentShot: Missing parts - TargetPart: " .. (targetPart and "Yes" or "No") .. ", HumanoidRoot: " .. (humanoidRoot and "Yes" or "No") .. ", Humanoid: " .. (humanoid and "Yes" or "No"))
-        return
-    end
-    
     local toolListener, pistolConfig = GetToolListener()
     if not toolListener then
         DelayedPrint("SilentShot: ToolListener not found")
         return
     end
     
-    -- Получаем позицию с бэктрэкингом
-    local targetPosition = GetBacktrackedPosition(target, targetPart)
-    
-    -- WallBang: Обход видимости с фальшивой позицией
-    if Settings.WallBang then
-        -- Смещаем позицию для обмана сервера
-        local offset = Vector3.new(math.random(-2, 2), math.random(-2, 2), math.random(-2, 2))
-        targetPosition = targetPosition + offset
-        DelayedPrint("WallBang: Using offset position " .. tostring(targetPosition) .. " for " .. target.Name)
-    end
-    
     local originPosition = Camera.CFrame.Position
+    local targetPosition = targetPart.Position
     local direction = (targetPosition - originPosition).Unit
+    local hitPosition = targetPosition - direction * 1 -- Незначительное смещение для точности
     
     local args = {
         [1] = "Activate",
         [2] = originPosition,
         [3] = targetPosition,
-        [4] = pistolConfig or {},
-        [5] = { targetPosition },
-        [6] = { { humanoidRoot, targetPosition, direction, targetPart.Name } }, -- Фальшивое попадание
-        [7] = { humanoid },
+        [4] = pistolConfig or game:GetService("Players").LocalPlayer:WaitForChild("PistolConfig"),
+        [5] = { hitPosition },
+        [6] = {
+            [1] = {
+                [1] = targetPart,
+                [2] = hitPosition,
+                [3] = direction,
+                [4] = "Humanoid"
+            }
+        },
+        [7] = { target:FindFirstChild("Humanoid") },
         [8] = {}
     }
     
@@ -717,36 +601,17 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    UI.Sections.SilentAim:Toggle({
-        Name = "Backtrack",
-        Default = Settings.Backtrack,
+    -- Добавление Dropdown для выбора моба
+    UI.Sections.SilentAim:Dropdown({
+        Name = "Mission AI",
+        Options = {"None", "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial"},
+        Default = Settings.SelectedMob,
+        MultiSelection = false,
         Callback = function(value)
-            Settings.Backtrack = value
-            notify("Silent Aim", "Backtrack " .. (value and "ON" or "OFF"), false)
+            Settings.SelectedMob = value
+            notify("Silent Aim", "Selected Mob set to: " .. value, false)
         end
-    }, "SilentBacktrack")
-
-    UI.Sections.SilentAim:Slider({
-        Name = "Backtrack Delay",
-        Minimum = 0.1,
-        Maximum = 1,
-        Default = Settings.BacktrackDelay,
-        Precision = 2,
-        Suffix = "s",
-        Callback = function(value)
-            Settings.BacktrackDelay = value
-            notify("Silent Aim", "Backtrack Delay set to: " .. value .. "s", false)
-        end
-    }, "SilentBacktrackDelay")
-
-    UI.Sections.SilentAim:Toggle({
-        Name = "WallBang",
-        Default = Settings.WallBang,
-        Callback = function(value)
-            Settings.WallBang = value
-            notify("Silent Aim", "WallBang " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentWallBang")
+    }, "SilentMissionAI")
 
     -- Подписка на обновления FriendsList
     if Core and Core.Services then
@@ -774,7 +639,7 @@ function Init(ui, core, notification)
 end
 
 -- Обновление позиции FOV Circle и логика Silent Aim
-RunService.RenderStepped:Connect(function(deltaTime)
+RunService.RenderStepped:Connect(function()
     if not UI or not Core then
         DelayedPrint("Warning: UI or Core is nil during RenderStepped")
         return
@@ -783,33 +648,86 @@ RunService.RenderStepped:Connect(function(deltaTime)
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 
-    -- Анимация пульсации
-    pulseFactor = pulseFactor + pulseDirection * deltaTime * 2
-    if pulseFactor > 1.5 then pulseDirection = -1 elseif pulseFactor < 0.5 then pulseDirection = 1 end
-
     if not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
-        backtrackCircle.Visible = false
         return
     end
 
     UpdateFriendsCheck()
 
-    local target, targetPart = GetClosestTarget()
-    currentTarget = target
-    
-    -- Визуализация Backtrack
-    if target and Settings.Backtrack and targetPart then
-        local backtrackPos = GetBacktrackedPosition(target, targetPart)
-        local screenPos = Camera:WorldToViewportPoint(backtrackPos)
-        backtrackCircle.Position = Vector2.new(screenPos.X, screenPos.Y)
-        backtrackCircle.Radius = 5 * pulseFactor
-        backtrackCircle.Color = IsVisible(targetPart) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-        backtrackCircle.Visible = true
+    local target, targetPart = nil, nil
+    if Settings.SelectedMob ~= "None" then
+        local mob, mobPart, mobHumanoid = GetMobTarget()
+        if mob then
+            target = mob
+            targetPart = mobPart
+        end
     else
-        backtrackCircle.Visible = false
+        -- Логика для игроков (оставлена для совместимости)
+        local validTargets = {}
+        local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
+        for _, player in pairs(Players:GetPlayers()) do
+            if player == LocalPlayer or not player.Character then
+                continue
+            end
+            local playerNameLower = player.Name:lower()
+            local isFriend = false
+            if Core and Core.Services and Core.Services.FriendsList then
+                isFriend = Cache.PlayerFriendCache[playerNameLower]
+                if isFriend == nil then
+                    isFriend = Core.Services.FriendsList[playerNameLower] == true
+                    Cache.PlayerFriendCache[playerNameLower] = isFriend
+                end
+                if isFriend then continue end
+            end
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if not humanoid or not humanoidRoot or humanoid.Health <= 0 then continue end
+            local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
+            if distance > Settings.DistanceLimit then continue end
+            local targetPart = nil
+            if Settings.SmartHitbox then
+                for _, partName in ipairs(possibleParts) do
+                    local part = player.Character:FindFirstChild(partName)
+                    if part then
+                        targetPart = part
+                        break
+                    end
+                end
+            else
+                targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+            end
+            if targetPart and CanAttack(player) and IsVisible(targetPart) then
+                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if mouseDistance <= Settings.FOV then
+                    table.insert(validTargets, {Player = player, MouseDistance = mouseDistance, Health = humanoid.Health, TargetPart = targetPart})
+                end
+            end
+        end
+        table.sort(validTargets, function(a, b)
+            if Settings.SortMethod == "Distance" then
+                return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
+                       (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
+            elseif Settings.SortMethod == "Health" then
+                return a.Health < b.Health
+            elseif Settings.SortMethod == "Crosshair" then
+                return a.MouseDistance < b.MouseDistance
+            elseif Settings.SortMethod == "Auto" then
+                local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
+                local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
+                return aScore < bScore
+            end
+            return a.MouseDistance < b.MouseDistance
+        end)
+        if #validTargets > 0 then
+            target = validTargets[1].Player
+            targetPart = validTargets[1].TargetPart
+        end
     end
+
+    currentTarget = target
     
     if target and targetPart then
         SilentShot(target, targetPart)
@@ -821,7 +739,6 @@ end)
 -- Очистка при телепортации
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     fovCircle:Remove()
-    backtrackCircle:Remove()
 end)
 
 return {
