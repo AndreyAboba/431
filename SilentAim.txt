@@ -24,7 +24,9 @@ local Settings = {
     DistanceLimit = 1000,
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
-    Keybind = nil
+    Keybind = nil,
+    Backtrack = false,
+    BacktrackDelay = 0.5 -- Задержка бэктрэкинга в секундах (0.5с = 500мс в прошлом)
 }
 
 local lastPrintTime = 0
@@ -34,6 +36,13 @@ local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
 
+-- Кэш для бэктрэкинга и FriendsList
+local Cache = {
+    PlayerFriendCache = {},
+    FriendsListVersion = 0,
+    PositionHistory = {} -- История позиций игроков для бэктрэкинга
+}
+
 -- Создание FOV Circle с Drawing
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 2
@@ -42,12 +51,6 @@ fovCircle.Transparency = 0.7
 fovCircle.Radius = Settings.FOV
 fovCircle.Visible = Settings.Enabled
 fovCircle.Filled = false
-
--- Кэш для оптимизации
-local Cache = {
-    PlayerFriendCache = {},
-    FriendsListVersion = 0
-}
 
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
@@ -244,6 +247,47 @@ local function GetToolListener()
     return toolListener, wand
 end
 
+-- Функция для сохранения истории позиций (для бэктрэкинга)
+local function UpdatePositionHistory(player)
+    if not player or not player.Character then
+        return
+    end
+    
+    local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRoot then
+        return
+    end
+    
+    Cache.PositionHistory[player.Name] = Cache.PositionHistory[player.Name] or {}
+    table.insert(Cache.PositionHistory[player.Name], {
+        Time = tick(),
+        Position = humanoidRoot.Position
+    })
+    
+    -- Очистка старых позиций (храним только последние 2 секунды)
+    while #Cache.PositionHistory[player.Name] > 0 and (tick() - Cache.PositionHistory[player.Name][1].Time) > 2 do
+        table.remove(Cache.PositionHistory[player.Name], 1)
+    end
+end
+
+-- Функция получения позиции с бэктрэкингом
+local function GetBacktrackedPosition(player, targetPart)
+    if not Settings.Backtrack or not Cache.PositionHistory[player.Name] then
+        return targetPart.Position
+    end
+    
+    local targetTime = tick() - Settings.BacktrackDelay
+    for i = #Cache.PositionHistory[player.Name], 1, -1 do
+        local entry = Cache.PositionHistory[player.Name][i]
+        if entry.Time <= targetTime then
+            DelayedPrint("Backtrack: Using position from " .. string.format("%.2f", tick() - entry.Time) .. "s ago for " .. player.Name)
+            return entry.Position
+        end
+    end
+    
+    return targetPart.Position -- Возвращаем текущую позицию, если нет подходящих старых
+end
+
 -- Оптимизированная функция поиска ближайшей цели
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
@@ -285,6 +329,9 @@ local function GetClosestTarget()
             DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to distance (" .. math.floor(distance) .. " > " .. Settings.DistanceLimit .. ")")
             continue
         end
+        
+        -- Обновление истории позиций для бэктрэкинга
+        UpdatePositionHistory(player)
         
         local targetPart = nil
         if Settings.SmartHitbox then
@@ -395,13 +442,16 @@ local function SilentShot(target, targetPart)
         return
     end
     
+    -- Используем бэктрэкинг для позиции, если включен
+    local targetPosition = Settings.Backtrack and GetBacktrackedPosition(target, targetPart) or targetPart.Position
+    
     local args = {
         [1] = "Activate",
         [2] = Camera.CFrame.Position,
-        [3] = targetPart.Position,
+        [3] = targetPosition,
         [4] = config,
-        [5] = { targetPart.Position },
-        [6] = { { humanoidRoot, targetPart.Position, (targetPart.Position - Camera.CFrame.Position).Unit, targetPart.Name } },
+        [5] = { targetPosition },
+        [6] = { { humanoidRoot, targetPosition, (targetPosition - Camera.CFrame.Position).Unit, targetPart.Name } },
         [7] = { humanoid },
         [8] = {}
     }
@@ -514,7 +564,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.Enabled = value
             fovCircle.Visible = value
-            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), true)
+            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), false)
         end
     }, "SilentEnabled")
 
@@ -523,7 +573,7 @@ function Init(ui, core, notification)
         Default = Settings.Keybind,
         Callback = function(key)
             Settings.Keybind = key
-            notify("Silent Aim", "Keybind set to: " .. (key and key.Name or "None"), true)
+            notify("Silent Aim", "Keybind set to: " .. (key and key.Name or "None"), false)
         end
     }, "SilentKeybind")
 
@@ -533,10 +583,11 @@ function Init(ui, core, notification)
         Maximum = 500,
         Default = Settings.FOV,
         Precision = 0,
-        Suffix = " studs",
+        Suffix = "s",
         Callback = function(value)
             Settings.FOV = value
             fovCircle.Radius = value
+            notify("Silent Aim", "FOV set to: " .. value .. " studs", false)
         end
     }, "SilentFOV")
 
@@ -546,7 +597,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.FOVColor = value
             fovCircle.Color = value
-            notify("Silent Aim", "FOV Circle color updated", true)
+            notify("Silent Aim", "FOV Circle color updated", false)
         end
     }, "SilentFOVColor")
 
@@ -559,6 +610,7 @@ function Init(ui, core, notification)
         Suffix = "%",
         Callback = function(value)
             Settings.HitChance = value
+            notify("Silent Aim", "Hit Chance set to: " .. value .. "%", false)
         end
     }, "SilentHitChance")
 
@@ -569,7 +621,7 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.TargetPart = value
-            notify("Silent Aim", "Target Part set to: " .. value, true)
+            notify("Silent Aim", "Target Part set to: " .. value, false)
         end
     }, "SilentTargetPart")
 
@@ -578,7 +630,7 @@ function Init(ui, core, notification)
         Default = Settings.SmartHitbox,
         Callback = function(value)
             Settings.SmartHitbox = value
-            notify("Silent Aim", "Smart Hitbox " .. (value and "ON" or "OFF"), true)
+            notify("Silent Aim", "Smart Hitbox " .. (value and "ON" or "OFF"), false)
         end
     }, "SilentSmartHitbox")
 
@@ -587,6 +639,7 @@ function Init(ui, core, notification)
         Default = Settings.TeamCheck,
         Callback = function(value)
             Settings.TeamCheck = value
+            notify("Silent Aim", "Team Check " .. (value and "ON" or "OFF"), false)
         end
     }, "SilentTeamCheck")
 
@@ -595,6 +648,7 @@ function Init(ui, core, notification)
         Default = Settings.VisibilityCheck,
         Callback = function(value)
             Settings.VisibilityCheck = value
+            notify("Silent Aim", "Visibility Check " .. (value and "ON" or "OFF"), false)
         end
     }, "SilentVisibilityCheck")
 
@@ -604,10 +658,10 @@ function Init(ui, core, notification)
         Maximum = 1000,
         Default = Settings.DistanceLimit,
         Precision = 0,
-        Suffix = " studs",
+        Suffix = "s",
         Callback = function(value)
             Settings.DistanceLimit = value
-            notify("Silent Aim", "Distance Limit set to: " .. value .. " studs", true)
+            notify("Silent Aim", "Distance Limit set to: " .. value .. " studs", false)
         end
     }, "SilentDistanceLimit")
 
@@ -620,6 +674,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             Settings.PrintDelay = value
+            notify("Silent Aim", "Print Delay set to: " .. value .. "s", false)
         end
     }, "SilentPrintDelay")
 
@@ -632,6 +687,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             Settings.FireDelay = value
+            notify("Silent Aim", "Fire Delay set to: " .. value .. "s", false)
         end
     }, "SilentFireDelay")
 
@@ -642,8 +698,31 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.SortMethod = value
+            notify("Silent Aim", "Sort Method set to: " .. value, false)
         end
     }, "SilentSortMethod")
+
+    UI.Sections.SilentAim:Toggle({
+        Name = "Backtrack",
+        Default = Settings.Backtrack,
+        Callback = function(value)
+            Settings.Backtrack = value
+            notify("Silent Aim", "Backtrack " .. (value and "ON" or "OFF"), false)
+        end
+    }, "SilentBacktrack")
+
+    UI.Sections.SilentAim:Slider({
+        Name = "Backtrack Delay",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = Settings.BacktrackDelay,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            Settings.BacktrackDelay = value
+            notify("Silent Aim", "Backtrack Delay set to: " .. value .. "s", false)
+        end
+    }, "SilentBacktrackDelay")
 
     -- Подписка на обновления FriendsList
     if Core and Core.Services then
@@ -663,7 +742,7 @@ function Init(ui, core, notification)
         if Settings.Keybind and input.KeyCode == Settings.Keybind then
             Settings.Enabled = not Settings.Enabled
             fovCircle.Visible = Settings.Enabled
-            notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), true)
+            notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), false)
         end
     end)
 
