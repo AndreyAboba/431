@@ -36,13 +36,14 @@ local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
 
--- Кэш для FriendsList и мобов
+-- Кэш для FriendsList и мобов с слабой таблицей
 local Cache = {
     PlayerFriendCache = {},
     FriendsListVersion = 0,
-    MobCache = {}, -- Кэш путей до мобов
+    MobCache = setmetatable({}, { __mode = "v" }), -- Слабая таблица для автоматической очистки
     LastCacheUpdate = 0,
-    CacheInterval = 1.0 -- Интервал обновления кэша в секундах
+    CacheInterval = 2.0, -- Увеличен интервал до 2 секунд
+    MaxMobsPerFrame = 5 -- Ограничение проверяемых мобов в кадре
 }
 
 -- Создание FOV Circle с Drawing
@@ -294,38 +295,53 @@ local function GetMissionTarget()
         return nil, nil, nil
     end
 
+    local targetMission = missions:GetChildren()[4]
+    if not targetMission then
+        DelayedPrint("GetMissionTarget: Target mission (index 4) not found")
+        return nil, nil, nil
+    end
+
+    local aiSpawners = targetMission:FindFirstChild("AISpawners")
+    if not aiSpawners then
+        DelayedPrint("GetMissionTarget: AISpawners not found in target mission")
+        return nil, nil, nil
+    end
+
+    local targetSpawner = aiSpawners:GetChildren()[2]
+    if not targetSpawner then
+        DelayedPrint("GetMissionTarget: Target spawner (index 2) not found")
+        return nil, nil, nil
+    end
+
     local targetMob = nil
     local targetPart = nil
     local targetHumanoid = nil
     local minDistance = math.huge
     local origin = Camera.CFrame.Position
+    local checkedMobs = 0
 
     local mobTypes = {
-        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial"
+        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
+        "Nightfall Spitter Spider", "Nightfall Blink Spider"
     }
 
-    for _, mission in pairs(missions:GetChildren()) do
-        local aiSpawners = mission:FindFirstChild("AISpawners")
-        if aiSpawners then
-            for _, spawner in pairs(aiSpawners:GetChildren()) do
-                for _, mobType in pairs(mobTypes) do
-                    local mob = spawner:FindFirstChild(mobType)
-                    if not mob then
-                        mob = getNil(mobType, "Model")
-                    end
-                    if mob and mob.Parent then
-                        local humanoidRoot = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                        local humanoid = mob:FindFirstChild("Humanoid")
-                        if humanoidRoot and humanoid and humanoid.Health > 0 and IsVisible(humanoidRoot) then
-                            local distance = (origin - humanoidRoot.Position).Magnitude
-                            if distance < minDistance and distance <= Settings.DistanceLimit then
-                                minDistance = distance
-                                targetMob = mob
-                                targetPart = humanoidRoot
-                                targetHumanoid = humanoid
-                            end
-                        end
-                    end
+    for _, mobType in pairs(mobTypes) do
+        if checkedMobs >= Cache.MaxMobsPerFrame then break end
+        local mob = targetSpawner:FindFirstChild(mobType)
+        if not mob then
+            mob = getNil(mobType, "Model")
+        end
+        if mob and mob.Parent then
+            checkedMobs = checkedMobs + 1
+            local humanoidRoot = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+            local humanoid = mob:FindFirstChild("Humanoid")
+            if humanoidRoot and humanoid and humanoid.Health > 0 and IsVisible(humanoidRoot) then
+                local distance = (origin - humanoidRoot.Position).Magnitude
+                if distance < minDistance and distance <= Settings.DistanceLimit then
+                    minDistance = distance
+                    targetMob = mob
+                    targetPart = humanoidRoot
+                    targetHumanoid = humanoid
                 end
             end
         end
