@@ -26,7 +26,7 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     NPCSupport = false,
-    SelectedTarget = "QuestAI"
+    SelectedTarget = "Entities"
 }
 
 local lastPrintTime = 0
@@ -341,29 +341,40 @@ local function GetClosestTarget()
     if target then
         DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
         return target, selectedPart
-    else
-        DelayedPrint("No valid target found")
-        return nil, nil
     end
+    DelayedPrint("No valid player target found, checking for NPCs")
+    return nil, nil
 end
 
 -- Простая функция поиска ближайшего моба
 local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then
+    if not Settings.NPCSupport or Settings.SelectedTarget ~= "Entities" then
         return nil, nil
     end
 
     local missions = workspace:FindFirstChild("Missions")
-    if not missions then return nil, nil end
+    if not missions then
+        DelayedPrint("GetClosestMob: Missions not found")
+        return nil, nil
+    end
 
     local targetMission = missions:GetChildren()[4]
-    if not targetMission then return nil, nil end
+    if not targetMission then
+        DelayedPrint("GetClosestMob: Target mission not found")
+        return nil, nil
+    end
 
     local aiSpawners = targetMission:FindFirstChild("AISpawners")
-    if not aiSpawners then return nil, nil end
+    if not aiSpawners then
+        DelayedPrint("GetClosestMob: AISpawners not found")
+        return nil, nil
+    end
 
     local targetSpawner = aiSpawners:GetChildren()[2]
-    if not targetSpawner then return nil, nil end
+    if not targetSpawner then
+        DelayedPrint("GetClosestMob: Target spawner not found")
+        return nil, nil
+    end
 
     local mousePos = UserInputService:GetMouseLocation()
     local mobTypes = {
@@ -698,15 +709,15 @@ function Init(ui, core, notification)
     }, "SilentNPCSupport")
 
     UI.Sections.SilentAim:Dropdown({
-        Name = "QuestAI",
-        Options = {"QuestAI"},
+        Name = "Entities",
+        Options = {"Entities"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
             Settings.SelectedTarget = value
             notify("Silent Aim", "Selected Target set to: " .. value, false)
         end
-    }, "SilentQuestAI")
+    }, "SilentEntities")
 
     if Core and Core.Services then
         local lastFriendsList = Core.Services.FriendsList
@@ -752,6 +763,9 @@ RunService.RenderStepped:Connect(function()
     local target, targetPart = GetClosestTarget()
     if not target and Settings.NPCSupport then
         target, targetPart = GetClosestMob()
+        if target then
+            DelayedPrint("Switched to NPC target: " .. target.Name)
+        end
     end
     currentTarget = target
     
