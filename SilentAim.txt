@@ -36,10 +36,13 @@ local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
 
--- Кэш для FriendsList
+-- Кэш для FriendsList и мобов
 local Cache = {
     PlayerFriendCache = {},
-    FriendsListVersion = 0
+    FriendsListVersion = 0,
+    MobCache = {}, -- Кэш путей до мобов
+    LastCacheUpdate = 0,
+    CacheInterval = 1.0 -- Интервал обновления кэша в секундах
 }
 
 -- Создание FOV Circle с Drawing
@@ -263,11 +266,26 @@ local function GetToolListener()
     return toolListener, pistolConfig
 end
 
--- Функция поиска ближайшего моба
+-- Функция поиска ближайшего моба с кэшированием
 local function GetMissionTarget()
     if not Settings.MissionSupport then
         DelayedPrint("GetMissionTarget: Mission support disabled")
         return nil, nil, nil
+    end
+
+    local currentTime = tick()
+    if currentTime - Cache.LastCacheUpdate < Cache.CacheInterval then
+        -- Используем кэш, если обновление не требуется
+        for mobName, mobData in pairs(Cache.MobCache) do
+            local mob = mobData.Mob
+            if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("Humanoid").Health > 0 then
+                local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                if targetPart and IsVisible(targetPart) then
+                    DelayedPrint("GetMissionTarget: Using cached " .. mobName)
+                    return mob, targetPart, mob:FindFirstChild("Humanoid")
+                end
+            end
+        end
     end
 
     local missions = workspace:FindFirstChild("Missions")
@@ -295,10 +313,10 @@ local function GetMissionTarget()
                     if not mob then
                         mob = getNil(mobType, "Model")
                     end
-                    if mob then
+                    if mob and mob.Parent then
                         local humanoidRoot = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
                         local humanoid = mob:FindFirstChild("Humanoid")
-                        if humanoidRoot and humanoid and humanoid.Health > 0 then
+                        if humanoidRoot and humanoid and humanoid.Health > 0 and IsVisible(humanoidRoot) then
                             local distance = (origin - humanoidRoot.Position).Magnitude
                             if distance < minDistance and distance <= Settings.DistanceLimit then
                                 minDistance = distance
@@ -314,7 +332,9 @@ local function GetMissionTarget()
     end
 
     if targetMob then
-        DelayedPrint("GetMissionTarget: Found " .. targetMob.Name .. " at distance " .. math.floor(minDistance))
+        Cache.MobCache[targetMob.Name] = { Mob = targetMob, LastSeen = currentTime }
+        Cache.LastCacheUpdate = currentTime
+        DelayedPrint("GetMissionTarget: Found and cached " .. targetMob.Name .. " at distance " .. math.floor(minDistance))
         return targetMob, targetPart, targetHumanoid
     else
         DelayedPrint("GetMissionTarget: No valid mob found")
@@ -675,7 +695,7 @@ RunService.RenderStepped:Connect(function()
     local target, targetPart = nil, nil
     if Settings.MissionSupport and Settings.SelectedTarget == "Mission Targets" then
         local mob, mobPart, mobHumanoid = GetMissionTarget()
-        if mob then
+        if mob and mobPart and mobHumanoid then
             target = mob
             targetPart = mobPart
         end
