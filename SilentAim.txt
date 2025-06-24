@@ -25,7 +25,8 @@ local Settings = {
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    SelectedMob = "None"
+    MissionSupport = false,
+    SelectedTarget = "None"
 }
 
 local lastPrintTime = 0
@@ -263,11 +264,16 @@ local function GetToolListener()
 end
 
 -- Функция поиска ближайшего моба
-local function GetMobTarget()
+local function GetMissionTarget()
+    if not Settings.MissionSupport then
+        DelayedPrint("GetMissionTarget: Mission support disabled")
+        return nil, nil, nil
+    end
+
     local missions = workspace:FindFirstChild("Missions")
     if not missions then
-        DelayedPrint("GetMobTarget: Missions folder not found")
-        return nil, nil
+        DelayedPrint("GetMissionTarget: Missions folder not found")
+        return nil, nil, nil
     end
 
     local targetMob = nil
@@ -308,10 +314,10 @@ local function GetMobTarget()
     end
 
     if targetMob then
-        DelayedPrint("GetMobTarget: Found " .. targetMob.Name .. " at distance " .. math.floor(minDistance))
+        DelayedPrint("GetMissionTarget: Found " .. targetMob.Name .. " at distance " .. math.floor(minDistance))
         return targetMob, targetPart, targetHumanoid
     else
-        DelayedPrint("GetMobTarget: No valid mob found")
+        DelayedPrint("GetMissionTarget: No valid mob found")
         return nil, nil, nil
     end
 end
@@ -601,17 +607,27 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    -- Добавление Dropdown для выбора моба
+    -- Добавление Toggle для поддержки миссий
+    UI.Sections.SilentAim:Toggle({
+        Name = "Mission Support",
+        Default = Settings.MissionSupport,
+        Callback = function(value)
+            Settings.MissionSupport = value
+            notify("Silent Aim", "Mission Support " .. (value and "ON" or "OFF"), false)
+        end
+    }, "SilentMissionSupport")
+
+    -- Добавление Dropdown для выбора цели
     UI.Sections.SilentAim:Dropdown({
-        Name = "Mission AI",
-        Options = {"None", "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial"},
-        Default = Settings.SelectedMob,
+        Name = "Mission Targets",
+        Options = {"None", "Mission Targets"},
+        Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
-            Settings.SelectedMob = value
-            notify("Silent Aim", "Selected Mob set to: " .. value, false)
+            Settings.SelectedTarget = value
+            notify("Silent Aim", "Selected Target set to: " .. value, false)
         end
-    }, "SilentMissionAI")
+    }, "SilentMissionTargets")
 
     -- Подписка на обновления FriendsList
     if Core and Core.Services then
@@ -657,14 +673,14 @@ RunService.RenderStepped:Connect(function()
     UpdateFriendsCheck()
 
     local target, targetPart = nil, nil
-    if Settings.SelectedMob ~= "None" then
-        local mob, mobPart, mobHumanoid = GetMobTarget()
+    if Settings.MissionSupport and Settings.SelectedTarget == "Mission Targets" then
+        local mob, mobPart, mobHumanoid = GetMissionTarget()
         if mob then
             target = mob
             targetPart = mobPart
         end
     else
-        -- Логика для игроков (оставлена для совместимости)
+        -- Логика для игроков
         local validTargets = {}
         local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
         for _, player in pairs(Players:GetPlayers()) do
