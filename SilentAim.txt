@@ -26,7 +26,7 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     NPCSupport = false,
-    SelectedTarget = "Entities"
+    SelectedTarget = "QuestAI"
 }
 
 local lastPrintTime = 0
@@ -348,7 +348,7 @@ end
 
 -- Простая функция поиска ближайшего моба
 local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "Entities" then
+    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then
         return nil, nil
     end
 
@@ -358,44 +358,33 @@ local function GetClosestMob()
         return nil, nil
     end
 
-    local targetMission = missions:GetChildren()[4]
-    if not targetMission then
-        DelayedPrint("GetClosestMob: Target mission not found")
-        return nil, nil
-    end
-
-    local aiSpawners = targetMission:FindFirstChild("AISpawners")
-    if not aiSpawners then
-        DelayedPrint("GetClosestMob: AISpawners not found")
-        return nil, nil
-    end
-
-    local targetSpawner = aiSpawners:GetChildren()[2]
-    if not targetSpawner then
-        DelayedPrint("GetClosestMob: Target spawner not found")
-        return nil, nil
-    end
-
     local mousePos = UserInputService:GetMouseLocation()
     local mobTypes = {
         "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
-        "Nightfall Spitter Spider", "Nightfall Blink Spider"
+        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"
     }
 
-    for _, mobType in pairs(mobTypes) do
-        local mob = targetSpawner:FindFirstChild(mobType)
-        if mob and mob.Parent then
-            local humanoid = mob:FindFirstChild("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                if targetPart then
-                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                    if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                            DelayedPrint("Targeting: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
-                            return mob, targetPart
+    for _, mission in pairs(missions:GetChildren()) do
+        local aiSpawners = mission:FindFirstChild("AISpawners")
+        if aiSpawners then
+            for _, spawner in pairs(aiSpawners:GetChildren()) do
+                for _, mobType in pairs(mobTypes) do
+                    local mob = spawner:FindFirstChild(mobType)
+                    if mob and mob.Parent then
+                        local humanoid = mob:FindFirstChild("Humanoid")
+                        if humanoid and humanoid.Health > 0 then
+                            local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                            if targetPart then
+                                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                                if distance <= 400 and not IsInSafezone(targetPart.Position) then
+                                    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                    if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
+                                        DelayedPrint("Targeting: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
+                                        return mob, targetPart
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -710,7 +699,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Entities",
-        Options = {"Entities"},
+        Options = {"QuestAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
