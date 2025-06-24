@@ -26,7 +26,7 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     NPCSupport = false,
-    SelectedTarget = "Entities"
+    SelectedTarget = "QuestAI"
 }
 
 local lastPrintTime = 0
@@ -36,13 +36,10 @@ local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
 
--- Кэш для FriendsList и мобов
+-- Кэш для FriendsList
 local Cache = {
     PlayerFriendCache = {},
-    FriendsListVersion = 0,
-    MobCache = setmetatable({}, { __mode = "v" }), -- Кэш для мобов
-    LastCacheUpdate = 0,
-    CacheInterval = 1.0
+    FriendsListVersion = 0
 }
 
 -- Создание FOV Circle с Drawing
@@ -350,23 +347,10 @@ local function GetClosestTarget()
     end
 end
 
--- Функция поиска ближайшего моба
+-- Простая функция поиска ближайшего моба
 local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "Entities" then
+    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then
         return nil, nil
-    end
-
-    local currentTime = tick()
-    if currentTime - Cache.LastCacheUpdate < Cache.CacheInterval then
-        for mobName, mobData in pairs(Cache.MobCache) do
-            local mob = mobData.Mob
-            if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("Humanoid").Health > 0 then
-                local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                if targetPart and not IsInSafezone(targetPart.Position) then
-                    return mob, targetPart
-                end
-            end
-        end
     end
 
     local missions = workspace:FindFirstChild("Missions")
@@ -381,10 +365,7 @@ local function GetClosestMob()
     local targetSpawner = aiSpawners:GetChildren()[2]
     if not targetSpawner then return nil, nil end
 
-    local validTargets = {}
-    local possibleParts = {"HumanoidRootPart", "UpperTorso"}
     local mousePos = UserInputService:GetMouseLocation()
-
     local mobTypes = {
         "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
         "Nightfall Spitter Spider", "Nightfall Blink Spider"
@@ -392,32 +373,18 @@ local function GetClosestMob()
 
     for _, mobType in pairs(mobTypes) do
         local mob = targetSpawner:FindFirstChild(mobType)
-        if not mob then
-            mob = getNil(mobType, "Model")
-        end
         if mob and mob.Parent then
             local humanoid = mob:FindFirstChild("Humanoid")
             if humanoid and humanoid.Health > 0 then
-                local targetPart = nil
-                for _, partName in ipairs(possibleParts) do
-                    local part = mob:FindFirstChild(partName)
-                    if part then
-                        targetPart = part
-                        break
-                    end
-                end
+                local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
                 if targetPart then
                     local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                     if distance <= 400 and not IsInSafezone(targetPart.Position) then
                         local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
                         local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                         if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                            table.insert(validTargets, {
-                                Mob = mob,
-                                MouseDistance = mouseDistance,
-                                Health = humanoid.Health,
-                                TargetPart = targetPart
-                            })
+                            DelayedPrint("Targeting: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
+                            return mob, targetPart
                         end
                     end
                 end
@@ -425,33 +392,8 @@ local function GetClosestMob()
         end
     end
 
-    table.sort(validTargets, function(a, b)
-        if Settings.SortMethod == "Distance" then
-            return (Camera.CFrame.Position - a.TargetPart.Position).Magnitude <
-                   (Camera.CFrame.Position - b.TargetPart.Position).Magnitude
-        elseif Settings.SortMethod == "Health" then
-            return a.Health < b.Health
-        elseif Settings.SortMethod == "Crosshair" then
-            return a.MouseDistance < b.MouseDistance
-        elseif Settings.SortMethod == "Auto" then
-            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
-            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
-            return aScore < bScore
-        end
-        return a.MouseDistance < b.MouseDistance
-    end)
-
-    local target = validTargets[1] and validTargets[1].Mob
-    local selectedPart = validTargets[1] and validTargets[1].TargetPart
-    if target then
-        Cache.MobCache[target.Name] = { Mob = target, LastSeen = currentTime }
-        Cache.LastCacheUpdate = currentTime
-        DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
-        return target, selectedPart
-    else
-        DelayedPrint("No valid mob target found")
-        return nil, nil
-    end
+    DelayedPrint("No valid mob target found")
+    return nil, nil
 end
 
 -- Функция отправки remote event
@@ -584,20 +526,6 @@ local function UpdateFriendsCheck()
         lastLogTime = currentTime
     end
 end
-
--- Асинхронное обновление кэша мобов
-local function UpdateCache()
-    while wait(Cache.CacheInterval) do
-        local currentTime = tick()
-        Cache.LastCacheUpdate = currentTime
-        for mobName, mobData in pairs(Cache.MobCache) do
-            if not (mobData.Mob and mobData.Mob.Parent and mobData.Mob:FindFirstChild("Humanoid") and mobData.Mob:FindFirstChild("Humanoid").Health > 0) then
-                Cache.MobCache[mobName] = nil
-            end
-        end
-    end
-end
-coroutine.wrap(UpdateCache)()
 
 -- Инициализация модуля
 function Init(ui, core, notification)
@@ -770,15 +698,15 @@ function Init(ui, core, notification)
     }, "SilentNPCSupport")
 
     UI.Sections.SilentAim:Dropdown({
-        Name = "Entities",
-        Options = {"Entities"},
+        Name = "QuestAI",
+        Options = {"QuestAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
             Settings.SelectedTarget = value
             notify("Silent Aim", "Selected Target set to: " .. value, false)
         end
-    }, "SilentEntities")
+    }, "SilentQuestAI")
 
     if Core and Core.Services then
         local lastFriendsList = Core.Services.FriendsList
