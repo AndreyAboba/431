@@ -27,9 +27,7 @@ local Settings = {
     Keybind = nil,
     Backtrack = false,
     BacktrackDelay = 0.5,
-    FastAttack = false,
-    MaxAmmo = false,
-    FastReload = false
+    WallBang = false
 }
 
 local lastPrintTime = 0
@@ -38,6 +36,8 @@ local currentTarget = nil
 local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
+local pulseFactor = 1
+local pulseDirection = 1
 
 -- Кэш для бэктрэкинга и FriendsList
 local Cache = {
@@ -54,6 +54,14 @@ fovCircle.Transparency = 0.7
 fovCircle.Radius = Settings.FOV
 fovCircle.Visible = Settings.Enabled
 fovCircle.Filled = false
+
+-- Создание визуализации Backtrack (точка)
+local backtrackCircle = Drawing.new("Circle")
+backtrackCircle.Thickness = 2
+backtrackCircle.Transparency = 0.7
+backtrackCircle.Radius = 5
+backtrackCircle.Visible = false
+backtrackCircle.Filled = true
 
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
@@ -353,7 +361,7 @@ local function GetClosestTarget()
             -- Умный выбор хитбокса: проверяем все части тела
             for _, partName in ipairs(possibleParts) do
                 local part = player.Character:FindFirstChild(partName)
-                if part and IsVisible(part) then
+                if part then
                     targetPart = part
                     break
                 end
@@ -368,7 +376,7 @@ local function GetClosestTarget()
             continue
         end
         
-        if CanAttack(player) and IsVisible(targetPart) then
+        if CanAttack(player) and (Settings.WallBang or IsVisible(targetPart)) then
             local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
             local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
             if mouseDistance <= Settings.FOV then
@@ -409,7 +417,7 @@ local function GetClosestTarget()
     end
 end
 
--- Функция отправки remote event (Packet Method)
+-- Функция отправки remote event (Packet Method с WallBang)
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
         DelayedPrint("SilentShot: No target or targetPart")
@@ -427,9 +435,8 @@ local function SilentShot(target, targetPart)
     end
     
     local currentTime = tick()
-    local effectiveFireDelay = Settings.FastAttack and 0.0001 or Settings.FireDelay
-    if currentTime - lastFireTime < effectiveFireDelay then
-        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.4f", currentTime - lastFireTime) .. " < " .. effectiveFireDelay .. ")")
+    if currentTime - lastFireTime < Settings.FireDelay then
+        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.4f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
         return
     end
     
@@ -447,42 +454,32 @@ local function SilentShot(target, targetPart)
     end
     
     local toolListener, pistolConfig = GetToolListener()
-    if not toolListener or not pistolConfig then
-        DelayedPrint("SilentShot: ToolListener or PistolConfig not found")
+    if not toolListener then
+        DelayedPrint("SilentShot: ToolListener not found")
         return
     end
     
-    -- Применение клиентских изменений к PistolConfig
-    if Settings.FastAttack then
-        if pistolConfig:FindFirstChild("FireRate") then
-            pistolConfig.FireRate.Value = 9999
-            DelayedPrint("FastAttack: Set FireRate to 9999")
-        end
-    end
-    if Settings.MaxAmmo then
-        if pistolConfig:FindFirstChild("Ammo") and pistolConfig:FindFirstChild("MaxAmmo") then
-            pistolConfig.Ammo.Value = 20
-            pistolConfig.MaxAmmo.Value = 20
-            DelayedPrint("MaxAmmo: Set Ammo and MaxAmmo to 20")
-        end
-    end
-    if Settings.FastReload then
-        if pistolConfig:FindFirstChild("ReloadTime") then
-            pistolConfig.ReloadTime.Value = 0.001
-            DelayedPrint("FastReload: Set ReloadTime to 0.001")
-        end
+    -- Получаем позицию с бэктрэкингом
+    local targetPosition = GetBacktrackedPosition(target, targetPart)
+    
+    -- WallBang: Обход видимости с фальшивой позицией
+    if Settings.WallBang then
+        -- Смещаем позицию для обмана сервера
+        local offset = Vector3.new(math.random(-2, 2), math.random(-2, 2), math.random(-2, 2))
+        targetPosition = targetPosition + offset
+        DelayedPrint("WallBang: Using offset position " .. tostring(targetPosition) .. " for " .. target.Name)
     end
     
-    -- Используем бэктрэкинг для позиции, если включен
-    local targetPosition = Settings.Backtrack and GetBacktrackedPosition(target, targetPart) or targetPart.Position
+    local originPosition = Camera.CFrame.Position
+    local direction = (targetPosition - originPosition).Unit
     
     local args = {
         [1] = "Activate",
-        [2] = Camera.CFrame.Position,
+        [2] = originPosition,
         [3] = targetPosition,
-        [4] = pistolConfig,
+        [4] = pistolConfig or {},
         [5] = { targetPosition },
-        [6] = { { humanoidRoot, targetPosition, (targetPosition - Camera.CFrame.Position).Unit, targetPart.Name } },
+        [6] = { { humanoidRoot, targetPosition, direction, targetPart.Name } }, -- Фальшивое попадание
         [7] = { humanoid },
         [8] = {}
     }
@@ -743,31 +740,13 @@ function Init(ui, core, notification)
     }, "SilentBacktrackDelay")
 
     UI.Sections.SilentAim:Toggle({
-        Name = "Fast Attack",
-        Default = Settings.FastAttack,
+        Name = "WallBang",
+        Default = Settings.WallBang,
         Callback = function(value)
-            Settings.FastAttack = value
-            notify("Silent Aim", "Fast Attack " .. (value and "ON" or "OFF"), false)
+            Settings.WallBang = value
+            notify("Silent Aim", "WallBang " .. (value and "ON" or "OFF"), false)
         end
-    }, "SilentFastAttack")
-
-    UI.Sections.SilentAim:Toggle({
-        Name = "Max Ammo",
-        Default = Settings.MaxAmmo,
-        Callback = function(value)
-            Settings.MaxAmmo = value
-            notify("Silent Aim", "Max Ammo " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentMaxAmmo")
-
-    UI.Sections.SilentAim:Toggle({
-        Name = "Fast Reload",
-        Default = Settings.FastReload,
-        Callback = function(value)
-            Settings.FastReload = value
-            notify("Silent Aim", "Fast Reload " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentFastReload")
+    }, "SilentWallBang")
 
     -- Подписка на обновления FriendsList
     if Core and Core.Services then
@@ -795,7 +774,7 @@ function Init(ui, core, notification)
 end
 
 -- Обновление позиции FOV Circle и логика Silent Aim
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(deltaTime)
     if not UI or not Core then
         DelayedPrint("Warning: UI or Core is nil during RenderStepped")
         return
@@ -804,9 +783,14 @@ RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 
+    -- Анимация пульсации
+    pulseFactor = pulseFactor + pulseDirection * deltaTime * 2
+    if pulseFactor > 1.5 then pulseDirection = -1 elseif pulseFactor < 0.5 then pulseDirection = 1 end
+
     if not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
+        backtrackCircle.Visible = false
         return
     end
 
@@ -814,6 +798,18 @@ RunService.RenderStepped:Connect(function()
 
     local target, targetPart = GetClosestTarget()
     currentTarget = target
+    
+    -- Визуализация Backtrack
+    if target and Settings.Backtrack and targetPart then
+        local backtrackPos = GetBacktrackedPosition(target, targetPart)
+        local screenPos = Camera:WorldToViewportPoint(backtrackPos)
+        backtrackCircle.Position = Vector2.new(screenPos.X, screenPos.Y)
+        backtrackCircle.Radius = 5 * pulseFactor
+        backtrackCircle.Color = IsVisible(targetPart) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        backtrackCircle.Visible = true
+    else
+        backtrackCircle.Visible = false
+    end
     
     if target and targetPart then
         SilentShot(target, targetPart)
@@ -825,6 +821,7 @@ end)
 -- Очистка при телепортации
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     fovCircle:Remove()
+    backtrackCircle:Remove()
 end)
 
 return {
