@@ -21,7 +21,8 @@ local Settings = {
     Method = "Packet",
     SortMethod = "Auto",
     LogInterval = 0.05,
-    DistanceLimit = 2000, -- 200 метров
+    DistanceLimit = 2000, -- 200 метров для игроков
+    MobDistanceLimit = 400, -- 400 студов для мобов
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
@@ -95,6 +96,22 @@ local function IsVisible(targetPart)
         return true
     end
     return false
+end
+
+-- Функция проверки нахождения в сейфзоне
+local function IsInSafezone(position)
+    local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
+    if not safezone then
+        return false
+    end
+    
+    local safezonePos = safezone.Position
+    local safezoneSize = safezone.Size / 2
+    
+    local relativePos = position - safezonePos
+    return math.abs(relativePos.X) <= safezoneSize.X and
+           math.abs(relativePos.Y) <= safezoneSize.Y and
+           math.abs(relativePos.Z) <= safezoneSize.Z
 end
 
 -- Функция проверки щита
@@ -276,7 +293,7 @@ local function GetMissionTarget()
             local humanoid = mob:FindFirstChild("Humanoid")
             if humanoidRoot and humanoid and humanoid.Health > 0 then
                 local distance = (origin - humanoidRoot.Position).Magnitude
-                if distance < minDistance and distance <= Settings.DistanceLimit then
+                if distance < minDistance and distance <= Settings.MobDistanceLimit then
                     minDistance = distance
                     targetMob = mob
                     targetPart = humanoidRoot
@@ -643,7 +660,7 @@ RunService.RenderStepped:Connect(function()
         else
             targetPart = player.Character:FindFirstChild(Settings.TargetPart)
         end
-        if targetPart and CanAttack(player) then
+        if targetPart and CanAttack(player) and not (IsInSafezone(targetPart.Position) and (player.Team and (player.Team.Name == "Wizards" or player.Team.Name == "Royal Wizards"))) then
             local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
             local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
             if mouseDistance <= Settings.FOV then
@@ -671,7 +688,7 @@ RunService.RenderStepped:Connect(function()
         targetPart = validTargets[1].TargetPart
     elseif Settings.NPCSupport and Settings.SelectedTarget == "Entities" then
         local mob, mobPart, mobHumanoid = GetMissionTarget()
-        if mob and mobPart and mobHumanoid and IsVisible(mobPart) then
+        if mob and mobPart and mobHumanoid and IsVisible(mobPart) and not IsInSafezone(mobPart.Position) then
             target = mob
             targetPart = mobPart
         end
