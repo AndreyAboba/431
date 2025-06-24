@@ -10,17 +10,17 @@ local notify = nil
 
 -- Конфигурация Silent Aim
 local Settings = {
-    Enabled = true,
+    Enabled = false,
     FOV = 300,
     HitChance = 100,
     TargetPart = "Head",
     TeamCheck = true,
     VisibilityCheck = true,
-    PrintDelay = 0.2, -- Ещё меньше для частых логов
+    PrintDelay = 0.2,
     FireDelay = 0.5,
     Method = "Packet",
     SortMethod = "Auto",
-    LogInterval = 0.05 -- Максимально частая проверка
+    LogInterval = 0.05
 }
 
 local lastPrintTime = 0
@@ -38,6 +38,11 @@ fovCircle.Transparency = 0.7
 fovCircle.Radius = Settings.FOV
 fovCircle.Visible = Settings.Enabled
 fovCircle.Filled = false
+
+-- Кэш для оптимизации
+local Cache = {
+    LastFriendsList = nil
+}
 
 -- Функция для вывода сообщений с задержкой
 local function DelayedPrint(message)
@@ -131,7 +136,7 @@ local function HasLasso(player)
     return fakeLimbs ~= nil
 end
 
--- Функция проверки возможности атаки с жёсткой проверкой FriendsList
+-- Функция проверки возможности атаки (как в VisualsV2.lua)
 local function CanAttack(player)
     if not player then return false end
     
@@ -162,16 +167,19 @@ local function CanAttack(player)
         return true
     end
     
-    -- Жёсткая проверка FriendsList, как в VisualsV2.lua
+    -- Проверка FriendsList как в VisualsV2.lua
     local playerNameLower = player.Name:lower()
+    local isFriend = false
+    if Core and Core.Services and Core.Services.FriendsList and (Cache.LastFriendsList ~= Core.Services.FriendsList) then
+        Cache.LastFriendsList = Core.Services.FriendsList
+        DelayedPrint("FriendsList updated: " .. tostring(Core.Services.FriendsList))
+    end
     if Core and Core.Services and Core.Services.FriendsList and Core.Services.FriendsList[playerNameLower] then
+        isFriend = true
         DelayedPrint("Blocked attack on friend: " .. player.Name .. " (FriendsList: " .. tostring(Core.Services.FriendsList[playerNameLower]) .. ")")
-        return false
-    else
-        DelayedPrint("No friend check for " .. player.Name .. " - Core: " .. tostring(Core) .. ", FriendsList: " .. tostring(Core and Core.Services and Core.Services.FriendsList))
     end
     
-    return true
+    return not isFriend
 end
 
 -- Функция поиска ToolListener
@@ -361,7 +369,7 @@ local function UpdateFriendsCheck()
     local currentTime = tick()
     if currentTime - lastLogTime >= Settings.LogInterval then
         if Core and Core.Services and Core.Services.FriendsList then
-            DelayedPrint("FriendsList check: " .. (type(Core.Services.FriendsList) == "table" and "Valid" or "Invalid") .. ", Count: " .. (type(Core.Services.FriendsList) == "table" and tostring(#(next(Core.Services.FriendsList) and Core.Services.FriendsList or {})) or "N/A"))
+            DelayedPrint("FriendsList check: Valid, Count: " .. tostring(#(next(Core.Services.FriendsList) and Core.Services.FriendsList or {})))
         else
             DelayedPrint("Error: Core or FriendsList is nil - Core: " .. tostring(Core) .. ", Services: " .. tostring(Core and Core.Services))
         end
@@ -512,7 +520,7 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    UpdateFriendsCheck() -- Частая проверка FriendsList
+    UpdateFriendsCheck()
 
     local target = GetClosestTarget()
     currentTarget = target
