@@ -21,12 +21,12 @@ local Settings = {
     Method = "Packet",
     SortMethod = "Auto",
     LogInterval = 0.05,
-    DistanceLimit = 1000,
+    DistanceLimit = 2000, -- 200 метров
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    MissionSupport = false,
-    SelectedTarget = "None"
+    NPCSupport = false,
+    SelectedTarget = "Entities"
 }
 
 local lastPrintTime = 0
@@ -36,14 +36,13 @@ local isToolEquipped = false
 local currentTool = nil
 local lastLogTime = 0
 
--- Кэш для FriendsList и мобов с слабой таблицей
+-- Кэш для FriendsList и мобов
 local Cache = {
     PlayerFriendCache = {},
     FriendsListVersion = 0,
-    MobCache = setmetatable({}, { __mode = "v" }), -- Слабая таблица для автоматической очистки
+    MobCache = setmetatable({}, { __mode = "v" }),
     LastCacheUpdate = 0,
-    CacheInterval = 2.0, -- Увеличен интервал до 2 секунд
-    MaxMobsPerFrame = 5 -- Ограничение проверяемых мобов в кадре
+    CacheInterval = 1.0
 }
 
 -- Создание FOV Circle с Drawing
@@ -93,42 +92,9 @@ local function IsVisible(targetPart)
     
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
-        DelayedPrint("Visible: Main ray hit target " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
         return true
     end
-    
-    local offsetDirections = {
-        rayDirection + Vector3.new(0.1, 0, 0),
-        rayDirection + Vector3.new(-0.1, 0, 0),
-        rayDirection + Vector3.new(0, 0.1, 0),
-        rayDirection + Vector3.new(0, -0.1, 0)
-    }
-    for _, offsetDir in pairs(offsetDirections) do
-        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
-        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
-            DelayedPrint("Visible: Offset ray hit target " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
-            return true
-        end
-    end
-    
-    DelayedPrint("Not visible: Raycast blocked for " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
     return false
-end
-
--- Функция проверки нахождения в сейфзоне
-local function IsInSafezone(position)
-    local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
-    if not safezone then
-        return false
-    end
-    
-    local safezonePos = safezone.Position
-    local safezoneSize = safezone.Size / 2
-    
-    local relativePos = position - safezonePos
-    return math.abs(relativePos.X) <= safezoneSize.X and
-           math.abs(relativePos.Y) <= safezoneSize.Y and
-           math.abs(relativePos.Z) <= safezoneSize.Z
 end
 
 -- Функция проверки щита
@@ -179,17 +145,14 @@ end
 -- Функция проверки возможности атаки
 local function CanAttack(player)
     if not player then
-        DelayedPrint("CanAttack: No player provided")
         return false
     end
     
     if HasLasso(player) then
-        DelayedPrint("CanAttack: Player " .. player.Name .. " has Lasso")
         return false
     end
     
     if not Settings.TeamCheck then
-        DelayedPrint("CanAttack: TeamCheck disabled, allowing attack on " .. player.Name)
         return true
     end
     
@@ -197,38 +160,29 @@ local function CanAttack(player)
     local theirTeam = player.Team and player.Team.Name
     
     if not myTeam or not theirTeam then
-        DelayedPrint("CanAttack: Team data missing, allowing attack on " .. player.Name)
         return true
     end
     
     if HasProtectionBubble(player) then
-        DelayedPrint("CanAttack: Player " .. player.Name .. " has ProtectionBubble")
         return false
     end
     
     local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
     if targetPart and IsInSafezone(targetPart.Position) then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
             return false
         end
-        DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone, allowing attack")
         return true
     end
     
     if myTeam == "Shadow Wizards" then
-        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
         return true
     elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
             return false
         end
-        DelayedPrint("CanAttack: Allowing attack on " .. player.Name .. " (different team)")
         return true
     end
-    
-    DelayedPrint("CanAttack: Allowing attack on " .. player.Name)
     return true
 end
 
@@ -251,38 +205,30 @@ local function GetToolListener()
     end
     
     if not toolListener or not wand then
-        DelayedPrint("GetToolListener: Could not find ToolListnerEvent or wand")
         return nil, nil
     end
     
-    -- Поиск PistolConfig в workspace.Characters
     local playerContainer = workspace:FindFirstChild("Characters") and workspace.Characters:FindFirstChild(LocalPlayer.Name)
     local pistolConfig = playerContainer and playerContainer:FindFirstChild(wand.Name) and playerContainer[wand.Name]:FindFirstChild("PistolConfig")
     if not pistolConfig then
-        DelayedPrint("GetToolListener: PistolConfig not found for " .. (wand and wand.Name or "Unknown"))
         return toolListener, nil
     end
-    
-    DelayedPrint("GetToolListener: Found ToolListnerEvent and PistolConfig for " .. wand.Name)
     return toolListener, pistolConfig
 end
 
 -- Функция поиска ближайшего моба с кэшированием
 local function GetMissionTarget()
-    if not Settings.MissionSupport then
-        DelayedPrint("GetMissionTarget: Mission support disabled")
+    if not Settings.NPCSupport then
         return nil, nil, nil
     end
 
     local currentTime = tick()
     if currentTime - Cache.LastCacheUpdate < Cache.CacheInterval then
-        -- Используем кэш, если обновление не требуется
         for mobName, mobData in pairs(Cache.MobCache) do
             local mob = mobData.Mob
             if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("Humanoid").Health > 0 then
                 local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                if targetPart and IsVisible(targetPart) then
-                    DelayedPrint("GetMissionTarget: Using cached " .. mobName)
+                if targetPart then
                     return mob, targetPart, mob:FindFirstChild("Humanoid")
                 end
             end
@@ -291,25 +237,21 @@ local function GetMissionTarget()
 
     local missions = workspace:FindFirstChild("Missions")
     if not missions then
-        DelayedPrint("GetMissionTarget: Missions folder not found")
         return nil, nil, nil
     end
 
     local targetMission = missions:GetChildren()[4]
     if not targetMission then
-        DelayedPrint("GetMissionTarget: Target mission (index 4) not found")
         return nil, nil, nil
     end
 
     local aiSpawners = targetMission:FindFirstChild("AISpawners")
     if not aiSpawners then
-        DelayedPrint("GetMissionTarget: AISpawners not found in target mission")
         return nil, nil, nil
     end
 
     local targetSpawner = aiSpawners:GetChildren()[2]
     if not targetSpawner then
-        DelayedPrint("GetMissionTarget: Target spawner (index 2) not found")
         return nil, nil, nil
     end
 
@@ -318,7 +260,6 @@ local function GetMissionTarget()
     local targetHumanoid = nil
     local minDistance = math.huge
     local origin = Camera.CFrame.Position
-    local checkedMobs = 0
 
     local mobTypes = {
         "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
@@ -326,16 +267,14 @@ local function GetMissionTarget()
     }
 
     for _, mobType in pairs(mobTypes) do
-        if checkedMobs >= Cache.MaxMobsPerFrame then break end
         local mob = targetSpawner:FindFirstChild(mobType)
         if not mob then
             mob = getNil(mobType, "Model")
         end
         if mob and mob.Parent then
-            checkedMobs = checkedMobs + 1
             local humanoidRoot = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
             local humanoid = mob:FindFirstChild("Humanoid")
-            if humanoidRoot and humanoid and humanoid.Health > 0 and IsVisible(humanoidRoot) then
+            if humanoidRoot and humanoid and humanoid.Health > 0 then
                 local distance = (origin - humanoidRoot.Position).Magnitude
                 if distance < minDistance and distance <= Settings.DistanceLimit then
                     minDistance = distance
@@ -350,47 +289,43 @@ local function GetMissionTarget()
     if targetMob then
         Cache.MobCache[targetMob.Name] = { Mob = targetMob, LastSeen = currentTime }
         Cache.LastCacheUpdate = currentTime
-        DelayedPrint("GetMissionTarget: Found and cached " .. targetMob.Name .. " at distance " .. math.floor(minDistance))
         return targetMob, targetPart, targetHumanoid
-    else
-        DelayedPrint("GetMissionTarget: No valid mob found")
-        return nil, nil, nil
     end
+    return nil, nil, nil
 end
 
 -- Функция отправки remote event
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
-        DelayedPrint("SilentShot: No target or targetPart")
         return
     end
 
     if not Settings.Enabled then
-        DelayedPrint("SilentShot: Silent Aim disabled")
         return
     end
     
     local currentTime = tick()
     if currentTime - lastFireTime < Settings.FireDelay then
-        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.4f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
         return
     end
     
     if math.random(1, 100) > Settings.HitChance then
-        DelayedPrint("SilentShot: Hit chance failed (" .. Settings.HitChance .. "%)")
         return
     end
     
     local toolListener, pistolConfig = GetToolListener()
     if not toolListener then
-        DelayedPrint("SilentShot: ToolListener not found")
+        return
+    end
+    
+    if not IsVisible(targetPart) then
         return
     end
     
     local originPosition = Camera.CFrame.Position
     local targetPosition = targetPart.Position
     local direction = (targetPosition - originPosition).Unit
-    local hitPosition = targetPosition - direction * 1 -- Незначительное смещение для точности
+    local hitPosition = targetPosition - direction * 1
     
     local args = {
         [1] = "Activate",
@@ -410,17 +345,13 @@ local function SilentShot(target, targetPart)
         [8] = {}
     }
     
-    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
     local success, err = pcall(function()
         toolListener:FireServer(unpack(args))
     end)
     
     if success then
-        DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
         lastFireTime = currentTime
         Core.GunSilentTarget.CurrentTarget = target.Name
-    else
-        DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
 end
 
@@ -431,7 +362,6 @@ local function CheckToolEquipped()
         if isToolEquipped then
             isToolEquipped = false
             currentTool = nil
-            DelayedPrint("Tool is unequipped (no character)")
         end
         return false
     end
@@ -441,7 +371,6 @@ local function CheckToolEquipped()
             if not isToolEquipped then
                 isToolEquipped = true
                 currentTool = item
-                DelayedPrint("Tool " .. (item.Name or "Unknown") .. " is equipped")
             end
             return true
         end
@@ -450,7 +379,6 @@ local function CheckToolEquipped()
     if isToolEquipped then
         isToolEquipped = false
         currentTool = nil
-        DelayedPrint("Tool is unequipped")
     end
     return false
 end
@@ -461,20 +389,27 @@ local function UpdateFriendsCheck()
     if currentTime - lastLogTime >= Settings.LogInterval then
         if Core and Core.Services and Core.Services.FriendsList then
             local count = 0
-            local friends = {}
-            for name, isFriend in pairs(Core.Services.FriendsList) do
-                if isFriend then
-                    count = count + 1
-                    table.insert(friends, name)
-                end
+            for _, isFriend in pairs(Core.Services.FriendsList) do
+                if isFriend then count = count + 1 end
             end
-            DelayedPrint("FriendsList check: Valid, Count: " .. tostring(count) .. ", Friends: " .. (#friends > 0 and table.concat(friends, ", ") or "None"))
-        else
-            DelayedPrint("Error: Core or FriendsList is nil - Core: " .. tostring(Core) .. ", Services: " .. tostring(Core and Core.Services))
         end
         lastLogTime = currentTime
     end
 end
+
+-- Асинхронное обновление кэша
+local function UpdateCache()
+    while wait(Cache.CacheInterval) do
+        local currentTime = tick()
+        Cache.LastCacheUpdate = currentTime
+        for mobName, mobData in pairs(Cache.MobCache) do
+            if not (mobData.Mob and mobData.Mob.Parent and mobData.Mob:FindFirstChild("Humanoid") and mobData.Mob:FindFirstChild("Humanoid").Health > 0) then
+                Cache.MobCache[mobName] = nil
+            end
+        end
+    end
+end
+coroutine.wrap(UpdateCache)()
 
 -- Инициализация модуля
 function Init(ui, core, notification)
@@ -482,36 +417,25 @@ function Init(ui, core, notification)
     Core = core
     notify = notification
 
-    DelayedPrint("SilentAim module initializing with Core: " .. tostring(Core))
     if not UI or not Core or not notify then
-        DelayedPrint("Warning: UI, Core, or notification is nil during initialization")
         return
     end
 
-    -- Инициализация FriendsList
     if Core and Core.Services then
         Core.Services.FriendsList = Core.Services.FriendsList or {}
         Cache.FriendsListVersion = Cache.FriendsListVersion + 1
-        Cache.PlayerFriendCache = {} -- Сброс кэша при инициализации
-        DelayedPrint("Initialized FriendsList, version: " .. Cache.FriendsListVersion)
+        Cache.PlayerFriendCache = {}
     end
 
-    -- Начальная проверка
-    UpdateFriendsCheck()
-
-    -- Создание нового таба Combat
     UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
     UI.Tabs = UI.Tabs or {}
     UI.Tabs.Combat = UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
 
-    -- Создание секции SilentAim
     UI.Sections = UI.Sections or {}
     UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
 
-    -- Заголовок
     UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
 
-    -- Настройки Silent Aim
     UI.Sections.SilentAim:Toggle({
         Name = "Enabled",
         Default = Settings.Enabled,
@@ -609,7 +533,7 @@ function Init(ui, core, notification)
     UI.Sections.SilentAim:Slider({
         Name = "Distance Limit",
         Minimum = 50,
-        Maximum = 1000,
+        Maximum = 2000,
         Default = Settings.DistanceLimit,
         Precision = 0,
         Suffix = "s",
@@ -643,42 +567,26 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    -- Добавление Toggle для поддержки миссий
     UI.Sections.SilentAim:Toggle({
-        Name = "Mission Support",
-        Default = Settings.MissionSupport,
+        Name = "NPC Support",
+        Default = Settings.NPCSupport,
         Callback = function(value)
-            Settings.MissionSupport = value
-            notify("Silent Aim", "Mission Support " .. (value and "ON" or "OFF"), false)
+            Settings.NPCSupport = value
+            notify("Silent Aim", "NPC Support " .. (value and "ON" or "OFF"), false)
         end
-    }, "SilentMissionSupport")
+    }, "SilentNPCSupport")
 
-    -- Добавление Dropdown для выбора цели
     UI.Sections.SilentAim:Dropdown({
-        Name = "Mission Targets",
-        Options = {"None", "Mission Targets"},
+        Name = "Entities",
+        Options = {"Entities"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
             Settings.SelectedTarget = value
             notify("Silent Aim", "Selected Target set to: " .. value, false)
         end
-    }, "SilentMissionTargets")
+    }, "SilentEntities")
 
-    -- Подписка на обновления FriendsList
-    if Core and Core.Services then
-        local lastFriendsList = Core.Services.FriendsList
-        RunService.Heartbeat:Connect(function()
-            if Core.Services.FriendsList ~= lastFriendsList then
-                Cache.FriendsListVersion = Cache.FriendsListVersion + 1
-                Cache.PlayerFriendCache = {}
-                lastFriendsList = Core.Services.FriendsList
-                DelayedPrint("FriendsList updated, resetting cache, new version: " .. Cache.FriendsListVersion)
-            end
-        end)
-    end
-
-    -- Подписка на кейбинд
     UserInputService.InputBegan:Connect(function(input)
         if Settings.Keybind and input.KeyCode == Settings.Keybind then
             Settings.Enabled = not Settings.Enabled
@@ -686,14 +594,11 @@ function Init(ui, core, notification)
             notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), false)
         end
     end)
-
-    DelayedPrint("SilentAim module initialized successfully")
 end
 
 -- Обновление позиции FOV Circle и логика Silent Aim
 RunService.RenderStepped:Connect(function()
     if not UI or not Core then
-        DelayedPrint("Warning: UI or Core is nil during RenderStepped")
         return
     end
 
@@ -709,73 +614,66 @@ RunService.RenderStepped:Connect(function()
     UpdateFriendsCheck()
 
     local target, targetPart = nil, nil
-    if Settings.MissionSupport and Settings.SelectedTarget == "Mission Targets" then
+    -- Приоритет на игроков
+    local validTargets = {}
+    local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LocalPlayer or not player.Character then continue end
+        local playerNameLower = player.Name:lower()
+        local isFriend = Cache.PlayerFriendCache[playerNameLower]
+        if isFriend == nil and Core and Core.Services and Core.Services.FriendsList then
+            isFriend = Core.Services.FriendsList[playerNameLower] == true
+            Cache.PlayerFriendCache[playerNameLower] = isFriend
+        end
+        if isFriend then continue end
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then continue end
+        local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
+        if distance > Settings.DistanceLimit then continue end
+        local targetPart = nil
+        if Settings.SmartHitbox then
+            for _, partName in ipairs(possibleParts) do
+                local part = player.Character:FindFirstChild(partName)
+                if part then
+                    targetPart = part
+                    break
+                end
+            end
+        else
+            targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+        end
+        if targetPart and CanAttack(player) then
+            local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+            local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+            if mouseDistance <= Settings.FOV then
+                table.insert(validTargets, {Player = player, MouseDistance = mouseDistance, Health = humanoid.Health, TargetPart = targetPart})
+            end
+        end
+    end
+    table.sort(validTargets, function(a, b)
+        if Settings.SortMethod == "Distance" then
+            return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
+                   (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
+        elseif Settings.SortMethod == "Health" then
+            return a.Health < b.Health
+        elseif Settings.SortMethod == "Crosshair" then
+            return a.MouseDistance < b.MouseDistance
+        elseif Settings.SortMethod == "Auto" then
+            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
+            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
+            return aScore < bScore
+        end
+        return a.MouseDistance < b.MouseDistance
+    end)
+    if #validTargets > 0 then
+        target = validTargets[1].Player
+        targetPart = validTargets[1].TargetPart
+    elseif Settings.NPCSupport and Settings.SelectedTarget == "Entities" then
         local mob, mobPart, mobHumanoid = GetMissionTarget()
-        if mob and mobPart and mobHumanoid then
+        if mob and mobPart and mobHumanoid and IsVisible(mobPart) then
             target = mob
             targetPart = mobPart
-        end
-    else
-        -- Логика для игроков
-        local validTargets = {}
-        local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
-        for _, player in pairs(Players:GetPlayers()) do
-            if player == LocalPlayer or not player.Character then
-                continue
-            end
-            local playerNameLower = player.Name:lower()
-            local isFriend = false
-            if Core and Core.Services and Core.Services.FriendsList then
-                isFriend = Cache.PlayerFriendCache[playerNameLower]
-                if isFriend == nil then
-                    isFriend = Core.Services.FriendsList[playerNameLower] == true
-                    Cache.PlayerFriendCache[playerNameLower] = isFriend
-                end
-                if isFriend then continue end
-            end
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-            if not humanoid or not humanoidRoot or humanoid.Health <= 0 then continue end
-            local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
-            if distance > Settings.DistanceLimit then continue end
-            local targetPart = nil
-            if Settings.SmartHitbox then
-                for _, partName in ipairs(possibleParts) do
-                    local part = player.Character:FindFirstChild(partName)
-                    if part then
-                        targetPart = part
-                        break
-                    end
-                end
-            else
-                targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-            end
-            if targetPart and CanAttack(player) and IsVisible(targetPart) then
-                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                if mouseDistance <= Settings.FOV then
-                    table.insert(validTargets, {Player = player, MouseDistance = mouseDistance, Health = humanoid.Health, TargetPart = targetPart})
-                end
-            end
-        end
-        table.sort(validTargets, function(a, b)
-            if Settings.SortMethod == "Distance" then
-                return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
-                       (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
-            elseif Settings.SortMethod == "Health" then
-                return a.Health < b.Health
-            elseif Settings.SortMethod == "Crosshair" then
-                return a.MouseDistance < b.MouseDistance
-            elseif Settings.SortMethod == "Auto" then
-                local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
-                local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
-                return aScore < bScore
-            end
-            return a.MouseDistance < b.MouseDistance
-        end)
-        if #validTargets > 0 then
-            target = validTargets[1].Player
-            targetPart = validTargets[1].TargetPart
         end
     end
 
