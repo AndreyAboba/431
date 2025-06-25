@@ -1,66 +1,196 @@
-print(' {🧠} EntityX lib by stuppp110')
--- EntityX: Lightweight NPC Entity Finder Library
-
+-- EntityX Library for NPC Interaction
 local EntityX = {}
+local workspace = game:GetService("Workspace")
+local Camera = workspace.CurrentCamera
 
--- Predefined entity groups with NPC names
-EntityX.EntityGroups = {
-    QuestAI = {
-        Missions = {
-            Names = {"Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial", "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"},
-            Path = workspace:FindFirstChild("Missions")
-        },
-        SpiderCave = {
-            Names = {"Spider", "Cave Spider"},
-            Path = workspace.MapProps:FindFirstChild("SpiderCave")
-        }
-    }
-}
-
--- Recursive function to find entities
-local function findEntities(parent, names)
-    local entities = {}
-    for _, child in pairs(parent:GetChildren()) do
-        if table.find(names, child.Name) then
-            table.insert(entities, child)
-        end
-        for _, nested in pairs(child:GetChildren()) do
-            local nestedEntities = findEntities(nested, names)
-            for _, entity in pairs(nestedEntities) do
-                table.insert(entities, entity)
-            end
-        end
-    end
-    return entities
+-- Красивое логирование
+local function Log(message, emoji)
+    print("{" .. emoji .. "} EntityX | " .. message)
 end
 
--- Generic function to get closest entity from a given path
-function EntityX:GetClosestEntity(mousePos, entityGroup)
-    local Camera = workspace.CurrentCamera
-    local closestEntity, minDistance = nil, math.huge
+-- Инициализация с красивым логом
+Log("Lightweight NPC interactions.", "🧠")
+Log("Loaded successfully!", "🟢")
 
-    local groupData = EntityX.EntityGroups[entityGroup]
-    if not groupData then return nil end
+-- Internal cache for performance
+local npcCache = {}
+local lastUpdate = 0
+local updateInterval = 0.1 -- Обновление кэша каждые 0.1 секунды
 
-    for _, pathData in pairs(groupData) do
-        if pathData.Path and pathData.Names then
-            local entities = findEntities(pathData.Path, pathData.Names)
-            for _, entity in pairs(entities) do
-                local distance = (Camera.CFrame.Position - entity.Position).Magnitude
-                local screenPos = Camera:WorldToViewportPoint(entity.Position)
-                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                if mouseDistance < minDistance then
-                    minDistance = mouseDistance
-                    closestEntity = entity
+-- Конфигурация поиска NPC
+local npcConfig = {
+    DistanceLimit = 120,
+    TargetPart = "Head"
+}
+
+-- Поиск всех NPC в указанных локациях
+local function FindAllNPCs()
+    local currentTime = tick()
+    if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
+        return npcCache
+    end
+
+    local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
+    local missions = workspace:FindFirstChild("Missions")
+    npcCache = {}
+
+    -- Поиск в Missions (для Poacher, Imperial и т.д.)
+    if missions then
+        for _, mission in pairs(missions:GetChildren()) do
+            local aiSpawners = mission:FindFirstChild("AISpawners")
+            if aiSpawners then
+                for _, spawner in pairs(aiSpawners:GetChildren()) do
+                    local mobTypes = {
+                        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
+                        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
+                        "Poacher Apprentice", "Nightfall Spider"
+                    }
+                    for _, mobType in pairs(mobTypes) do
+                        local mob = spawner:FindFirstChild(mobType)
+                        if mob and mob.Parent then
+                            local humanoid = mob:FindFirstChild("Humanoid")
+                            if humanoid and humanoid.Health > 0 then
+                                local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                                if targetPart then
+                                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                                    if distance <= npcConfig.DistanceLimit then
+                                        table.insert(npcCache, {
+                                            Mob = mob,
+                                            TargetPart = targetPart,
+                                            Distance = distance,
+                                            Health = humanoid.Health
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                    end
                 end
             end
         end
     end
 
-    return closestEntity
+    -- Поиск в SpiderCave (для Spider и Cave Spider с динамичным индексом)
+    if spiderCave then
+        for _, container in pairs(spiderCave:GetChildren()) do
+            local spiderTypes = {"Spider", "Cave Spider"}
+            for _, spiderType in pairs(spiderTypes) do
+                local mob = container:FindFirstChild(spiderType)
+                if mob and mob.Parent then
+                    local humanoid = mob:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                        if targetPart then
+                            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                            if distance <= npcConfig.DistanceLimit then
+                                table.insert(npcCache, {
+                                    Mob = mob,
+                                    TargetPart = targetPart,
+                                    Distance = distance,
+                                    Health = humanoid.Health
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    lastUpdate = currentTime
+    return npcCache
 end
-print(' {🧠} EntityX version: 1.1')
+
+-- Получение ближайшего NPC
+function EntityX:GetClosestNPC()
+    local npcs = FindAllNPCs()
+    if #npcs == 0 then
+        Log("No NPCs found.", "⚠️")
+        return nil, nil
+    end
+
+    table.sort(npcs, function(a, b)
+        local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
+        local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
+        return aScore < bScore
+    end)
+
+    Log("Found closest NPC: " .. npcs[1].Mob.Name .. " (Distance: " .. math.floor(npcs[1].Distance) .. ")", "🔍")
+    return npcs[1].Mob, npcs[1].TargetPart
+end
+
+-- Получение всех NPC
+function EntityX:GetAllNPCs()
+    local npcs = FindAllNPCs()
+    if #npcs == 0 then
+        Log("No NPCs found.", "⚠️")
+    else
+        Log("Found " .. #npcs .. " NPCs.", "📋")
+    end
+    return npcs
+end
+
+-- Установка предела дистанции
+function EntityX:SetDistanceLimit(limit)
+    npcConfig.DistanceLimit = limit or 120
+    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️")
+end
+
+-- Установка целевой части тела
+function EntityX:SetTargetPart(part)
+    npcConfig.TargetPart = part or "Head"
+    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️")
+end
+
+-- Кастомный поиск NPC в заданной локации
+function EntityX:FindNPCsInLocation(location, mobTypes)
+    local validTargets = {}
+    if not location or not location:IsA("Instance") then
+        Log("Invalid location provided.", "❌")
+        return validTargets
+    end
+
+    for _, container in pairs(location:GetChildren()) do
+        for _, mobType in pairs(mobTypes or {}) do
+            local mob = container:FindFirstChild(mobType)
+            if mob and mob.Parent then
+                local humanoid = mob:FindFirstChild("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                    if targetPart then
+                        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                        if distance <= npcConfig.DistanceLimit then
+                            table.insert(validTargets, {
+                                Mob = mob,
+                                TargetPart = targetPart,
+                                Distance = distance,
+                                Health = humanoid.Health
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if #validTargets > 0 then
+        Log("Found " .. #validTargets .. " NPCs in " .. location.Name .. ".", "🔍")
+    else
+        Log("No NPCs found in " .. location.Name .. ".", "⚠️")
+    end
+    return validTargets
+end
+
+-- Проверка состояния NPC (жив/мёртв)
+function EntityX:IsNPCAlive(mob)
+    if not mob or not mob:FindFirstChild("Humanoid") then return false end
+    return mob.Humanoid.Health > 0
+end
+
+-- Получение расстояния до NPC
+function EntityX:GetDistanceToNPC(mob)
+    if not mob or not mob:FindFirstChild(npcConfig.TargetPart) then return math.huge end
+    return (Camera.CFrame.Position - mob[npcConfig.TargetPart].Position).Magnitude
+end
+
 return EntityX
-
-
-
