@@ -1,70 +1,47 @@
 print(' {🧠} EntityX lib by stuppp110')
 local EntityX = {}
-
--- Default settings
-EntityX.Settings = {
-    TargetPart = "Head",
-    MaxDistance = 400,
-    MaxFOV = 300
+-- Predefined entity groups with NPC names
+EntityX.EntityGroups = {
+    AI = {
+        Missions = {
+            Names = {"Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial", "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"},
+            Path = workspace:FindFirstChild("Missions")
+        },
+        SpiderCave = {
+            Names = {"Spider", "Cave Spider"},
+            Path = workspace.MapProps:FindFirstChild("SpiderCave")
+        }
+    }
 }
 
--- Cache for performance
-local entityCache = {}
-
--- Fast entity lookup function
+-- Generic function to get closest entity from a given path
 function EntityX:GetClosestEntity(mousePos, entityGroup)
     local Camera = workspace.CurrentCamera
-    local entities = entityCache[entityGroup] or {}
-    local closestEntity, closestPart, minDistance = nil, nil, math.huge
+    local entities = {}
+    local closestEntity, minDistance = nil, math.huge
 
-    -- Update cache if needed
-    if not entityCache[entityGroup] or tick() - (entityCache.lastUpdate or 0) > 1 then
-        entities = {}
-        for _, pathData in pairs(EntityX.EntityGroups[entityGroup] or {}) do
-            if pathData.Path then
-                for _, entity in pairs(pathData.Path:GetChildren()) do
-                    if entity:FindFirstChild("Humanoid") and entity:FindFirstChild(EntityX.Settings.TargetPart) then
-                        table.insert(entities, entity)
+    local groupData = EntityX.EntityGroups[entityGroup]
+    if not groupData then return nil end
+
+    for _, pathData in pairs(groupData) do
+        if pathData.Path and pathData.Names then
+            for _, entity in pairs(pathData.Path:GetChildren()) do
+                if table.find(pathData.Names, entity.Name) then
+                    local distance = (Camera.CFrame.Position - entity.Position).Magnitude
+                    local screenPos = Camera:WorldToViewportPoint(entity.Position)
+                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if mouseDistance < minDistance then
+                        minDistance = mouseDistance
+                        closestEntity = entity
                     end
                 end
             end
         end
-        entityCache[entityGroup] = entities
-        entityCache.lastUpdate = tick()
     end
 
-    for _, entity in pairs(entities) do
-        local targetPart = entity:FindFirstChild(EntityX.Settings.TargetPart)
-        if targetPart then
-            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-            if distance <= EntityX.Settings.MaxDistance then
-                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                if mouseDistance <= EntityX.Settings.MaxFOV and mouseDistance < minDistance then
-                    minDistance = mouseDistance
-                    closestEntity = entity
-                    closestPart = targetPart
-                end
-            end
-        end
-    end
-
-    return closestEntity, closestPart
-end
-
--- Predefined entity groups
-EntityX.EntityGroups = {
-    AI = {
-        Missions = { Path = workspace:FindFirstChild("Missions") },
-        SpiderCave = { Path = workspace.MapProps:FindFirstChild("SpiderCave") }
-    }
-}
-
--- Update settings
-function EntityX:SetSettings(settings)
-    for k, v in pairs(settings) do
-        EntityX.Settings[k] = v
-    end
+    return closestEntity
 end
 
 return EntityX
+
+
