@@ -306,7 +306,8 @@ local function GetClosestTarget()
                     Player = player,
                     MouseDistance = mouseDistance,
                     Health = humanoid.Health,
-                    TargetPart = targetPart
+                    TargetPart = targetPart,
+                    Distance = distance
                 })
             end
         end
@@ -314,8 +315,7 @@ local function GetClosestTarget()
     
     table.sort(validTargets, function(a, b)
         if Settings.SortMethod == "Distance" then
-            return (Camera.CFrame.Position - a.TargetPart.Position).Magnitude <
-                   (Camera.CFrame.Position - b.TargetPart.Position).Magnitude
+            return a.Distance < b.Distance
         elseif Settings.SortMethod == "Health" then
             return a.Health < b.Health
         elseif Settings.SortMethod == "Crosshair" then
@@ -641,7 +641,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Entities",
-        Options = {"QuestAI"},
+        Options = {"QuestAI", "SummonAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
@@ -692,10 +692,24 @@ RunService.RenderStepped:Connect(function()
     UpdateFriendsCheck()
 
     local target, targetPart = GetClosestTarget()
-    if not target and Settings.NPCSupport then
-        target, targetPart = EntityX:GetClosestNPC()
-        if target and not IsVisible(targetPart) then
-            target, targetPart = nil, nil
+    local npcTarget, npcTargetPart = nil, nil
+    if Settings.NPCSupport then
+        npcTarget, npcTargetPart = EntityX:GetClosestNPC()
+        if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
+            local allNPCs = EntityX:GetAllNPCs()
+            for _, npc in pairs(allNPCs) do
+                if npc.Type == "SummonAI" then
+                    if not target or npc.Distance < (target and validTargets[1].Distance or math.huge) then
+                        target, targetPart = npc.Mob, npc.TargetPart
+                        break
+                    end
+                end
+            end
+            if Settings.SelectedTarget == "SummonAI" and (not target or (npcTarget and npcTargetPart and npcTarget.Type == "SummonAI")) then
+                target, targetPart = npcTarget, npcTargetPart
+            elseif Settings.SelectedTarget == "QuestAI" and npcTarget and npcTarget.Type == "QuestAI" then
+                target, targetPart = npcTarget, npcTargetPart
+            end
         end
     end
     currentTarget = target
