@@ -1,3 +1,4 @@
+local EntityX = loadstring("PUT_YOUR_ENTITYX_URL_OR_PATH_HERE")()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -26,7 +27,7 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     NPCSupport = false,
-    SelectedTarget = "QuestAI"
+    SelectedTarget = "AI"
 }
 
 local lastPrintTime = 0
@@ -320,50 +321,20 @@ local function GetClosestTarget()
     return nil, nil
 end
 
--- Поиск ближайшего NPC
+-- Поиск ближайшего NPC с использованием EntityX
 local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then return nil, nil end
-
-    local missions = workspace:FindFirstChild("Missions")
-    if not missions then
-        DelayedPrint("GetClosestMob: Missions not found")
-        return nil, nil
-    end
+    if not Settings.NPCSupport or Settings.SelectedTarget ~= "AI" then return nil, nil end
 
     local mousePos = UserInputService:GetMouseLocation()
-    local mobTypes = {
-        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
-        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"
-    }
+    local entityGroup = EntityX.EntityGroups.AI
 
-    for _, mission in pairs(missions:GetChildren()) do
-        local aiSpawners = mission:FindFirstChild("AISpawners")
-        if aiSpawners then
-            for _, spawner in pairs(aiSpawners:GetChildren()) do
-                for _, child in pairs(spawner:GetChildren()) do
-                    for _, mobType in pairs(mobTypes) do
-                        if child.Name:lower():find(mobType:lower()) then
-                            local humanoid = child:FindFirstChild("Humanoid")
-                            if humanoid and humanoid.Health > 0 then
-                                local targetPart = child:FindFirstChild(Settings.TargetPart)
-                                if targetPart then
-                                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                                    if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                            DelayedPrint("Targeting: " .. child.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
-                                            return child, targetPart
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
+    -- Check Missions
+    local target, targetPart = EntityX:GetClosestEntity(mousePos, entityGroup.Missions.Types, entityGroup.Missions.Path)
+    if target then return target, targetPart end
+
+    -- Check SpiderCave
+    target, targetPart = EntityX:GetClosestEntity(mousePos, entityGroup.SpiderCave.Types, entityGroup.SpiderCave.Path)
+    if target then return target, targetPart end
 
     DelayedPrint("No valid mob target found")
     return nil, nil
@@ -381,7 +352,6 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    -- Проверка типа цели
     local isPlayer = Players:GetPlayerFromCharacter(target)
     if isPlayer and not target.Character then
         DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no Character")
@@ -596,6 +566,7 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.TargetPart = value
+            EntityX.Settings.TargetPart = value
             notify("Silent Aim", "Target Part set to: " .. value, false)
         end
     }, "SilentTargetPart")
@@ -623,6 +594,7 @@ function Init(ui, core, notification)
         Default = Settings.VisibilityCheck,
         Callback = function(value)
             Settings.VisibilityCheck = value
+            EntityX.Settings.VisibilityCheck = value
             notify("Silent Aim", "Visibility Check " .. (value and "ON" or "OFF"), false)
         end
     }, "SilentVisibilityCheck")
@@ -675,7 +647,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Entities",
-        Options = {"QuestAI"},
+        Options = {"AI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
