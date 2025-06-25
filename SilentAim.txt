@@ -697,22 +697,43 @@ RunService.RenderStepped:Connect(function()
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
         if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
             local allNPCs = EntityX:GetAllNPCs()
-            for _, npc in pairs(allNPCs) do
-                local isSummon = npc.Mob.Name == "Spiderling" or npc.Mob.Name == "Shade"
-                local owner = isSummon and npc.Mob:GetAttribute("Owner")
-                if isSummon and owner and owner == LocalPlayer.Name then
-                    -- Игнорируем, если Owner совпадает с никнеймом
-                    goto continue
+            -- Проверка Summon NPC (Spiderling и Shade) с атрибутом Owner
+            local spiderling = workspace:FindFirstChild("Spiderling")
+            local shade = workspace:FindFirstChild("Shade")
+            local summonNPCs = {}
+            
+            local function addSummonIfValid(mob)
+                local summonData = EntityX.checkSummonNPC(mob)
+                if summonData then
+                    local owner = mob:GetAttribute("Owner")
+                    if not owner or owner ~= LocalPlayer.Name then
+                        table.insert(summonNPCs, summonData)
+                    else
+                        DelayedPrint("Ignored " .. mob.Name .. " due to Owner matching LocalPlayer")
+                    end
                 end
-                if not target or npc.Distance < (target and validTargets[1].Distance or math.huge) then
-                    target, targetPart = npc.Mob, npc.TargetPart
-                end
-                ::continue::
             end
-            if Settings.SelectedTarget == "SummonAI" and (not target or (npcTarget and npcTargetPart and (npcTarget.Name == "Spiderling" or npcTarget.Name == "Shade"))) then
-                target, targetPart = npcTarget, npcTargetPart
-            elseif Settings.SelectedTarget == "QuestAI" and npcTarget and (npcTarget.Name ~= "Spiderling" and npcTarget.Name ~= "Shade") then
-                target, targetPart = npcTarget, npcTargetPart
+
+            addSummonIfValid(spiderling)
+            addSummonIfValid(shade)
+
+            for _, npc in pairs(allNPCs) do
+                table.insert(summonNPCs, npc)
+            end
+
+            if #summonNPCs > 0 then
+                table.sort(summonNPCs, function(a, b)
+                    local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
+                    local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
+                    return aScore < bScore
+                end)
+                npcTarget, npcTargetPart = summonNPCs[1].Mob, summonNPCs[1].TargetPart
+            end
+
+            if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
+                if not target or (npcTarget and (npcTarget.Name == "Spiderling" or npcTarget.Name == "Shade") and summonNPCs[1].Distance < (target and validTargets[1].Distance or math.huge)) then
+                    target, targetPart = npcTarget, npcTargetPart
+                end
             end
         end
     end
