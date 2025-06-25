@@ -1,5 +1,5 @@
 print('11')
-local EntityX = loadstring("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt")()
+local EntityX = loadstring("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true)()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
