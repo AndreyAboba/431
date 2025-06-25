@@ -4,6 +4,9 @@ local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+-- Загрузка EntityX
+local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
+
 local Core = nil
 local UI = nil
 local notify = nil
@@ -335,111 +338,6 @@ local function GetClosestTarget()
     return nil, nil
 end
 
--- Поиск ближайшего NPC
-local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then
-        return nil, nil
-    end
-
-    local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
-    local missions = workspace:FindFirstChild("Missions")
-    if not spiderCave and not missions then
-        DelayedPrint("GetClosestMob: SpiderCave and Missions not found")
-        return nil, nil
-    end
-
-    local mousePos = UserInputService:GetMouseLocation()
-    local missionMobTypes = {
-        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
-        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
-        "Poacher Apprentice", "Nightfall Spider"
-    }
-    local spiderCaveMobTypes = {"Spider", "Cave Spider"}
-
-    local validTargets = {}
-
-    -- Поиск в Missions (для всех missionMobTypes)
-    if missions then
-        for _, mission in pairs(missions:GetChildren()) do
-            local aiSpawners = mission:FindFirstChild("AISpawners")
-            if aiSpawners then
-                for _, spawner in pairs(aiSpawners:GetChildren()) do
-                    for _, mobType in pairs(missionMobTypes) do
-                        local mob = spawner:FindFirstChild(mobType)
-                        if mob and mob.Parent then
-                            local humanoid = mob:FindFirstChild("Humanoid")
-                            if humanoid and humanoid.Health > 0 then
-                                local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                                if targetPart then
-                                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                                    if distance <= 120 then
-                                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                            table.insert(validTargets, {
-                                                Mob = mob,
-                                                TargetPart = targetPart,
-                                                Distance = distance,
-                                                Health = humanoid.Health,
-                                                MouseDistance = mouseDistance
-                                            })
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Поиск в SpiderCave (для Spider и Cave Spider с динамичным индексом)
-    if spiderCave then
-        for _, container in pairs(spiderCave:GetChildren()) do
-            for _, spiderType in pairs(spiderCaveMobTypes) do
-                local mob = container:FindFirstChild(spiderType)
-                if mob and mob.Parent then
-                    local humanoid = mob:FindFirstChild("Humanoid")
-                    if humanoid and humanoid.Health > 0 then
-                        local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                        if targetPart then
-                            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                            if distance <= 120 then
-                                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                    table.insert(validTargets, {
-                                        Mob = mob,
-                                        TargetPart = targetPart,
-                                        Distance = distance,
-                                        Health = humanoid.Health,
-                                        MouseDistance = mouseDistance
-                                    })
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Сортировка 50/50 по дистанции и здоровью
-    table.sort(validTargets, function(a, b)
-        local aScore = (a.Distance / 120) * 0.5 + (a.Health / 100) * 0.5 -- Нормализация
-        local bScore = (b.Distance / 120) * 0.5 + (b.Health / 100) * 0.5
-        return aScore < bScore
-    end)
-
-    if #validTargets > 0 then
-        DelayedPrint("Targeting NPC: " .. validTargets[1].Mob.Name .. " (Hitbox: " .. validTargets[1].TargetPart.Name .. ", Distance: " .. math.floor(validTargets[1].Distance) .. "px)")
-        return validTargets[1].Mob, validTargets[1].TargetPart
-    end
-    DelayedPrint("No valid mob target found")
-    return nil, nil
-end
-
 -- Отправка выстрела через RemoteEvent
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
@@ -664,6 +562,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.TargetPart = value
             notify("Silent Aim", "Target Part set to: " .. value, false)
+            EntityX:SetTargetPart(value)
         end
     }, "SilentTargetPart")
 
@@ -794,7 +693,10 @@ RunService.RenderStepped:Connect(function()
 
     local target, targetPart = GetClosestTarget()
     if not target and Settings.NPCSupport then
-        target, targetPart = GetClosestMob()
+        target, targetPart = EntityX:GetClosestNPC()
+        if target and not IsVisible(targetPart) then
+            target, targetPart = nil, nil
+        end
     end
     currentTarget = target
     
