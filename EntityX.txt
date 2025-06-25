@@ -1,8 +1,11 @@
 print(' {🧠} EntityX lib by stuppp110')
+-- EntityX: Lightweight NPC Entity Finder Library
+
 local EntityX = {}
+
 -- Predefined entity groups with NPC names
 EntityX.EntityGroups = {
-    AI = {
+    QuestAI = {
         Missions = {
             Names = {"Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial", "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"},
             Path = workspace:FindFirstChild("Missions")
@@ -17,7 +20,6 @@ EntityX.EntityGroups = {
 -- Generic function to get closest entity from a given path
 function EntityX:GetClosestEntity(mousePos, entityGroup)
     local Camera = workspace.CurrentCamera
-    local entities = {}
     local closestEntity, minDistance = nil, math.huge
 
     local groupData = EntityX.EntityGroups[entityGroup]
@@ -43,5 +45,6 @@ function EntityX:GetClosestEntity(mousePos, entityGroup)
 end
 
 return EntityX
+
 
 
