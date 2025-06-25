@@ -2,24 +2,20 @@
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
--- Красивое логирование с текстовыми статусами
-local function Log(message, emoji, status)
-    local statusTag = status or "[INFO]"
-    print(statusTag .. " {" .. emoji .. "} EntityX | " .. message)
+
+-- Красивое логирование
+local function Log(message, emoji)
+    print("{" .. emoji .. "} EntityX | " .. message)
 end
-Log("Made by stuppp110", "💠", "[INFO]")
+
 -- Проверка ошибок и инициализация
 local function Initialize()
-    local hasErrors = false
     if not workspace or not Camera then
-        Log("Failed to initialize: Workspace or Camera not found.", "❌", "[ERROR]")
-        hasErrors = true
-    end
-    if hasErrors then
-        Log("Loaded with errors, some features may be unavailable.", "🟠", "[WARNING]")
+        Log("Failed to initialize: Workspace or Camera not found.", "❌")
+        Log("Loaded with errors, some features may be unavailable.", "🟠")
     else
-        Log("Lightweight NPC interactions.", "🧠", "[INFO]")
-        Log("Loaded successfully!", "🟢", "[SUCCESS]")
+        Log("Lightweight NPC interactions.", "🧠")
+        Log("Loaded successfully!", "🟢")
     end
 end
 Initialize()
@@ -28,8 +24,8 @@ Initialize()
 local npcCache = {}
 local lastUpdate = 0
 local lastLog = 0
-local updateInterval = 0.5 -- Обновление кэша каждые 0.5 секунды
-local logInterval = 2.0 -- Логи каждые 2 секунды
+local updateInterval = 0.35 -- Обновление кэша каждые 0.5 секунды
+local logInterval = 2.0 -- Логи каждые 1 секунду
 
 -- Конфигурация поиска NPC
 local npcConfig = {
@@ -46,6 +42,8 @@ local function FindAllNPCs()
 
     local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
     local missions = workspace:FindFirstChild("Missions")
+    local spiderling = workspace:FindFirstChild("Spiderling")
+    local shade = workspace:FindFirstChild("Shade")
     npcCache = {}
 
     -- Поиск в Missions
@@ -72,7 +70,8 @@ local function FindAllNPCs()
                                             Mob = mob,
                                             TargetPart = targetPart,
                                             Distance = distance,
-                                            Health = humanoid.Health
+                                            Health = humanoid.Health,
+                                            Type = "QuestAI"
                                         })
                                     end
                                 end
@@ -101,7 +100,8 @@ local function FindAllNPCs()
                                     Mob = mob,
                                     TargetPart = targetPart,
                                     Distance = distance,
-                                    Health = humanoid.Health
+                                    Health = humanoid.Health,
+                                    Type = "QuestAI"
                                 })
                             end
                         end
@@ -111,10 +111,49 @@ local function FindAllNPCs()
         end
     end
 
+    -- Поиск Summon NPC
+    if spiderling and spiderling.Parent then
+        local humanoid = spiderling:FindFirstChild("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            local targetPart = spiderling:FindFirstChild(npcConfig.TargetPart) or spiderling:FindFirstChild("HumanoidRootPart")
+            if targetPart then
+                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                if distance <= npcConfig.DistanceLimit then
+                    table.insert(npcCache, {
+                        Mob = spiderling,
+                        TargetPart = targetPart,
+                        Distance = distance,
+                        Health = humanoid.Health,
+                        Type = "SummonAI"
+                    })
+                end
+            end
+        end
+    end
+
+    if shade and shade.Parent then
+        local humanoid = shade:FindFirstChild("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            local targetPart = shade:FindFirstChild(npcConfig.TargetPart) or shade:FindFirstChild("HumanoidRootPart")
+            if targetPart then
+                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                if distance <= npcConfig.DistanceLimit then
+                    table.insert(npcCache, {
+                        Mob = shade,
+                        TargetPart = targetPart,
+                        Distance = distance,
+                        Health = humanoid.Health,
+                        Type = "SummonAI"
+                    })
+                end
+            end
+        end
+    end
+
     lastUpdate = currentTime
     local currentLogTime = tick()
     if currentLogTime - lastLog >= logInterval and #npcCache > 0 then
-        Log("Found entities! (" .. #npcCache .. ")", "🛡", "[INFO]")
+        Log("Found entities! (" .. #npcCache .. ")", "🛡")
         lastLog = currentLogTime
     end
     return npcCache
@@ -144,20 +183,20 @@ end
 -- Установка предела дистанции
 function EntityX:SetDistanceLimit(limit)
     npcConfig.DistanceLimit = limit or 120
-    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️", "[INFO]")
+    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️")
 end
 
 -- Установка целевой части тела
 function EntityX:SetTargetPart(part)
     npcConfig.TargetPart = part or "Head"
-    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️", "[INFO]")
+    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️")
 end
 
 -- Кастомный поиск NPC в заданной локации
 function EntityX:FindNPCsInLocation(location, mobTypes)
     local validTargets = {}
     if not location or not location:IsA("Instance") then
-        Log("Invalid location provided.", "❌", "[ERROR]")
+        Log("Invalid location provided.", "❌")
         return validTargets
     end
 
@@ -185,7 +224,7 @@ function EntityX:FindNPCsInLocation(location, mobTypes)
     end
 
     if #validTargets > 0 and tick() - lastLog >= logInterval then
-        Log("Found entities! (" .. #validTargets .. ")", "🛡", "[INFO]")
+        Log("Found entities! (" .. #validTargets .. ")", "🛡")
         lastLog = tick()
     end
     return validTargets
