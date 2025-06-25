@@ -259,8 +259,12 @@ local function GetClosestTarget()
         
         local humanoid = player.Character:FindFirstChild("Humanoid")
         local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
-            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to invalid humanoid or health")
+        if not humanoidRoot then
+            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to missing HumanoidRootPart")
+            continue
+        end
+        if humanoid and humanoid.Health <= 0 then
+            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to zero health")
             continue
         end
         
@@ -292,7 +296,7 @@ local function GetClosestTarget()
                 table.insert(validTargets, {
                     Player = player,
                     MouseDistance = mouseDistance,
-                    Health = humanoid.Health,
+                    Health = humanoid and humanoid.Health or 100,
                     TargetPart = targetPart
                 })
             end
@@ -304,12 +308,12 @@ local function GetClosestTarget()
             return (Camera.CFrame.Position - a.Player.Character[a.TargetPart.Name].Position).Magnitude <
                    (Camera.CFrame.Position - b.Player.Character[b.TargetPart.Name].Position).Magnitude
         elseif Settings.SortMethod == "Health" then
-            return a.Health < b.Health
+            return (a.Health or 100) < (b.Health or 100)
         elseif Settings.SortMethod == "Crosshair" then
             return a.MouseDistance < b.MouseDistance
         elseif Settings.SortMethod == "Auto" then
-            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
-            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
+            local aScore = (a.Health or 100) * 0.7 + a.MouseDistance * 0.3
+            local bScore = (b.Health or 100) * 0.7 + b.MouseDistance * 0.3
             return aScore < bScore
         end
         return a.MouseDistance < b.MouseDistance
