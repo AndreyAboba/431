@@ -25,8 +25,8 @@ local npcCache = {}
 local lastState = {}
 local lastUpdate = 0
 local lastLog = 0
-local updateInterval = 0.35 -- Обновление кэша каждые 0.5 секунды
-local logInterval = 2 -- Логи каждые 1 секунду
+local updateInterval = 0.5 -- Обновление кэша каждые 0.5 секунды
+local logInterval = 1.0 -- Логи каждые 1 секунду
 
 -- Конфигурация поиска NPC
 local npcConfig = {
@@ -35,8 +35,8 @@ local npcConfig = {
     DeltaThreshold = 5 -- Минимальное изменение расстояния для обновления
 }
 
--- Асинхронная функция поиска NPC
-local function FindAllNPCsAsync()
+-- Поиск всех NPC
+local function FindAllNPCs()
     local currentTime = tick()
     if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
         return npcCache
@@ -106,7 +106,7 @@ local function FindAllNPCsAsync()
                         local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                         if targetPart then
                             local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                            if distance <= npcConfig.DeltaThreshold then
+                            if distance <= npcConfig.DistanceLimit then
                                 local key = mob:GetFullName()
                                 if not lastState[key] or math.abs(lastState[key].Distance - distance) > npcConfig.DeltaThreshold or lastState[key].Health ~= humanoid.Health then
                                     newCache[key] = {
@@ -139,7 +139,7 @@ local function FindAllNPCsAsync()
                 local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                 if targetPart then
                     local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                    if distance <= npcConfig.DeltaThreshold then
+                    if distance <= npcConfig.DistanceLimit then
                         local key = mob:GetFullName()
                         if not lastState[key] or math.abs(lastState[key].Distance - distance) > npcConfig.DeltaThreshold or lastState[key].Health ~= humanoid.Health then
                             newCache[key] = {
@@ -175,15 +175,6 @@ local function FindAllNPCsAsync()
     return npcCache
 end
 
--- Асинхронный запуск поиска
-local co = coroutine.create(function()
-    while true do
-        FindAllNPCsAsync()
-        wait(updateInterval)
-    end
-end)
-coroutine.resume(co)
-
 -- Получение ближайшего NPC
 function EntityX:GetClosestNPC()
     local npcs = {}
@@ -196,7 +187,7 @@ function EntityX:GetClosestNPC()
 
     table.sort(npcs, function(a, b)
         local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
-        local bScore = (b.Distance / npcConfig.DeltaThreshold) * 0.5 + (b.Health / 100) * 0.5
+        local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
         return aScore < bScore
     end)
 
