@@ -2,13 +2,12 @@
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
-Log("Made by stuppp110", "💠", "[INFO]")
 -- Красивое логирование с текстовыми статусами
 local function Log(message, emoji, status)
     local statusTag = status or "[INFO]"
     print(statusTag .. " {" .. emoji .. "} EntityX | " .. message)
 end
-
+Log("Made by stuppp110", "💠", "[INFO]")
 -- Проверка ошибок и инициализация
 local function Initialize()
     local hasErrors = false
