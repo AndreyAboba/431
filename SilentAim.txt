@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
+print('2')
 local Core = nil
 local UI = nil
 local notify = nil
@@ -234,8 +234,8 @@ local function GetToolListener()
     return toolListener, pistolConfig
 end
 
--- Поиск ближайшего игрока
-local function GetClosestPlayer()
+-- Поиск ближайшей цели (игроки)
+local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local validTargets = {}
     local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
@@ -250,10 +250,22 @@ local function GetClosestPlayer()
         if isFriend == nil and Core and Core.Services and Core.Services.FriendsList then
             isFriend = Core.Services.FriendsList[playerNameLower] == true
             Cache.PlayerFriendCache[playerNameLower] = isFriend
-            DelayedPrint("GetClosestPlayer: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
+            DelayedPrint("GetClosestTarget: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
         end
         if isFriend then
-            DelayedPrint("GetClosestPlayer: Excluded friend " .. player.Name .. " from targets")
+            DelayedPrint("GetClosestTarget: Excluded friend " .. player.Name .. " from targets")
+            continue
+        end
+        
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
+            continue
+        end
+        
+        local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
+        if distance > Settings.DistanceLimit then
+            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to distance (" .. math.floor(distance) .. " > " .. Settings.DistanceLimit .. ")")
             continue
         end
         
@@ -268,13 +280,7 @@ local function GetClosestPlayer()
         end
         
         if not targetPart then
-            DelayedPrint("GetClosestPlayer: No valid hitbox found for " .. player.Name)
-            continue
-        end
-        
-        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-        if distance > Settings.DistanceLimit then
-            DelayedPrint("GetClosestPlayer: Excluded " .. player.Name .. " due to distance (" .. math.floor(distance) .. " > " .. Settings.DistanceLimit .. ")")
+            DelayedPrint("GetClosestTarget: No valid hitbox found for " .. player.Name)
             continue
         end
         
@@ -285,6 +291,7 @@ local function GetClosestPlayer()
                 table.insert(validTargets, {
                     Player = player,
                     MouseDistance = mouseDistance,
+                    Health = humanoid.Health,
                     TargetPart = targetPart
                 })
             end
@@ -295,11 +302,13 @@ local function GetClosestPlayer()
         if Settings.SortMethod == "Distance" then
             return (Camera.CFrame.Position - a.Player.Character[a.TargetPart.Name].Position).Magnitude <
                    (Camera.CFrame.Position - b.Player.Character[b.TargetPart.Name].Position).Magnitude
+        elseif Settings.SortMethod == "Health" then
+            return a.Health < b.Health
         elseif Settings.SortMethod == "Crosshair" then
             return a.MouseDistance < b.MouseDistance
         elseif Settings.SortMethod == "Auto" then
-            local aScore = a.MouseDistance * 0.3
-            local bScore = b.MouseDistance * 0.3
+            local aScore = a.Health * 0.7 + a.MouseDistance * 0.3
+            local bScore = b.Health * 0.7 + b.MouseDistance * 0.3
             return aScore < bScore
         end
         return a.MouseDistance < b.MouseDistance
@@ -340,17 +349,19 @@ local function GetClosestMob()
                 for _, mobType in pairs(mobTypes) do
                     local mob = spawner:FindFirstChild(mobType)
                     if mob and mob.Parent then
-                        local humanoid = mob:FindFirstChild("Humanoid")
-                        if humanoid and humanoid.Health > 0 then
-                            local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                            if targetPart then
-                                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                                if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                                    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                    if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
+                        local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                        if targetPart then
+                            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                            if distance <= 400 and not IsInSafezone(targetPart.Position) then
+                                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
+                                    local humanoid = mob:FindFirstChild("Humanoid")
+                                    if humanoid and humanoid.Health > 0 then
                                         DelayedPrint("Targeting NPC: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
                                         return mob, targetPart
+                                    else
+                                        DelayedPrint("GetClosestMob: Excluded " .. mob.Name .. " due to invalid Humanoid or health")
                                     end
                                 end
                             end
@@ -377,9 +388,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local isPlayer = Players:GetPlayerFromCharacter(target)
-    if not isPlayer and not target.Parent then
-        DelayedPrint("SilentShot: Target has no parent (invalid NPC)")
+    if not target.Character and not target.Parent then
+        DelayedPrint("SilentShot: Target has no character or parent")
         return
     end
     
@@ -394,7 +404,7 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoid = isPlayer and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
+    local humanoid = target.Character and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
     if not humanoid then
         DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
@@ -647,7 +657,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Sort Method",
-        Options = {"Distance", "Crosshair", "Auto"},
+        Options = {"Distance", "Health", "Crosshair", "Auto"},
         Default = Settings.SortMethod,
         MultiSelection = false,
         Callback = function(value)
@@ -717,7 +727,7 @@ RunService.RenderStepped:Connect(function()
 
     UpdateFriendsCheck()
 
-    local target, targetPart = GetClosestPlayer()
+    local target, targetPart = GetClosestTarget()
     if not target and Settings.NPCSupport then
         target, targetPart = GetClosestMob()
     end
