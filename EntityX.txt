@@ -1,29 +1,24 @@
--- EntityX Library for NPC Interaction
+
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
 
--- Красивое логирование
 local function Log(message, emoji)
     print("{" .. emoji .. "} EntityX | " .. message)
 end
-
--- Инициализация с красивым логом
+-- log
 Log("Lightweight NPC interactions.", "🧠")
 Log("Loaded successfully!", "🟢")
-
--- Internal cache for performance
+-- кэщ
 local npcCache = {}
 local lastUpdate = 0
-local updateInterval = 0.1 -- Обновление кэша каждые 0.1 секунды
-
--- Конфигурация поиска NPC
+local updateInterval = 0.1
 local npcConfig = {
     DistanceLimit = 120,
     TargetPart = "Head"
 }
 
--- Поиск всех NPC в указанных локациях
+-- поиск NPC в секторах
 local function FindAllNPCs()
     local currentTime = tick()
     if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
@@ -34,7 +29,7 @@ local function FindAllNPCs()
     local missions = workspace:FindFirstChild("Missions")
     npcCache = {}
 
-    -- Поиск в Missions (для Poacher, Imperial и т.д.)
+    -- Поиск в Missions
     if missions then
         for _, mission in pairs(missions:GetChildren()) do
             local aiSpawners = mission:FindFirstChild("AISpawners")
@@ -70,7 +65,7 @@ local function FindAllNPCs()
         end
     end
 
-    -- Поиск в SpiderCave (для Spider и Cave Spider с динамичным индексом)
+    -- Поиск в SpiderCave
     if spiderCave then
         for _, container in pairs(spiderCave:GetChildren()) do
             local spiderTypes = {"Spider", "Cave Spider"}
@@ -101,7 +96,7 @@ local function FindAllNPCs()
     return npcCache
 end
 
--- Получение ближайшего NPC
+-- Получение ближайшего энтити
 function EntityX:GetClosestNPC()
     local npcs = FindAllNPCs()
     if #npcs == 0 then
@@ -130,19 +125,19 @@ function EntityX:GetAllNPCs()
     return npcs
 end
 
--- Установка предела дистанции
+-- предел дистанции
 function EntityX:SetDistanceLimit(limit)
     npcConfig.DistanceLimit = limit or 120
     Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️")
 end
 
--- Установка целевой части тела
+-- целевая часть тела
 function EntityX:SetTargetPart(part)
     npcConfig.TargetPart = part or "Head"
     Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️")
 end
 
--- Кастомный поиск NPC в заданной локации
+-- Кастомный поиск NPC
 function EntityX:FindNPCsInLocation(location, mobTypes)
     local validTargets = {}
     if not location or not location:IsA("Instance") then
