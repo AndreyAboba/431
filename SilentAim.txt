@@ -7,7 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local Core = nil
 local UI = nil
 local notify = nil
-print('2')
+
 -- Конфигурация Silent Aim
 local Settings = {
     Enabled = false,
@@ -42,7 +42,7 @@ local Cache = {
     FriendsListVersion = 0
 }
 
--- Создание FOV Circle с Drawing
+-- Создание FOV Circle
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 2
 fovCircle.Color = Settings.FOVColor
@@ -60,17 +60,13 @@ local function DelayedPrint(message)
     end
 end
 
--- Улучшенная функция проверки видимости
+-- Проверка видимости цели
 local function IsVisible(targetPart)
-    if not Settings.VisibilityCheck then
-        return true
-    end
+    if not Settings.VisibilityCheck then return true end
     
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then
-        return false
-    end
+    if not rootPart then return false end
     
     local rayOrigin = rootPart.Position
     local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
@@ -80,7 +76,7 @@ local function IsVisible(targetPart)
     
     local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
-        DelayedPrint("Visible: Main ray hit target " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
+        DelayedPrint("Visible: Main ray hit " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
         return true
     end
     
@@ -93,7 +89,7 @@ local function IsVisible(targetPart)
     for _, offsetDir in pairs(offsetDirections) do
         local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
         if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
-            DelayedPrint("Visible: Offset ray hit target " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
+            DelayedPrint("Visible: Offset ray hit " .. targetPart.Parent.Name .. " (" .. targetPart.Name .. ")")
             return true
         end
     end
@@ -102,12 +98,10 @@ local function IsVisible(targetPart)
     return false
 end
 
--- Функция проверки нахождения в сейфзоне
+-- Проверка нахождения в безопасной зоне
 local function IsInSafezone(position)
     local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
-    if not safezone then
-        return false
-    end
+    if not safezone then return false end
     
     local safezonePos = safezone.Position
     local safezoneSize = safezone.Size / 2
@@ -118,52 +112,38 @@ local function IsInSafezone(position)
            math.abs(relativePos.Z) <= safezoneSize.Z
 end
 
--- Функция проверки щита
+-- Проверка защиты (ProtectionBubble)
 local function HasProtectionBubble(player)
-    if not player or not player.Character then
-        return false
-    end
+    if not player or not player.Character then return false end
     
     local protectionBubble = workspace:FindFirstChild("Entities") and workspace.Entities:FindFirstChild("ProtectionBubble")
-    if not protectionBubble then
-        return false
-    end
+    if not protectionBubble then return false end
     
     local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-    if not targetPart then
-        return false
-    end
+    if not targetPart then return false end
     
     local distance = (protectionBubble.Position - targetPart.Position).Magnitude
     return distance < 10
 end
 
--- Функция проверки Lasso
+-- Проверка наличия Lasso
 local function HasLasso(player)
-    if not player then
-        return false
-    end
-
+    if not player then return false end
+    
     local charactersFolder = workspace:FindFirstChild("Characters")
-    if not charactersFolder then
-        return false
-    end
-
+    if not charactersFolder then return false end
+    
     local playerName = player.Name
-    if not playerName then
-        return false
-    end
-
+    if not playerName then return false end
+    
     local playerContainer = charactersFolder:FindFirstChild(playerName)
-    if not playerContainer then
-        return false
-    end
-
+    if not playerContainer then return false end
+    
     local fakeLimbs = playerContainer:FindFirstChild("FakeLimbs")
     return fakeLimbs ~= nil
 end
 
--- Функция проверки возможности атаки
+-- Проверка возможности атаки
 local function CanAttack(player)
     if not player then
         DelayedPrint("CanAttack: No player provided")
@@ -219,13 +199,14 @@ local function CanAttack(player)
     return true
 end
 
--- Функция поиска ToolListener и PistolConfig
+-- Поиск ToolListener и PistolConfig
 local function GetToolListener()
     local toolListener = nil
     local wand = nil
     
     local character = LocalPlayer.Character
     if not character then
+        DelayedPrint("GetToolListener: No character found")
         return nil, nil
     end
 
@@ -253,7 +234,7 @@ local function GetToolListener()
     return toolListener, pistolConfig
 end
 
--- Оптимизированная функция поиска ближайшей цели (игроки)
+-- Поиск ближайшей цели (игроки)
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local validTargets = {}
@@ -288,17 +269,14 @@ local function GetClosestTarget()
             continue
         end
         
-        local targetPart = nil
-        if Settings.SmartHitbox then
+        local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+        if not targetPart and Settings.SmartHitbox then
             for _, partName in ipairs(possibleParts) do
-                local part = player.Character:FindFirstChild(partName)
-                if part then
-                    targetPart = part
+                targetPart = player.Character:FindFirstChild(partName)
+                if targetPart then
                     break
                 end
             end
-        else
-            targetPart = player.Character:FindFirstChild(Settings.TargetPart)
         end
         
         if not targetPart then
@@ -322,8 +300,8 @@ local function GetClosestTarget()
     
     table.sort(validTargets, function(a, b)
         if Settings.SortMethod == "Distance" then
-            return (Camera.CFrame.Position - a.Player.Character[Settings.TargetPart].Position).Magnitude <
-                   (Camera.CFrame.Position - b.Player.Character[Settings.TargetPart].Position).Magnitude
+            return (Camera.CFrame.Position - a.Player.Character[a.TargetPart.Name].Position).Magnitude <
+                   (Camera.CFrame.Position - b.Player.Character[b.TargetPart.Name].Position).Magnitude
         elseif Settings.SortMethod == "Health" then
             return a.Health < b.Health
         elseif Settings.SortMethod == "Crosshair" then
@@ -346,7 +324,7 @@ local function GetClosestTarget()
     return nil, nil
 end
 
--- Простая функция поиска ближайшего моба
+-- Поиск ближайшего NPC
 local function GetClosestMob()
     if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then
         return nil, nil
@@ -396,7 +374,7 @@ local function GetClosestMob()
     return nil, nil
 end
 
--- Функция отправки remote event
+-- Отправка выстрела через RemoteEvent
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
         DelayedPrint("SilentShot: No target or targetPart")
@@ -473,7 +451,7 @@ local function SilentShot(target, targetPart)
     end
 end
 
--- Функция проверки экипировки инструмента
+-- Проверка экипировки инструмента
 local function CheckToolEquipped()
     local character = LocalPlayer.Character
     if not character then
@@ -504,7 +482,7 @@ local function CheckToolEquipped()
     return false
 end
 
--- Функция для проверки и логирования FriendsList
+-- Обновление списка друзей
 local function UpdateFriendsCheck()
     local currentTime = tick()
     if currentTime - lastLogTime >= Settings.LogInterval then
@@ -729,7 +707,7 @@ function Init(ui, core, notification)
     DelayedPrint("SilentAim module initialized successfully")
 end
 
--- Обновление позиции FOV Circle и логика Silent Aim
+-- Обновление FOV Circle и логика Silent Aim
 RunService.RenderStepped:Connect(function()
     if not UI or not Core then
         DelayedPrint("Warning: UI or Core is nil during RenderStepped")
