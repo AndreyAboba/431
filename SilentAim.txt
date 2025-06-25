@@ -4,7 +4,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-print('sperm')
+
 local Core = nil
 local UI = nil
 local notify = nil
@@ -99,20 +99,6 @@ local function IsVisible(targetPart)
     return false
 end
 
--- Проверка нахождения в безопасной зоне
-local function IsInSafezone(position)
-    local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
-    if not safezone then return false end
-    
-    local safezonePos = safezone.Position
-    local safezoneSize = safezone.Size / 2
-    
-    local relativePos = position - safezonePos
-    return math.abs(relativePos.X) <= safezoneSize.X and
-           math.abs(relativePos.Y) <= safezoneSize.Y and
-           math.abs(relativePos.Z) <= safezoneSize.Z
-end
-
 -- Проверка защиты (ProtectionBubble)
 local function HasProtectionBubble(player)
     if not player or not player.Character then return false end
@@ -172,28 +158,6 @@ local function CanAttack(player)
     if HasProtectionBubble(player) then
         DelayedPrint("CanAttack: Player " .. player.Name .. " has ProtectionBubble")
         return false
-    end
-    
-    local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
-    if targetPart and IsInSafezone(targetPart.Position) then
-        if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
-            return false
-        end
-        DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone, allowing attack")
-        return true
-    end
-    
-    if myTeam == "Shadow Wizards" then
-        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
-        return true
-    elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
-        if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
-            return false
-        end
-        DelayedPrint("CanAttack: Allowing attack on " .. player.Name .. " (different team)")
-        return true
     end
     
     DelayedPrint("CanAttack: Allowing attack on " .. player.Name)
@@ -343,9 +307,9 @@ local function GetClosestMob()
             targetPart = target:FindFirstChild(Settings.TargetPart)
         end
 
-        if targetPart then
+        if targetPart and IsVisible(targetPart) then
             local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-            if distance <= Settings.DistanceLimit and not IsInSafezone(targetPart.Position) and IsVisible(targetPart) then
+            if distance <= Settings.DistanceLimit then
                 local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
                 local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                 if mouseDistance <= Settings.FOV then
