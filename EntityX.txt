@@ -1,0 +1,115 @@
+-- EntityX Library for managing NPC entities
+
+local EntityX = {}
+
+-- Configuration for NPC detection
+EntityX.Settings = {
+    TargetPart = "Head",
+    DistanceLimit = 400,
+    FOV = 300,
+    VisibilityCheck = true
+}
+
+-- Check if a part is visible
+local function IsVisible(targetPart)
+    local LocalPlayer = game:GetService("Players").LocalPlayer
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+    
+    local rayOrigin = rootPart.Position
+    local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
+        return true
+    end
+    
+    local offsetDirections = {
+        rayDirection + Vector3.new(0.1, 0, 0),
+        rayDirection + Vector3.new(-0.1, 0, 0),
+        rayDirection + Vector3.new(0, 0.1, 0),
+        rayDirection + Vector3.new(0, -0.1, 0)
+    }
+    for _, offsetDir in pairs(offsetDirections) do
+        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
+        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Check if position is in safezone
+local function IsInSafezone(position)
+    local safezone = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("Police") and workspace.MapProps.Police:FindFirstChild("Safezone")
+    if not safezone then return false end
+    
+    local safezonePos = safezone.Position
+    local safezoneSize = safezone.Size / 2
+    
+    local relativePos = position - safezonePos
+    return math.abs(relativePos.X) <= safezoneSize.X and
+           math.abs(relativePos.Y) <= safezoneSize.Y and
+           math.abs(relativePos.Z) <= safezoneSize.Z
+end
+
+-- Generic function to get closest entity from a given path
+function EntityX:GetClosestEntity(mousePos, entityTypes, parentPath)
+    local Camera = workspace.CurrentCamera
+    local validEntities = {}
+
+    for _, entity in pairs(parentPath:GetChildren()) do
+        for _, entityType in pairs(entityTypes) do
+            if entity.Name:lower():find(entityType:lower()) then
+                local humanoid = entity:FindFirstChild("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local targetPart = entity:FindFirstChild(self.Settings.TargetPart)
+                    if targetPart then
+                        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                        if distance <= self.Settings.DistanceLimit and not IsInSafezone(targetPart.Position) then
+                            local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                            local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                            if mouseDistance <= self.Settings.FOV and IsVisible(targetPart) then
+                                table.insert(validEntities, {
+                                    Entity = entity,
+                                    TargetPart = targetPart,
+                                    MouseDistance = mouseDistance
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(validEntities, function(a, b)
+        return a.MouseDistance < b.MouseDistance
+    end)
+
+    if #validEntities > 0 then
+        return validEntities[1].Entity, validEntities[1].TargetPart
+    end
+    return nil, nil
+end
+
+-- Predefined entity groups
+EntityX.EntityGroups = {
+    AI = {
+        Missions = {
+            Types = {"Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial", "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"},
+            Path = workspace:FindFirstChild("Missions")
+        },
+        SpiderCave = {
+            Types = {"Spider", "Cave Spider"},
+            Path = workspace.MapProps:FindFirstChild("SpiderCave")
+        }
+    }
+}
+
+return EntityX
