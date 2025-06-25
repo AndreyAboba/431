@@ -2,7 +2,6 @@
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
-local RunService = game:GetService("RunService")
 
 -- Красивое логирование
 local function Log(message, emoji)
@@ -14,12 +13,10 @@ Log("Made by stuppp110", "💠")
 Log("Lightweight NPC interactions.", "🧠")
 Log("Loaded successfully!", "🟢")
 
--- Internal cache and timers
+-- Internal cache for performance
 local npcCache = {}
 local lastUpdate = 0
-local updateInterval = 0.05 -- Базовый интервал обновления
-local lastLogTime = 0
-local logInterval = 2 -- Лог количества NPC каждые 2 секунды
+local updateInterval = 0.1 -- Обновление кэша каждые 0.1 секунды
 
 -- Конфигурация поиска NPC
 local npcConfig = {
@@ -27,28 +24,63 @@ local npcConfig = {
     TargetPart = "Head"
 }
 
--- Оптимизированный поиск всех NPC
+-- Поиск всех NPC в указанных локациях
 local function FindAllNPCs()
     local currentTime = tick()
-    if currentTime - lastUpdate < updateInterval and next(npcCache) then
+    if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
         return npcCache
     end
 
     local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
     local missions = workspace:FindFirstChild("Missions")
-    if not spiderCave and not missions then return npcCache end
-
     npcCache = {}
 
-    local function processLocation(location, mobTypes)
-        if not location then return end
-        for _, spawner in ipairs(location:GetChildren()) do
-            for _, mobType in ipairs(mobTypes) do
-                local mob = spawner:FindFirstChild(mobType)
-                if mob and mob:IsA("Model") then
+    -- Поиск в Missions (для Poacher, Imperial и т.д.)
+    if missions then
+        for _, mission in pairs(missions:GetChildren()) do
+            local aiSpawners = mission:FindFirstChild("AISpawners")
+            if aiSpawners then
+                for _, spawner in pairs(aiSpawners:GetChildren()) do
+                    local mobTypes = {
+                        "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
+                        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
+                        "Poacher Apprentice", "Nightfall Spider"
+                    }
+                    for _, mobType in pairs(mobTypes) do
+                        local mob = spawner:FindFirstChild(mobType)
+                        if mob and mob.Parent then
+                            local humanoid = mob:FindFirstChild("Humanoid")
+                            if humanoid and humanoid.Health > 0 then
+                                local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                                if targetPart then
+                                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                                    if distance <= npcConfig.DistanceLimit then
+                                        table.insert(npcCache, {
+                                            Mob = mob,
+                                            TargetPart = targetPart,
+                                            Distance = distance,
+                                            Health = humanoid.Health
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Поиск в SpiderCave (для Spider и Cave Spider с динамичным индексом)
+    if spiderCave then
+        for _, container in pairs(spiderCave:GetChildren()) do
+            local spiderTypes = {"Spider", "Cave Spider"}
+            for _, spiderType in pairs(spiderTypes) do
+                local mob = container:FindFirstChild(spiderType)
+                if mob and mob.Parent then
                     local humanoid = mob:FindFirstChild("Humanoid")
                     if humanoid and humanoid.Health > 0 then
-                        local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+                        local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
                         if targetPart then
                             local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                             if distance <= npcConfig.DistanceLimit then
@@ -66,35 +98,17 @@ local function FindAllNPCs()
         end
     end
 
-    -- Поиск в Missions
-    if missions then
-        local aiSpawners = missions:FindFirstChild("AISpawners")
-        if aiSpawners then
-            processLocation(aiSpawners, {
-                "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
-                "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
-                "Poacher Apprentice", "Nightfall Spider"
-            })
-        end
-    end
-
-    -- Поиск в SpiderCave
-    if spiderCave then
-        processLocation(spiderCave, {"Spider", "Cave Spider"})
-    end
-
     lastUpdate = currentTime
-    if currentTime - lastLogTime >= logInterval and next(npcCache) then
-        Log("Found entities! (" .. #npcCache .. ")", "🛡")
-        lastLogTime = currentTime
-    end
     return npcCache
 end
 
 -- Получение ближайшего NPC
 function EntityX:GetClosestNPC()
     local npcs = FindAllNPCs()
-    if not next(npcs) then return nil, nil end
+    if #npcs == 0 then
+        Log("No NPCs found.", "⚠️")
+        return nil, nil
+    end
 
     table.sort(npcs, function(a, b)
         local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
@@ -102,12 +116,19 @@ function EntityX:GetClosestNPC()
         return aScore < bScore
     end)
 
+    Log("Found closest NPC: " .. npcs[1].Mob.Name .. " (Distance: " .. math.floor(npcs[1].Distance) .. ")", "🔍")
     return npcs[1].Mob, npcs[1].TargetPart
 end
 
 -- Получение всех NPC
 function EntityX:GetAllNPCs()
-    return FindAllNPCs()
+    local npcs = FindAllNPCs()
+    if #npcs == 0 then
+        Log("No NPCs found.", "⚠️")
+    else
+        Log("Found " .. #npcs .. " NPCs.", "📋")
+    end
+    return npcs
 end
 
 -- Установка предела дистанции
@@ -125,15 +146,18 @@ end
 -- Кастомный поиск NPC в заданной локации
 function EntityX:FindNPCsInLocation(location, mobTypes)
     local validTargets = {}
-    if not location or not location:IsA("Instance") then return validTargets end
+    if not location or not location:IsA("Instance") then
+        Log("Invalid location provided.", "❌")
+        return validTargets
+    end
 
-    for _, container in ipairs(location:GetChildren()) do
-        for _, mobType in ipairs(mobTypes or {}) do
+    for _, container in pairs(location:GetChildren()) do
+        for _, mobType in pairs(mobTypes or {}) do
             local mob = container:FindFirstChild(mobType)
-            if mob and mob:IsA("Model") then
+            if mob and mob.Parent then
                 local humanoid = mob:FindFirstChild("Humanoid")
                 if humanoid and humanoid.Health > 0 then
-                    local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+                    local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
                     if targetPart then
                         local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                         if distance <= npcConfig.DistanceLimit then
@@ -150,9 +174,10 @@ function EntityX:FindNPCsInLocation(location, mobTypes)
         end
     end
 
-    if next(validTargets) and tick() - lastLogTime >= logInterval then
-        Log("Found entities! (" .. #validTargets .. ")", "🛡")
-        lastLogTime = tick()
+    if #validTargets > 0 then
+        Log("Found " .. #validTargets .. " NPCs in " .. location.Name .. ".", "🔍")
+    else
+        Log("No NPCs found in " .. location.Name .. ".", "⚠️")
     end
     return validTargets
 end
