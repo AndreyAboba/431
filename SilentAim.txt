@@ -4,7 +4,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-print('123gh')
+print('sperm')
 local Core = nil
 local UI = nil
 local notify = nil
@@ -27,7 +27,7 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     NPCSupport = false,
-    SelectedTarget = "AI"
+    SelectedTarget = "QuestAI"
 }
 
 local lastPrintTime = 0
@@ -323,10 +323,10 @@ end
 
 -- Поиск ближайшего NPC с использованием EntityX
 local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "AI" then return nil, nil end
+    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then return nil, nil end
 
     local mousePos = UserInputService:GetMouseLocation()
-    local target = EntityX:GetClosestEntity(mousePos, "AI")
+    local target = EntityX:GetClosestEntity(mousePos, "QuestAI")
 
     if target then
         local targetPart = nil
@@ -343,9 +343,16 @@ local function GetClosestMob()
             targetPart = target:FindFirstChild(Settings.TargetPart)
         end
 
-        if targetPart and (Camera.CFrame.Position - targetPart.Position).Magnitude <= Settings.DistanceLimit and IsVisible(targetPart) then
-            DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor((Camera.CFrame.Position - targetPart.Position).Magnitude) .. " studs)")
-            return target, targetPart
+        if targetPart then
+            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+            if distance <= Settings.DistanceLimit and not IsInSafezone(targetPart.Position) and IsVisible(targetPart) then
+                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if mouseDistance <= Settings.FOV then
+                    DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
+                    return target, targetPart
+                end
+            end
         end
     end
 
@@ -664,7 +671,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Entities",
-        Options = {"AI"},
+        Options = {"QuestAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
@@ -716,27 +723,7 @@ RunService.RenderStepped:Connect(function()
 
     local target, targetPart = GetClosestTarget()
     if not target and Settings.NPCSupport then
-        target = EntityX:GetClosestEntity(mousePos, "AI")
-        if target then
-            targetPart = nil
-            if Settings.SmartHitbox then
-                local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
-                for _, partName in ipairs(possibleParts) do
-                    local part = target:FindFirstChild(partName)
-                    if part then
-                        targetPart = part
-                        break
-                    end
-                end
-            else
-                targetPart = target:FindFirstChild(Settings.TargetPart)
-            end
-            if targetPart and (Camera.CFrame.Position - targetPart.Position).Magnitude <= Settings.DistanceLimit and IsVisible(targetPart) then
-                DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor((Camera.CFrame.Position - targetPart.Position).Magnitude) .. " studs)")
-            else
-                target, targetPart = nil, nil
-            end
-        end
+        target, targetPart = GetClosestMob()
         if target then
             DelayedPrint("Switched to NPC target: " .. target.Name)
         end
