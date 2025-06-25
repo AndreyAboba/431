@@ -2,21 +2,35 @@
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
-
--- Красивое логирование
-local function Log(message, emoji)
-    print("{" .. emoji .. "} EntityX | " .. message)
+Log("Made by stuppp110", "💠", "[INFO]")
+-- Красивое логирование с текстовыми статусами
+local function Log(message, emoji, status)
+    local statusTag = status or "[INFO]"
+    print(statusTag .. " {" .. emoji .. "} EntityX | " .. message)
 end
 
--- Инициализация с красивым логом
-Log("Made by stuppp110", "💠")
-Log("Lightweight NPC interactions.", "🧠")
-Log("Loaded successfully!", "🟢")
+-- Проверка ошибок и инициализация
+local function Initialize()
+    local hasErrors = false
+    if not workspace or not Camera then
+        Log("Failed to initialize: Workspace or Camera not found.", "❌", "[ERROR]")
+        hasErrors = true
+    end
+    if hasErrors then
+        Log("Loaded with errors, some features may be unavailable.", "🟠", "[WARNING]")
+    else
+        Log("Lightweight NPC interactions.", "🧠", "[INFO]")
+        Log("Loaded successfully!", "🟢", "[SUCCESS]")
+    end
+end
+Initialize()
 
 -- Internal cache for performance
 local npcCache = {}
 local lastUpdate = 0
-local updateInterval = 0.1 -- Обновление кэша каждые 0.1 секунды
+local lastLog = 0
+local updateInterval = 0.5 -- Обновление кэша каждые 0.5 секунды
+local logInterval = 2.0 -- Логи каждые 2 секунды
 
 -- Конфигурация поиска NPC
 local npcConfig = {
@@ -35,7 +49,7 @@ local function FindAllNPCs()
     local missions = workspace:FindFirstChild("Missions")
     npcCache = {}
 
-    -- Поиск в Missions (для Poacher, Imperial и т.д.)
+    -- Поиск в Missions
     if missions then
         for _, mission in pairs(missions:GetChildren()) do
             local aiSpawners = mission:FindFirstChild("AISpawners")
@@ -51,7 +65,7 @@ local function FindAllNPCs()
                         if mob and mob.Parent then
                             local humanoid = mob:FindFirstChild("Humanoid")
                             if humanoid and humanoid.Health > 0 then
-                                local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                                local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                                 if targetPart then
                                     local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                                     if distance <= npcConfig.DistanceLimit then
@@ -71,7 +85,7 @@ local function FindAllNPCs()
         end
     end
 
-    -- Поиск в SpiderCave (для Spider и Cave Spider с динамичным индексом)
+    -- Поиск в SpiderCave
     if spiderCave then
         for _, container in pairs(spiderCave:GetChildren()) do
             local spiderTypes = {"Spider", "Cave Spider"}
@@ -80,7 +94,7 @@ local function FindAllNPCs()
                 if mob and mob.Parent then
                     local humanoid = mob:FindFirstChild("Humanoid")
                     if humanoid and humanoid.Health > 0 then
-                        local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                        local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                         if targetPart then
                             local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                             if distance <= npcConfig.DistanceLimit then
@@ -99,6 +113,11 @@ local function FindAllNPCs()
     end
 
     lastUpdate = currentTime
+    local currentLogTime = tick()
+    if currentLogTime - lastLog >= logInterval and #npcCache > 0 then
+        Log("Found entities! (" .. #npcCache .. ")", "🛡", "[INFO]")
+        lastLog = currentLogTime
+    end
     return npcCache
 end
 
@@ -106,7 +125,6 @@ end
 function EntityX:GetClosestNPC()
     local npcs = FindAllNPCs()
     if #npcs == 0 then
-        Log("No NPCs found.", "⚠️")
         return nil, nil
     end
 
@@ -116,38 +134,31 @@ function EntityX:GetClosestNPC()
         return aScore < bScore
     end)
 
-    Log("Found closest NPC: " .. npcs[1].Mob.Name .. " (Distance: " .. math.floor(npcs[1].Distance) .. ")", "🔍")
     return npcs[1].Mob, npcs[1].TargetPart
 end
 
 -- Получение всех NPC
 function EntityX:GetAllNPCs()
-    local npcs = FindAllNPCs()
-    if #npcs == 0 then
-        Log("No NPCs found.", "⚠️")
-    else
-        Log("Found " .. #npcs .. " NPCs.", "📋")
-    end
-    return npcs
+    return FindAllNPCs()
 end
 
 -- Установка предела дистанции
 function EntityX:SetDistanceLimit(limit)
     npcConfig.DistanceLimit = limit or 120
-    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️")
+    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️", "[INFO]")
 end
 
 -- Установка целевой части тела
 function EntityX:SetTargetPart(part)
     npcConfig.TargetPart = part or "Head"
-    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️")
+    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️", "[INFO]")
 end
 
 -- Кастомный поиск NPC в заданной локации
 function EntityX:FindNPCsInLocation(location, mobTypes)
     local validTargets = {}
     if not location or not location:IsA("Instance") then
-        Log("Invalid location provided.", "❌")
+        Log("Invalid location provided.", "❌", "[ERROR]")
         return validTargets
     end
 
@@ -157,7 +168,7 @@ function EntityX:FindNPCsInLocation(location, mobTypes)
             if mob and mob.Parent then
                 local humanoid = mob:FindFirstChild("Humanoid")
                 if humanoid and humanoid.Health > 0 then
-                    local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                    local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                     if targetPart then
                         local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                         if distance <= npcConfig.DistanceLimit then
@@ -174,10 +185,9 @@ function EntityX:FindNPCsInLocation(location, mobTypes)
         end
     end
 
-    if #validTargets > 0 then
-        Log("Found " .. #validTargets .. " NPCs in " .. location.Name .. ".", "🔍")
-    else
-        Log("No NPCs found in " .. location.Name .. ".", "⚠️")
+    if #validTargets > 0 and tick() - lastLog >= logInterval then
+        Log("Found entities! (" .. #validTargets .. ")", "🛡", "[INFO]")
+        lastLog = tick()
     end
     return validTargets
 end
