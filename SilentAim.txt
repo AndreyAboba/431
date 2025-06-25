@@ -1,4 +1,4 @@
-print('1234')
+print('11')
 local EntityX = loadstring("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt")()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -327,15 +327,12 @@ local function GetClosestMob()
     if not Settings.NPCSupport or Settings.SelectedTarget ~= "AI" then return nil, nil end
 
     local mousePos = UserInputService:GetMouseLocation()
-    local entityGroup = EntityX.EntityGroups.AI
+    local target, targetPart = EntityX:GetClosestEntity(mousePos, "AI")
 
-    -- Check Missions
-    local target, targetPart = EntityX:GetClosestEntity(mousePos, entityGroup.Missions.Types, entityGroup.Missions.Path)
-    if target then return target, targetPart end
-
-    -- Check SpiderCave
-    target, targetPart = EntityX:GetClosestEntity(mousePos, entityGroup.SpiderCave.Types, entityGroup.SpiderCave.Path)
-    if target then return target, targetPart end
+    if target then
+        DelayedPrint("Targeting: " .. target.Name .. " (Hitbox: " .. (targetPart and targetPart.Name or "Unknown") .. ")")
+        return target, targetPart
+    end
 
     DelayedPrint("No valid mob target found")
     return nil, nil
@@ -480,11 +477,24 @@ function Init(ui, core, notification)
     Core = core
     notify = notification
 
+    -- Проверка загрузки EntityX
+    if not EntityX or not EntityX.GetClosestEntity then
+        DelayedPrint("Error: EntityX library failed to load or is invalid")
+        return
+    end
+
     DelayedPrint("SilentAim module initializing with Core: " .. tostring(Core))
     if not UI or not Core or not notify then
         DelayedPrint("Warning: UI, Core, or notification is nil during initialization")
         return
     end
+
+    -- Синхронизация настроек с EntityX
+    EntityX:SetSettings({
+        TargetPart = Settings.TargetPart,
+        MaxDistance = Settings.DistanceLimit,
+        MaxFOV = Settings.FOV
+    })
 
     if Core and Core.Services then
         Core.Services.FriendsList = Core.Services.FriendsList or {}
@@ -533,6 +543,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.FOV = value
             fovCircle.Radius = value
+            EntityX:SetSettings({ MaxFOV = value })
             notify("Silent Aim", "FOV set to: " .. value .. " studs", false)
         end
     }, "SilentFOV")
@@ -567,7 +578,7 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.TargetPart = value
-            EntityX.Settings.TargetPart = value
+            EntityX:SetSettings({ TargetPart = value })
             notify("Silent Aim", "Target Part set to: " .. value, false)
         end
     }, "SilentTargetPart")
@@ -595,7 +606,6 @@ function Init(ui, core, notification)
         Default = Settings.VisibilityCheck,
         Callback = function(value)
             Settings.VisibilityCheck = value
-            EntityX.Settings.VisibilityCheck = value
             notify("Silent Aim", "Visibility Check " .. (value and "ON" or "OFF"), false)
         end
     }, "SilentVisibilityCheck")
@@ -609,6 +619,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             Settings.DistanceLimit = value
+            EntityX:SetSettings({ MaxDistance = value })
             notify("Silent Aim", "Distance Limit set to: " .. value .. " studs", false)
         end
     }, "SilentDistanceLimit")
