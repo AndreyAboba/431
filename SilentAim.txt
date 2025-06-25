@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
+print('1')
 local Core = nil
 local UI = nil
 local notify = nil
@@ -129,16 +129,16 @@ end
 -- Проверка наличия Lasso
 local function HasLasso(player)
     if not player then return false end
-    
+
     local charactersFolder = workspace:FindFirstChild("Characters")
     if not charactersFolder then return false end
-    
+
     local playerName = player.Name
     if not playerName then return false end
-    
+
     local playerContainer = charactersFolder:FindFirstChild(playerName)
     if not playerContainer then return false end
-    
+
     local fakeLimbs = playerContainer:FindFirstChild("FakeLimbs")
     return fakeLimbs ~= nil
 end
@@ -206,7 +206,6 @@ local function GetToolListener()
     
     local character = LocalPlayer.Character
     if not character then
-        DelayedPrint("GetToolListener: No character found")
         return nil, nil
     end
 
@@ -234,7 +233,7 @@ local function GetToolListener()
     return toolListener, pistolConfig
 end
 
--- Поиск ближайшей цели (игроки)
+-- Оптимизированная функция поиска ближайшей цели (игроки)
 local function GetClosestTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local validTargets = {}
@@ -242,18 +241,6 @@ local function GetClosestTarget()
     
     for _, player in pairs(Players:GetPlayers()) do
         if player == LocalPlayer or not player.Character then
-            continue
-        end
-        
-        local playerNameLower = player.Name:lower()
-        local isFriend = Cache.PlayerFriendCache[playerNameLower]
-        if isFriend == nil and Core and Core.Services and Core.Services.FriendsList then
-            isFriend = Core.Services.FriendsList[playerNameLower] == true
-            Cache.PlayerFriendCache[playerNameLower] = isFriend
-            DelayedPrint("GetClosestTarget: Updated friend cache for " .. player.Name .. ": " .. tostring(isFriend))
-        end
-        if isFriend then
-            DelayedPrint("GetClosestTarget: Excluded friend " .. player.Name .. " from targets")
             continue
         end
         
@@ -324,7 +311,7 @@ local function GetClosestTarget()
     return nil, nil
 end
 
--- Поиск ближайшего NPC
+-- Простая функция поиска ближайшего моба
 local function GetClosestMob()
     if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then
         return nil, nil
@@ -374,7 +361,7 @@ local function GetClosestMob()
     return nil, nil
 end
 
--- Отправка выстрела через RemoteEvent
+-- Функция отправки remote event
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
         DelayedPrint("SilentShot: No target or targetPart")
@@ -386,9 +373,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local isPlayer = Players:GetPlayerFromCharacter(target)
-    if not isPlayer and not target.Parent then
-        DelayedPrint("SilentShot: Target has no parent (invalid NPC)")
+    if not target.Character and not target.Parent then
+        DelayedPrint("SilentShot: Target has no character or parent")
         return
     end
     
@@ -403,7 +389,7 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoid = isPlayer and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
+    local humanoid = target.Character and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
     if not humanoid then
         DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
@@ -452,7 +438,7 @@ local function SilentShot(target, targetPart)
     end
 end
 
--- Проверка экипировки инструмента
+-- Функция проверки экипировки инструмента
 local function CheckToolEquipped()
     local character = LocalPlayer.Character
     if not character then
@@ -483,7 +469,7 @@ local function CheckToolEquipped()
     return false
 end
 
--- Обновление списка друзей
+-- Функция для проверки и логирования FriendsList
 local function UpdateFriendsCheck()
     local currentTime = tick()
     if currentTime - lastLogTime >= Settings.LogInterval then
@@ -708,7 +694,7 @@ function Init(ui, core, notification)
     DelayedPrint("SilentAim module initialized successfully")
 end
 
--- Обновление FOV Circle и логика Silent Aim
+-- Обновление позиции FOV Circle и логика Silent Aim
 RunService.RenderStepped:Connect(function()
     if not UI or not Core then
         DelayedPrint("Warning: UI or Core is nil during RenderStepped")
