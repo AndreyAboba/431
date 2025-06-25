@@ -2,12 +2,11 @@
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
 
--- Красивое логирование с цветами
-local function Log(message, emoji, color)
-    local colorCode = color or "\27[32m" -- Зеленый по умолчанию
-    local resetCode = "\27[0m"
-    print(colorCode .. "{" .. emoji .. "} EntityX | " .. message .. resetCode)
+-- Красивое логирование
+local function Log(message, emoji)
+    print("{" .. emoji .. "} EntityX | " .. message)
 end
 
 -- Инициализация с красивым логом
@@ -15,10 +14,12 @@ Log("Made by stuppp110", "💠")
 Log("Lightweight NPC interactions.", "🧠")
 Log("Loaded successfully!", "🟢")
 
--- Internal cache for performance
+-- Internal cache and timers
 local npcCache = {}
 local lastUpdate = 0
-local updateInterval = 0.05 -- Сократил до 0.05 для большей отзывчивости
+local updateInterval = 0.05 -- Базовый интервал обновления
+local lastLogTime = 0
+local logInterval = 2 -- Лог количества NPC каждые 2 секунды
 
 -- Конфигурация поиска NPC
 local npcConfig = {
@@ -26,7 +27,7 @@ local npcConfig = {
     TargetPart = "Head"
 }
 
--- Поиск всех NPC в указанных локациях с оптимизацией
+-- Оптимизированный поиск всех NPC
 local function FindAllNPCs()
     local currentTime = tick()
     if currentTime - lastUpdate < updateInterval and next(npcCache) then
@@ -35,14 +36,16 @@ local function FindAllNPCs()
 
     local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
     local missions = workspace:FindFirstChild("Missions")
+    if not spiderCave and not missions then return npcCache end
+
     npcCache = {}
 
     local function processLocation(location, mobTypes)
         if not location then return end
-        for _, container in pairs(location:GetChildren()) do
-            for _, mobType in pairs(mobTypes) do
-                local mob = container:FindFirstChild(mobType)
-                if mob and mob.Parent and mob:IsA("Model") then
+        for _, spawner in ipairs(location:GetChildren()) do
+            for _, mobType in ipairs(mobTypes) do
+                local mob = spawner:FindFirstChild(mobType)
+                if mob and mob:IsA("Model") then
                     local humanoid = mob:FindFirstChild("Humanoid")
                     if humanoid and humanoid.Health > 0 then
                         local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
@@ -63,22 +66,27 @@ local function FindAllNPCs()
         end
     end
 
-    -- Оптимизированный поиск
+    -- Поиск в Missions
     if missions then
-        processLocation(missions:FindFirstChild("AISpawners"), {
-            "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
-            "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
-            "Poacher Apprentice", "Nightfall Spider"
-        })
+        local aiSpawners = missions:FindFirstChild("AISpawners")
+        if aiSpawners then
+            processLocation(aiSpawners, {
+                "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
+                "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
+                "Poacher Apprentice", "Nightfall Spider"
+            })
+        end
     end
 
+    -- Поиск в SpiderCave
     if spiderCave then
         processLocation(spiderCave, {"Spider", "Cave Spider"})
     end
 
     lastUpdate = currentTime
-    if next(npcCache) then
+    if currentTime - lastLogTime >= logInterval and next(npcCache) then
         Log("Found entities! (" .. #npcCache .. ")", "🛡")
+        lastLogTime = currentTime
     end
     return npcCache
 end
@@ -105,27 +113,24 @@ end
 -- Установка предела дистанции
 function EntityX:SetDistanceLimit(limit)
     npcConfig.DistanceLimit = limit or 120
-    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️", "\27[33m") -- Желтый цвет
+    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️")
 end
 
 -- Установка целевой части тела
 function EntityX:SetTargetPart(part)
     npcConfig.TargetPart = part or "Head"
-    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️", "\27[33m") -- Желтый цвет
+    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️")
 end
 
 -- Кастомный поиск NPC в заданной локации
 function EntityX:FindNPCsInLocation(location, mobTypes)
     local validTargets = {}
-    if not location or not location:IsA("Instance") then
-        Log("Invalid location provided.", "❌", "\27[31m") -- Красный цвет
-        return validTargets
-    end
+    if not location or not location:IsA("Instance") then return validTargets end
 
-    for _, container in pairs(location:GetChildren()) do
-        for _, mobType in pairs(mobTypes or {}) do
+    for _, container in ipairs(location:GetChildren()) do
+        for _, mobType in ipairs(mobTypes or {}) do
             local mob = container:FindFirstChild(mobType)
-            if mob and mob.Parent and mob:IsA("Model") then
+            if mob and mob:IsA("Model") then
                 local humanoid = mob:FindFirstChild("Humanoid")
                 if humanoid and humanoid.Health > 0 then
                     local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
@@ -145,8 +150,9 @@ function EntityX:FindNPCsInLocation(location, mobTypes)
         end
     end
 
-    if next(validTargets) then
+    if next(validTargets) and tick() - lastLogTime >= logInterval then
         Log("Found entities! (" .. #validTargets .. ")", "🛡")
+        lastLogTime = tick()
     end
     return validTargets
 end
@@ -161,11 +167,6 @@ end
 function EntityX:GetDistanceToNPC(mob)
     if not mob or not mob:FindFirstChild(npcConfig.TargetPart) then return math.huge end
     return (Camera.CFrame.Position - mob[npcConfig.TargetPart].Position).Magnitude
-end
-
--- Установка кастомного цвета для логов
-function EntityX:SetLogColor(colorCode)
-    Log("Log color set to custom.", "🎨", colorCode or "\27[32m")
 end
 
 return EntityX
