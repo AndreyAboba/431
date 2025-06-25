@@ -698,16 +698,20 @@ RunService.RenderStepped:Connect(function()
         if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
             local allNPCs = EntityX:GetAllNPCs()
             for _, npc in pairs(allNPCs) do
-                if npc.Type == "SummonAI" then
-                    if not target or npc.Distance < (target and validTargets[1].Distance or math.huge) then
-                        target, targetPart = npc.Mob, npc.TargetPart
-                        break
-                    end
+                local isSummon = npc.Mob.Name == "Spiderling" or npc.Mob.Name == "Shade"
+                local owner = isSummon and npc.Mob:GetAttribute("Owner")
+                if isSummon and owner and owner == LocalPlayer.Name then
+                    -- Игнорируем, если Owner совпадает с никнеймом
+                    goto continue
                 end
+                if not target or npc.Distance < (target and validTargets[1].Distance or math.huge) then
+                    target, targetPart = npc.Mob, npc.TargetPart
+                end
+                ::continue::
             end
-            if Settings.SelectedTarget == "SummonAI" and (not target or (npcTarget and npcTargetPart and npcTarget.Type == "SummonAI")) then
+            if Settings.SelectedTarget == "SummonAI" and (not target or (npcTarget and npcTargetPart and (npcTarget.Name == "Spiderling" or npcTarget.Name == "Shade"))) then
                 target, targetPart = npcTarget, npcTargetPart
-            elseif Settings.SelectedTarget == "QuestAI" and npcTarget and npcTarget.Type == "QuestAI" then
+            elseif Settings.SelectedTarget == "QuestAI" and npcTarget and (npcTarget.Name ~= "Spiderling" and npcTarget.Name ~= "Shade") then
                 target, targetPart = npcTarget, npcTargetPart
             end
         end
