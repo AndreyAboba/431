@@ -260,6 +260,7 @@ local function GetClosestTarget()
         local humanoid = player.Character:FindFirstChild("Humanoid")
         local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
         if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
+            DelayedPrint("GetClosestTarget: Excluded " .. player.Name .. " due to invalid humanoid or health")
             continue
         end
         
