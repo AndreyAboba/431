@@ -1,4 +1,4 @@
-local EntityX = loadstring("PUT_YOUR_ENTITYX_URL_OR_PATH_HERE")()
+local EntityX = loadstring("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt")()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
