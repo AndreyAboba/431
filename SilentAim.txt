@@ -205,7 +205,10 @@ local function GetToolListener()
     local wand = nil
     
     local character = LocalPlayer.Character
-    if not character then return nil, nil end
+    if not character then
+        DelayedPrint("GetToolListener: No character found")
+        return nil, nil
+    end
 
     for _, item in pairs(character:GetChildren()) do
         if item.ClassName == "Tool" then
@@ -237,8 +240,17 @@ local function GetClosestTarget()
     local validTargets = {}
     local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
     
+    DelayedPrint("GetClosestTarget: Scanning " .. #Players:GetPlayers() .. " players")
     for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer or not player.Character then continue end
+        if player == LocalPlayer then
+            DelayedPrint("GetClosestTarget: Skipping LocalPlayer")
+            continue
+        end
+        
+        if not player.Character then
+            DelayedPrint("GetClosestTarget: No Character for " .. player.Name)
+            continue
+        end
         
         local playerNameLower = player.Name:lower()
         local isFriend = Cache.PlayerFriendCache[playerNameLower]
@@ -254,7 +266,10 @@ local function GetClosestTarget()
         
         local humanoid = player.Character:FindFirstChild("Humanoid")
         local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then continue end
+        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
+            DelayedPrint("GetClosestTarget: Invalid humanoid or root for " .. player.Name)
+            continue
+        end
         
         local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
         if distance > Settings.DistanceLimit then
@@ -290,7 +305,12 @@ local function GetClosestTarget()
                     Health = humanoid.Health,
                     TargetPart = targetPart
                 })
+                DelayedPrint("GetClosestTarget: Added " .. player.Name .. " to valid targets (Distance: " .. math.floor(mouseDistance) .. "px)")
+            else
+                DelayedPrint("GetClosestTarget: " .. player.Name .. " outside FOV (" .. math.floor(mouseDistance) .. "px > " .. Settings.FOV .. "px)")
             end
+        else
+            DelayedPrint("GetClosestTarget: " .. player.Name .. " failed CanAttack or VisibilityCheck")
         end
     end
     
@@ -411,6 +431,7 @@ local function SilentShot(target, targetPart)
     end
     
     local isPlayer = Players:GetPlayerFromCharacter(target)
+    DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. ", isPlayer: " .. tostring(isPlayer))
     if isPlayer and not target.Character then
         DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no Character")
         return
@@ -748,12 +769,14 @@ RunService.RenderStepped:Connect(function()
     if not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
+        DelayedPrint("No tool equipped, resetting target")
         return
     end
 
     UpdateFriendsCheck()
 
     local target, targetPart = GetClosestTarget()
+    DelayedPrint("GetClosestTarget returned: " .. tostring(target) .. ", " .. tostring(targetPart))
     if not target and Settings.NPCSupport then
         target, targetPart = GetClosestMob()
         if target then
@@ -766,6 +789,7 @@ RunService.RenderStepped:Connect(function()
         SilentShot(target, targetPart)
     else
         Core.GunSilentTarget.CurrentTarget = nil
+        DelayedPrint("No target found, resetting CurrentTarget")
     end
 end)
 
