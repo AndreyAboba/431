@@ -39,8 +39,8 @@ local npcConfig = {
     TargetPart = "Head"
 }
 
--- Вспомогательная функция для проверки Summon NPC
-local function checkSummonNPC(mob)
+-- Вспомогательная функция для проверки Summon NPC (сделана публичной)
+function EntityX.checkSummonNPC(mob)
     if mob and mob.Parent then
         local humanoid = mob:FindFirstChild("Humanoid")
         if humanoid and humanoid.Health > 0 then
