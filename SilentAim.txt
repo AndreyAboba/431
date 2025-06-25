@@ -386,8 +386,9 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    if not target.Character and not target.Parent then
-        DelayedPrint("SilentShot: Target has no character or parent")
+    local isPlayer = Players:GetPlayerFromCharacter(target)
+    if not isPlayer and not target.Parent then
+        DelayedPrint("SilentShot: Target has no parent (invalid NPC)")
         return
     end
     
@@ -402,7 +403,7 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoid = target.Character and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
+    local humanoid = isPlayer and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
     if not humanoid then
         DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
