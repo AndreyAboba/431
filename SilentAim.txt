@@ -26,7 +26,7 @@ local Settings = {
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
     NPCSupport = false,
-    SelectedTarget = "AI"
+    SelectedTarget = "QuestAI"
 }
 
 local lastPrintTime = 0
@@ -205,10 +205,7 @@ local function GetToolListener()
     local wand = nil
     
     local character = LocalPlayer.Character
-    if not character then
-        DelayedPrint("GetToolListener: No character found")
-        return nil, nil
-    end
+    if not character then return nil, nil end
 
     for _, item in pairs(character:GetChildren()) do
         if item.ClassName == "Tool" then
@@ -240,17 +237,8 @@ local function GetClosestTarget()
     local validTargets = {}
     local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
     
-    DelayedPrint("GetClosestTarget: Scanning " .. #Players:GetPlayers() .. " players")
     for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer then
-            DelayedPrint("GetClosestTarget: Skipping LocalPlayer")
-            continue
-        end
-        
-        if not player.Character then
-            DelayedPrint("GetClosestTarget: No Character for " .. player.Name)
-            continue
-        end
+        if player == LocalPlayer or not player.Character then continue end
         
         local playerNameLower = player.Name:lower()
         local isFriend = Cache.PlayerFriendCache[playerNameLower]
@@ -266,10 +254,7 @@ local function GetClosestTarget()
         
         local humanoid = player.Character:FindFirstChild("Humanoid")
         local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
-            DelayedPrint("GetClosestTarget: Invalid humanoid or root for " .. player.Name)
-            continue
-        end
+        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then continue end
         
         local distance = (Camera.CFrame.Position - humanoidRoot.Position).Magnitude
         if distance > Settings.DistanceLimit then
@@ -305,12 +290,7 @@ local function GetClosestTarget()
                     Health = humanoid.Health,
                     TargetPart = targetPart
                 })
-                DelayedPrint("GetClosestTarget: Added " .. player.Name .. " to valid targets (Distance: " .. math.floor(mouseDistance) .. "px)")
-            else
-                DelayedPrint("GetClosestTarget: " .. player.Name .. " outside FOV (" .. math.floor(mouseDistance) .. "px > " .. Settings.FOV .. "px)")
             end
-        else
-            DelayedPrint("GetClosestTarget: " .. player.Name .. " failed CanAttack or VisibilityCheck")
         end
     end
     
@@ -342,71 +322,42 @@ end
 
 -- Поиск ближайшего NPC
 local function GetClosestMob()
-    if not Settings.NPCSupport or Settings.SelectedTarget ~= "AI" then return nil, nil end
+    if not Settings.NPCSupport or Settings.SelectedTarget ~= "QuestAI" then return nil, nil end
 
     local missions = workspace:FindFirstChild("Missions")
-    local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
-    if not missions and not spiderCave then
-        DelayedPrint("GetClosestMob: Missions or SpiderCave not found")
+    if not missions then
+        DelayedPrint("GetClosestMob: Missions not found")
         return nil, nil
     end
 
     local mousePos = UserInputService:GetMouseLocation()
     local mobTypes = {
         "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
-        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider", "Spider", "Cave Spider"
+        "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"
     }
 
-    -- Проверка Missions
-    if missions then
-        for _, mission in pairs(missions:GetChildren()) do
-            local aiSpawners = mission:FindFirstChild("AISpawners")
-            if aiSpawners then
-                for _, spawner in pairs(aiSpawners:GetChildren()) do
-                    for _, child in pairs(spawner:GetChildren()) do
-                        for _, mobType in pairs(mobTypes) do
-                            if child.Name:lower():find(mobType:lower()) then
-                                local humanoid = child:FindFirstChild("Humanoid")
-                                if humanoid and humanoid.Health > 0 then
-                                    local targetPart = child:FindFirstChild(Settings.TargetPart)
-                                    if targetPart then
-                                        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                                        if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                                            local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                            local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                            if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                                DelayedPrint("Targeting: " .. child.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
-                                                return child, targetPart
-                                            end
+    for _, mission in pairs(missions:GetChildren()) do
+        local aiSpawners = mission:FindFirstChild("AISpawners")
+        if aiSpawners then
+            for _, spawner in pairs(aiSpawners:GetChildren()) do
+                for _, child in pairs(spawner:GetChildren()) do
+                    for _, mobType in pairs(mobTypes) do
+                        if child.Name:lower():find(mobType:lower()) then
+                            local humanoid = child:FindFirstChild("Humanoid")
+                            if humanoid and humanoid.Health > 0 then
+                                local targetPart = child:FindFirstChild(Settings.TargetPart)
+                                if targetPart then
+                                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                                    if distance <= 400 and not IsInSafezone(targetPart.Position) then
+                                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
+                                            DelayedPrint("Targeting: " .. child.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
+                                            return child, targetPart
                                         end
                                     end
                                 end
                             end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Проверка SpiderCave
-    if spiderCave then
-        local spiderIndex = 12
-        local caveSpiderIndex = 13
-        local spider = spiderCave:GetChildren()[spiderIndex]
-        local caveSpider = spiderCave:GetChildren()[caveSpiderIndex] and spiderCave:GetChildren()[caveSpiderIndex]["Cave Spider"]
-
-        for _, npc in pairs({spider, caveSpider}) do
-            if npc and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health > 0 then
-                local targetPart = npc:FindFirstChild(Settings.TargetPart)
-                if targetPart then
-                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                    if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                            DelayedPrint("Targeting: " .. npc.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
-                            return npc, targetPart
                         end
                     end
                 end
@@ -430,8 +381,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local isPlayer = Players:GetPlayerFromCharacter(target)
-    DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. ", isPlayer: " .. tostring(isPlayer))
+    -- Проверка в зависимости от типа цели
+    local isPlayer = Players:GetPlayerFromCharacter() and Players:GetPlayerFromCharacter(target)
     if isPlayer and not target.Character then
         DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no Character")
         return
@@ -724,7 +675,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Entities",
-        Options = {"AI"},
+        Options = {"QuestAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
@@ -769,14 +720,12 @@ RunService.RenderStepped:Connect(function()
     if not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
-        DelayedPrint("No tool equipped, resetting target")
         return
     end
 
     UpdateFriendsCheck()
 
     local target, targetPart = GetClosestTarget()
-    DelayedPrint("GetClosestTarget returned: " .. tostring(target) .. ", " .. tostring(targetPart))
     if not target and Settings.NPCSupport then
         target, targetPart = GetClosestMob()
         if target then
@@ -789,7 +738,6 @@ RunService.RenderStepped:Connect(function()
         SilentShot(target, targetPart)
     else
         Core.GunSilentTarget.CurrentTarget = nil
-        DelayedPrint("No target found, resetting CurrentTarget")
     end
 end)
 
