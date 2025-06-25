@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
+print('2')
 local Core = nil
 local UI = nil
 local notify = nil
