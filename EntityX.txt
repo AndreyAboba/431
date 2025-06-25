@@ -32,13 +32,13 @@ local logInterval = 1.0 -- Логи каждые 1 секунду
 local npcConfig = {
     DistanceLimit = 120,
     TargetPart = "Head",
-    DeltaThreshold = 5 -- Минимальное изменение расстояния для обновления
+    DeltaThreshold = 2 -- Минимальное изменение расстояния для обновления
 }
 
 -- Поиск всех NPC
 local function FindAllNPCs()
     local currentTime = tick()
-    if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
+    if currentTime - lastUpdate < updateInterval and next(npcCache) then
         return npcCache
     end
 
@@ -82,7 +82,13 @@ local function FindAllNPCs()
                                                 Health = humanoid.Health
                                             }
                                         else
-                                            newCache[key] = lastState[key]
+                                            newCache[key] = {
+                                                Mob = lastState[key].Mob,
+                                                TargetPart = lastState[key].TargetPart,
+                                                Distance = lastState[key].Distance,
+                                                Health = lastState[key].Health,
+                                                Type = "QuestAI"
+                                            }
                                         end
                                     end
                                 end
@@ -121,7 +127,13 @@ local function FindAllNPCs()
                                         Health = humanoid.Health
                                     }
                                 else
-                                    newCache[key] = lastState[key]
+                                    newCache[key] = {
+                                        Mob = lastState[key].Mob,
+                                        TargetPart = lastState[key].TargetPart,
+                                        Distance = lastState[key].Distance,
+                                        Health = lastState[key].Health,
+                                        Type = "QuestAI"
+                                    }
                                 end
                             end
                         end
@@ -132,7 +144,7 @@ local function FindAllNPCs()
     end
 
     -- Поиск Summon NPC
-    local function checkSummonNPC(mob, name, type)
+    local function checkSummonNPC(mob, type)
         if mob and mob.Parent then
             local humanoid = mob:FindFirstChild("Humanoid")
             if humanoid and humanoid.Health > 0 then
@@ -154,7 +166,13 @@ local function FindAllNPCs()
                                 Health = humanoid.Health
                             }
                         else
-                            newCache[key] = lastState[key]
+                            newCache[key] = {
+                                Mob = lastState[key].Mob,
+                                TargetPart = lastState[key].TargetPart,
+                                Distance = lastState[key].Distance,
+                                Health = lastState[key].Health,
+                                Type = type
+                            }
                         end
                     end
                 end
@@ -162,13 +180,13 @@ local function FindAllNPCs()
         end
     end
 
-    checkSummonNPC(spiderling, "Spiderling", "SummonAI")
-    checkSummonNPC(shade, "Shade", "SummonAI")
+    checkSummonNPC(spiderling, "SummonAI")
+    checkSummonNPC(shade, "SummonAI")
 
     npcCache = newCache
     lastUpdate = currentTime
     local currentLogTime = tick()
-    if currentLogTime - lastLog >= logInterval and #npcCache > 0 then
+    if currentLogTime - lastLog >= logInterval and next(npcCache) then
         Log("Found entities! (" .. #npcCache .. ")", "🛡")
         lastLog = currentLogTime
     end
