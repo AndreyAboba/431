@@ -5,7 +5,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Загрузка EntityX
-local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
+local EntityX = loadstring(game:HttpGet("https://pastebin.com/raw/YourEntityXID", true))()
 
 local Core = nil
 local UI = nil
@@ -187,7 +187,7 @@ local function CanAttack(player)
     end
     
     if myTeam == "Shadow Wizards" then
-        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
+        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name")
         return true
     elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
