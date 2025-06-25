@@ -17,6 +17,23 @@ EntityX.EntityGroups = {
     }
 }
 
+-- Recursive function to find entities
+local function findEntities(parent, names)
+    local entities = {}
+    for _, child in pairs(parent:GetChildren()) do
+        if table.find(names, child.Name) then
+            table.insert(entities, child)
+        end
+        for _, nested in pairs(child:GetChildren()) do
+            local nestedEntities = findEntities(nested, names)
+            for _, entity in pairs(nestedEntities) do
+                table.insert(entities, entity)
+            end
+        end
+    end
+    return entities
+end
+
 -- Generic function to get closest entity from a given path
 function EntityX:GetClosestEntity(mousePos, entityGroup)
     local Camera = workspace.CurrentCamera
@@ -27,15 +44,14 @@ function EntityX:GetClosestEntity(mousePos, entityGroup)
 
     for _, pathData in pairs(groupData) do
         if pathData.Path and pathData.Names then
-            for _, entity in pairs(pathData.Path:GetChildren()) do
-                if table.find(pathData.Names, entity.Name) then
-                    local distance = (Camera.CFrame.Position - entity.Position).Magnitude
-                    local screenPos = Camera:WorldToViewportPoint(entity.Position)
-                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if mouseDistance < minDistance then
-                        minDistance = mouseDistance
-                        closestEntity = entity
-                    end
+            local entities = findEntities(pathData.Path, pathData.Names)
+            for _, entity in pairs(entities) do
+                local distance = (Camera.CFrame.Position - entity.Position).Magnitude
+                local screenPos = Camera:WorldToViewportPoint(entity.Position)
+                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if mouseDistance < minDistance then
+                    minDistance = mouseDistance
+                    closestEntity = entity
                 end
             end
         end
@@ -43,7 +59,7 @@ function EntityX:GetClosestEntity(mousePos, entityGroup)
 
     return closestEntity
 end
-
+print(' {🧠} EntityX version: 1.1')
 return EntityX
 
 
