@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-print('2')
+
 local Core = nil
 local UI = nil
 local notify = nil
@@ -388,8 +388,9 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    if not target.Character and not target.Parent then
-        DelayedPrint("SilentShot: Target has no character or parent")
+    local isPlayer = Players:GetPlayerFromCharacter(target)
+    if not isPlayer and not target.Parent then
+        DelayedPrint("SilentShot: Target has no parent (invalid NPC)")
         return
     end
     
@@ -404,7 +405,12 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoid = target.Character and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
+    local humanoid
+    if isPlayer then
+        humanoid = target.Character:FindFirstChild("Humanoid")
+    else
+        humanoid = target:FindFirstChild("Humanoid")
+    end
     if not humanoid then
         DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
