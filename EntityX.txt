@@ -20,21 +20,23 @@ local function Initialize()
 end
 Initialize()
 
--- Internal cache for performance
+-- Internal cache for performance with delta checking
 local npcCache = {}
+local lastState = {}
 local lastUpdate = 0
 local lastLog = 0
 local updateInterval = 0.35 -- Обновление кэша каждые 0.5 секунды
-local logInterval = 2.0 -- Логи каждые 1 секунду
+local logInterval = 2 -- Логи каждые 1 секунду
 
 -- Конфигурация поиска NPC
 local npcConfig = {
     DistanceLimit = 120,
-    TargetPart = "Head"
+    TargetPart = "Head",
+    DeltaThreshold = 5 -- Минимальное изменение расстояния для обновления
 }
 
--- Поиск всех NPC в указанных локациях
-local function FindAllNPCs()
+-- Асинхронная функция поиска NPC
+local function FindAllNPCsAsync()
     local currentTime = tick()
     if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
         return npcCache
@@ -44,7 +46,7 @@ local function FindAllNPCs()
     local missions = workspace:FindFirstChild("Missions")
     local spiderling = workspace:FindFirstChild("Spiderling")
     local shade = workspace:FindFirstChild("Shade")
-    npcCache = {}
+    local newCache = {}
 
     -- Поиск в Missions
     if missions then
@@ -66,13 +68,22 @@ local function FindAllNPCs()
                                 if targetPart then
                                     local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                                     if distance <= npcConfig.DistanceLimit then
-                                        table.insert(npcCache, {
-                                            Mob = mob,
-                                            TargetPart = targetPart,
-                                            Distance = distance,
-                                            Health = humanoid.Health,
-                                            Type = "QuestAI"
-                                        })
+                                        local key = mob:GetFullName()
+                                        if not lastState[key] or math.abs(lastState[key].Distance - distance) > npcConfig.DeltaThreshold or lastState[key].Health ~= humanoid.Health then
+                                            newCache[key] = {
+                                                Mob = mob,
+                                                TargetPart = targetPart,
+                                                Distance = distance,
+                                                Health = humanoid.Health,
+                                                Type = "QuestAI"
+                                            }
+                                            lastState[key] = {
+                                                Distance = distance,
+                                                Health = humanoid.Health
+                                            }
+                                        else
+                                            newCache[key] = lastState[key]
+                                        end
                                     end
                                 end
                             end
@@ -95,14 +106,23 @@ local function FindAllNPCs()
                         local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                         if targetPart then
                             local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                            if distance <= npcConfig.DistanceLimit then
-                                table.insert(npcCache, {
-                                    Mob = mob,
-                                    TargetPart = targetPart,
-                                    Distance = distance,
-                                    Health = humanoid.Health,
-                                    Type = "QuestAI"
-                                })
+                            if distance <= npcConfig.DeltaThreshold then
+                                local key = mob:GetFullName()
+                                if not lastState[key] or math.abs(lastState[key].Distance - distance) > npcConfig.DeltaThreshold or lastState[key].Health ~= humanoid.Health then
+                                    newCache[key] = {
+                                        Mob = mob,
+                                        TargetPart = targetPart,
+                                        Distance = distance,
+                                        Health = humanoid.Health,
+                                        Type = "QuestAI"
+                                    }
+                                    lastState[key] = {
+                                        Distance = distance,
+                                        Health = humanoid.Health
+                                    }
+                                else
+                                    newCache[key] = lastState[key]
+                                end
                             end
                         end
                     end
@@ -112,44 +132,40 @@ local function FindAllNPCs()
     end
 
     -- Поиск Summon NPC
-    if spiderling and spiderling.Parent then
-        local humanoid = spiderling:FindFirstChild("Humanoid")
-        if humanoid and humanoid.Health > 0 then
-            local targetPart = spiderling:FindFirstChild(npcConfig.TargetPart) or spiderling:FindFirstChild("HumanoidRootPart")
-            if targetPart then
-                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                if distance <= npcConfig.DistanceLimit then
-                    table.insert(npcCache, {
-                        Mob = spiderling,
-                        TargetPart = targetPart,
-                        Distance = distance,
-                        Health = humanoid.Health,
-                        Type = "SummonAI"
-                    })
+    local function checkSummonNPC(mob, name, type)
+        if mob and mob.Parent then
+            local humanoid = mob:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+                if targetPart then
+                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                    if distance <= npcConfig.DeltaThreshold then
+                        local key = mob:GetFullName()
+                        if not lastState[key] or math.abs(lastState[key].Distance - distance) > npcConfig.DeltaThreshold or lastState[key].Health ~= humanoid.Health then
+                            newCache[key] = {
+                                Mob = mob,
+                                TargetPart = targetPart,
+                                Distance = distance,
+                                Health = humanoid.Health,
+                                Type = type
+                            }
+                            lastState[key] = {
+                                Distance = distance,
+                                Health = humanoid.Health
+                            }
+                        else
+                            newCache[key] = lastState[key]
+                        end
+                    end
                 end
             end
         end
     end
 
-    if shade and shade.Parent then
-        local humanoid = shade:FindFirstChild("Humanoid")
-        if humanoid and humanoid.Health > 0 then
-            local targetPart = shade:FindFirstChild(npcConfig.TargetPart) or shade:FindFirstChild("HumanoidRootPart")
-            if targetPart then
-                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                if distance <= npcConfig.DistanceLimit then
-                    table.insert(npcCache, {
-                        Mob = shade,
-                        TargetPart = targetPart,
-                        Distance = distance,
-                        Health = humanoid.Health,
-                        Type = "SummonAI"
-                    })
-                end
-            end
-        end
-    end
+    checkSummonNPC(spiderling, "Spiderling", "SummonAI")
+    checkSummonNPC(shade, "Shade", "SummonAI")
 
+    npcCache = newCache
     lastUpdate = currentTime
     local currentLogTime = tick()
     if currentLogTime - lastLog >= logInterval and #npcCache > 0 then
@@ -159,16 +175,28 @@ local function FindAllNPCs()
     return npcCache
 end
 
+-- Асинхронный запуск поиска
+local co = coroutine.create(function()
+    while true do
+        FindAllNPCsAsync()
+        wait(updateInterval)
+    end
+end)
+coroutine.resume(co)
+
 -- Получение ближайшего NPC
 function EntityX:GetClosestNPC()
-    local npcs = FindAllNPCs()
+    local npcs = {}
+    for _, data in pairs(npcCache) do
+        table.insert(npcs, data)
+    end
     if #npcs == 0 then
         return nil, nil
     end
 
     table.sort(npcs, function(a, b)
         local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
-        local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
+        local bScore = (b.Distance / npcConfig.DeltaThreshold) * 0.5 + (b.Health / 100) * 0.5
         return aScore < bScore
     end)
 
@@ -177,7 +205,11 @@ end
 
 -- Получение всех NPC
 function EntityX:GetAllNPCs()
-    return FindAllNPCs()
+    local npcs = {}
+    for _, data in pairs(npcCache) do
+        table.insert(npcs, data)
+    end
+    return npcs
 end
 
 -- Установка предела дистанции
