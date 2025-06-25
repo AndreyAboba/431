@@ -360,8 +360,6 @@ local function GetClosestMob()
                                     if humanoid and humanoid.Health > 0 then
                                         DelayedPrint("Targeting NPC: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
                                         return mob, targetPart
-                                    else
-                                        DelayedPrint("GetClosestMob: Excluded " .. mob.Name .. " due to invalid Humanoid or health")
                                     end
                                 end
                             end
