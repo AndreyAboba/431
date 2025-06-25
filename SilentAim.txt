@@ -381,8 +381,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    -- Проверка в зависимости от типа цели
-    local isPlayer = Players:GetPlayerFromCharacter and Players:GetPlayerFromCharacter(target)
+    -- Проверка типа цели
+    local isPlayer = Players:GetPlayerFromCharacter(target)
     if isPlayer and not target.Character then
         DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no Character")
         return
