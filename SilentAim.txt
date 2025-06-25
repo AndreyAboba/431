@@ -7,7 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local Core = nil
 local UI = nil
 local notify = nil
-
+print('1')
 -- Конфигурация Silent Aim
 local Settings = {
     Enabled = false,
@@ -383,11 +383,9 @@ local function SilentShot(target, targetPart)
     
     -- Проверка типа цели
     local isPlayer = Players:GetPlayerFromCharacter(target)
-    if isPlayer and not target.Character then
-        DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no Character")
-        return
-    elseif not isPlayer and not target.Parent then
-        DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no Parent")
+    local targetObject = isPlayer and target.Character or target
+    if not targetObject then
+        DelayedPrint("SilentShot: Target " .. (target.Name or "Unknown") .. " has no valid object")
         return
     end
     
@@ -402,7 +400,7 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoid = (isPlayer and target.Character or target):FindFirstChild("Humanoid")
+    local humanoid = targetObject:FindFirstChild("Humanoid")
     if not humanoid then
         DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
