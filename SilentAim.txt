@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-print('4')
+
 local Core = nil
 local UI = nil
 local notify = nil
@@ -349,22 +349,22 @@ local function GetClosestMob()
     end
 
     local mousePos = UserInputService:GetMouseLocation()
-    local mobTypes = {
+    local missionMobTypes = {
         "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
         "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
-        "Poacher Apprentice"
+        "Poacher Apprentice", "Nightfall Spider"
     }
-    local spiderTypes = {"Spider", "Cave Spider"}
+    local spiderCaveMobTypes = {"Spider", "Cave Spider"}
 
     local validTargets = {}
 
-    -- Поиск в Missions (для Poacher, Imperial и т.д.)
+    -- Поиск в Missions (для всех missionMobTypes)
     if missions then
         for _, mission in pairs(missions:GetChildren()) do
             local aiSpawners = mission:FindFirstChild("AISpawners")
             if aiSpawners then
                 for _, spawner in pairs(aiSpawners:GetChildren()) do
-                    for _, mobType in pairs(mobTypes) do
+                    for _, mobType in pairs(missionMobTypes) do
                         local mob = spawner:FindFirstChild(mobType)
                         if mob and mob.Parent then
                             local humanoid = mob:FindFirstChild("Humanoid")
@@ -394,27 +394,29 @@ local function GetClosestMob()
         end
     end
 
-    -- Поиск в SpiderCave (для Spider и Cave Spider)
+    -- Поиск в SpiderCave (для Spider и Cave Spider с динамичным индексом)
     if spiderCave then
-        for _, spiderType in pairs(spiderTypes) do
-            local mob = spiderCave:FindFirstChild(spiderType)
-            if mob and mob.Parent then
-                local humanoid = mob:FindFirstChild("Humanoid")
-                if humanoid and humanoid.Health > 0 then
-                    local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                    if targetPart then
-                        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                        if distance <= 120 then
-                            local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                            local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                            if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                table.insert(validTargets, {
-                                    Mob = mob,
-                                    TargetPart = targetPart,
-                                    Distance = distance,
-                                    Health = humanoid.Health,
-                                    MouseDistance = mouseDistance
-                                })
+        for _, container in pairs(spiderCave:GetChildren()) do
+            for _, spiderType in pairs(spiderCaveMobTypes) do
+                local mob = container:FindFirstChild(spiderType)
+                if mob and mob.Parent then
+                    local humanoid = mob:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                        if targetPart then
+                            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                            if distance <= 120 then
+                                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
+                                    table.insert(validTargets, {
+                                        Mob = mob,
+                                        TargetPart = targetPart,
+                                        Distance = distance,
+                                        Health = humanoid.Health,
+                                        MouseDistance = mouseDistance
+                                    })
+                                end
                             end
                         end
                     end
