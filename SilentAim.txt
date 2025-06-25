@@ -373,7 +373,7 @@ local function GetClosestMob()
                     if mob and mob.Parent then
                         local humanoid = mob:FindFirstChild("Humanoid")
                         if humanoid and humanoid.Health > 0 then
-                            local targetPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                            local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
                             if targetPart then
                                 local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
                                 if distance <= 400 and not IsInSafezone(targetPart.Position) then
@@ -424,11 +424,9 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoidRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("HumanoidRootPart")
     local humanoid = target.Character and target.Character:FindFirstChild("Humanoid") or target:FindFirstChild("Humanoid")
-    
-    if not targetPart or not humanoidRoot or not humanoid then
-        DelayedPrint("SilentShot: Missing parts - TargetPart: " .. (targetPart and "Yes" or "No") .. ", HumanoidRoot: " .. (humanoidRoot and "Yes" or "No") .. ", Humanoid: " .. (humanoid and "Yes" or "No"))
+    if not humanoid then
+        DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
     end
     
@@ -461,7 +459,7 @@ local function SilentShot(target, targetPart)
         [8] = {}
     }
     
-    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
+    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (Hitbox: " .. targetPart.Name .. ") with args: " .. tostring(args))
     local success, err = pcall(function()
         toolListener:FireServer(unpack(args))
     end)
@@ -615,7 +613,7 @@ function Init(ui, core, notification)
 
     UI.Sections.SilentAim:Dropdown({
         Name = "Target Part",
-        Options = {"Head", "Torso", "LeftLeg", "RightLeg"},
+        Options = {"Head", "Torso", "LeftLeg", "RightLeg", "RightUpperLeg"},
         Default = Settings.TargetPart,
         MultiSelection = false,
         Callback = function(value)
