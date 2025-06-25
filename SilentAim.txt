@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-print('2')
+
 local Core = nil
 local UI = nil
 local notify = nil
@@ -353,6 +353,10 @@ local function GetClosestMob()
         "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider"
     }
 
+    local closestMob = nil
+    local closestPart = nil
+    local closestDistance = math.huge
+
     for _, mission in pairs(missions:GetChildren()) do
         local aiSpawners = mission:FindFirstChild("AISpawners")
         if aiSpawners then
@@ -360,17 +364,18 @@ local function GetClosestMob()
                 for _, mobType in pairs(mobTypes) do
                     local mob = spawner:FindFirstChild(mobType)
                     if mob and mob.Parent then
-                        local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                        if targetPart then
-                            local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                            if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                                local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                    local humanoid = mob:FindFirstChild("Humanoid")
-                                    if humanoid and humanoid.Health > 0 then
-                                        DelayedPrint("Targeting NPC: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
-                                        return mob, targetPart
+                        local humanoid = mob:FindFirstChild("Humanoid")
+                        if humanoid and humanoid.Health > 0 then
+                            local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
+                            if targetPart then
+                                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                                if distance <= 400 and not IsInSafezone(targetPart.Position) then
+                                    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                    if mouseDistance <= Settings.FOV and IsVisible(targetPart) and mouseDistance < closestDistance then
+                                        closestMob = mob
+                                        closestPart = targetPart
+                                        closestDistance = mouseDistance
                                     end
                                 end
                             end
@@ -381,6 +386,10 @@ local function GetClosestMob()
         end
     end
 
+    if closestMob then
+        DelayedPrint("Targeting NPC: " .. closestMob.Name .. " (Hitbox: " .. closestPart.Name .. ", Distance: " .. math.floor(closestDistance) .. "px)")
+        return closestMob, closestPart
+    end
     DelayedPrint("No valid mob target found")
     return nil, nil
 end
@@ -397,10 +406,9 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local isPlayer = Players:GetPlayerFromCharacter(target)
-    local targetContainer = isPlayer and workspace.Characters:FindFirstChild(isPlayer.Name) or target
+    local targetContainer = workspace.Characters:FindFirstChild(target.Name) or target
     if not targetContainer or not targetContainer.Parent then
-        DelayedPrint("SilentShot: Invalid target container for " .. (isPlayer and isPlayer.Name or target.Name))
+        DelayedPrint("SilentShot: Invalid target container for " .. (target.Name or "Unknown"))
         return
     end
     
@@ -417,7 +425,7 @@ local function SilentShot(target, targetPart)
     
     local humanoid = targetContainer:FindFirstChild("Humanoid")
     if not humanoid then
-        DelayedPrint("SilentShot: Humanoid not found for " .. (isPlayer and isPlayer.Name or target.Name))
+        DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
         return
     end
     
@@ -450,15 +458,15 @@ local function SilentShot(target, targetPart)
         [8] = {}
     }
     
-    DelayedPrint("SilentShot: Attempting to fire at " .. (isPlayer and isPlayer.Name or target.Name) .. " (Hitbox: " .. targetPart.Name .. ") with args: " .. tostring(args))
+    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (Hitbox: " .. targetPart.Name .. ") with args: " .. tostring(args))
     local success, err = pcall(function()
         toolListener:FireServer(unpack(args))
     end)
     
     if success then
-        DelayedPrint("SilentShot: Successfully fired at " .. (isPlayer and isPlayer.Name or target.Name) .. " (" .. targetPart.Name .. ")")
+        DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
         lastFireTime = currentTime
-        Core.GunSilentTarget.CurrentTarget = isPlayer and isPlayer.Name or target.Name
+        Core.GunSilentTarget.CurrentTarget = target.Name
     else
         DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
