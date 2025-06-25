@@ -2,6 +2,8 @@
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
 -- Красивое логирование
 local function Log(message, emoji)
@@ -36,6 +38,28 @@ local npcConfig = {
     DistanceLimit = 120,
     TargetPart = "Head"
 }
+
+-- Вспомогательная функция для проверки Summon NPC
+local function checkSummonNPC(mob)
+    if mob and mob.Parent then
+        local humanoid = mob:FindFirstChild("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+            if targetPart then
+                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                if distance <= npcConfig.DistanceLimit then
+                    return {
+                        Mob = mob,
+                        TargetPart = targetPart,
+                        Distance = distance,
+                        Health = humanoid.Health
+                    }
+                end
+            end
+        end
+    end
+    return nil
+end
 
 -- Поиск всех NPC в указанных локациях
 local function FindAllNPCs()
