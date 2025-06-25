@@ -368,20 +368,21 @@ local function GetClosestMob()
         local aiSpawners = mission:FindFirstChild("AISpawners")
         if aiSpawners then
             for _, spawner in pairs(aiSpawners:GetChildren()) do
-                for _, mobType in pairs(mobTypes) do
-                    local mob = spawner:FindFirstChild(mobType)
-                    if mob and mob.Parent then
-                        local humanoid = mob:FindFirstChild("Humanoid")
-                        if humanoid and humanoid.Health > 0 then
-                            local targetPart = mob:FindFirstChild(Settings.TargetPart) or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("UpperTorso")
-                            if targetPart then
-                                local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                                if distance <= 400 and not IsInSafezone(targetPart.Position) then
-                                    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
-                                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                    if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
-                                        DelayedPrint("Targeting: " .. mob.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
-                                        return mob, targetPart
+                for _, child in pairs(spawner:GetChildren()) do
+                    for _, mobType in pairs(mobTypes) do
+                        if child.Name:lower():find(mobType:lower()) then
+                            local humanoid = child:FindFirstChild("Humanoid")
+                            if humanoid and humanoid.Health > 0 then
+                                local targetPart = child:FindFirstChild(Settings.TargetPart)
+                                if targetPart then
+                                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                                    if distance <= 400 and not IsInSafezone(targetPart.Position) then
+                                        local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                                        local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                        if mouseDistance <= Settings.FOV and IsVisible(targetPart) then
+                                            DelayedPrint("Targeting: " .. child.Name .. " (Hitbox: " .. targetPart.Name .. ", Distance: " .. math.floor(mouseDistance) .. "px)")
+                                            return child, targetPart
+                                        end
                                     end
                                 end
                             end
