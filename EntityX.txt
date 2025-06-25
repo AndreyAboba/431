@@ -1,5 +1,5 @@
 -- EntityX Library for managing NPC entities
-
+print('( 🧠 ) EntityX lib by stuppp110')
 local EntityX = {}
 
 -- Configuration for NPC detection
