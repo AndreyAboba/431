@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
+print('2')
 local Core = nil
 local UI = nil
 local notify = nil
@@ -240,8 +240,14 @@ local function GetClosestTarget()
     local validTargets = {}
     local possibleParts = {"Head", "Torso", "LeftLeg", "RightLeg"}
     
+    local charactersFolder = workspace:FindFirstChild("Characters")
+    if not charactersFolder then
+        DelayedPrint("GetClosestTarget: Characters folder not found")
+        return nil, nil
+    end
+
     for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer or not player.Character then
+        if player == LocalPlayer then
             continue
         end
         
@@ -257,8 +263,13 @@ local function GetClosestTarget()
             continue
         end
         
-        local humanoid = player.Character:FindFirstChild("Humanoid")
-        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+        local playerContainer = charactersFolder:FindFirstChild(player.Name)
+        if not playerContainer then
+            continue
+        end
+        
+        local humanoid = playerContainer:FindFirstChild("Humanoid")
+        local humanoidRoot = playerContainer:FindFirstChild("HumanoidRootPart")
         if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
             continue
         end
@@ -269,10 +280,10 @@ local function GetClosestTarget()
             continue
         end
         
-        local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+        local targetPart = playerContainer:FindFirstChild(Settings.TargetPart)
         if not targetPart and Settings.SmartHitbox then
             for _, partName in ipairs(possibleParts) do
-                targetPart = player.Character:FindFirstChild(partName)
+                targetPart = playerContainer:FindFirstChild(partName)
                 if targetPart then
                     break
                 end
@@ -300,8 +311,8 @@ local function GetClosestTarget()
     
     table.sort(validTargets, function(a, b)
         if Settings.SortMethod == "Distance" then
-            return (Camera.CFrame.Position - a.Player.Character[a.TargetPart.Name].Position).Magnitude <
-                   (Camera.CFrame.Position - b.Player.Character[b.TargetPart.Name].Position).Magnitude
+            return (Camera.CFrame.Position - a.TargetPart.Position).Magnitude <
+                   (Camera.CFrame.Position - b.TargetPart.Position).Magnitude
         elseif Settings.SortMethod == "Health" then
             return a.Health < b.Health
         elseif Settings.SortMethod == "Crosshair" then
@@ -387,8 +398,9 @@ local function SilentShot(target, targetPart)
     end
     
     local isPlayer = Players:GetPlayerFromCharacter(target)
-    if not isPlayer and not target.Parent then
-        DelayedPrint("SilentShot: Target has no parent (invalid NPC)")
+    local targetContainer = isPlayer and workspace.Characters:FindFirstChild(isPlayer.Name) or target
+    if not targetContainer or not targetContainer.Parent then
+        DelayedPrint("SilentShot: Invalid target container for " .. (isPlayer and isPlayer.Name or target.Name))
         return
     end
     
@@ -403,14 +415,9 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local humanoid
-    if isPlayer then
-        humanoid = target.Character:FindFirstChild("Humanoid")
-    else
-        humanoid = target:FindFirstChild("Humanoid")
-    end
+    local humanoid = targetContainer:FindFirstChild("Humanoid")
     if not humanoid then
-        DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
+        DelayedPrint("SilentShot: Humanoid not found for " .. (isPlayer and isPlayer.Name or target.Name))
         return
     end
     
@@ -443,15 +450,15 @@ local function SilentShot(target, targetPart)
         [8] = {}
     }
     
-    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (Hitbox: " .. targetPart.Name .. ") with args: " .. tostring(args))
+    DelayedPrint("SilentShot: Attempting to fire at " .. (isPlayer and isPlayer.Name or target.Name) .. " (Hitbox: " .. targetPart.Name .. ") with args: " .. tostring(args))
     local success, err = pcall(function()
         toolListener:FireServer(unpack(args))
     end)
     
     if success then
-        DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
+        DelayedPrint("SilentShot: Successfully fired at " .. (isPlayer and isPlayer.Name or target.Name) .. " (" .. targetPart.Name .. ")")
         lastFireTime = currentTime
-        Core.GunSilentTarget.CurrentTarget = target.Name
+        Core.GunSilentTarget.CurrentTarget = isPlayer and isPlayer.Name or target.Name
     else
         DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
