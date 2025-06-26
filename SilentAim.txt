@@ -28,7 +28,8 @@ local Settings = {
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    NPCSupport = true, -- Включена поддержка NPC
+    NPCSupportEnabled = true, -- Включена поддержка NPC
+    NPCMethod = "SilentAim", -- Метод атаки NPC: SilentAim или SelfMode
     SelectedTarget = "QuestAI"
 }
 
@@ -370,8 +371,8 @@ local function SilentShot(target, targetPart)
         return
     end
 
-    if not Settings.Enabled then
-        DelayedPrint("SilentShot: Silent Aim disabled")
+    if not Settings.Enabled and Settings.NPCMethod == "SilentAim" then
+        DelayedPrint("SilentShot: Silent Aim disabled and NPCMethod is SilentAim")
         return
     end
     
@@ -520,7 +521,9 @@ function Init(ui, core, notification)
 
     UI.Sections = UI.Sections or {}
     UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
+    UI.Sections.NPCSupport = UI.Tabs.Combat:Section({ Name = "NPC Support", Side = "Right" })
 
+    -- Silent Aim Section
     UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
 
     UI.Sections.SilentAim:Toggle({
@@ -627,7 +630,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             Settings.DistanceLimit = value
-            EntityX:SetDistanceLimit(value) -- Синхронизация с EntityX
+            EntityX:SetDistanceLimit(value)
             notify("Silent Aim", "Distance Limit set to: " .. value .. " studs", false)
         end
     }, "SilentDistanceLimit")
@@ -656,23 +659,37 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    UI.Sections.SilentAim:Toggle({
-        Name = "NPC Support",
-        Default = Settings.NPCSupport,
-        Callback = function(value)
-            Settings.NPCSupport = value
-            notify("Silent Aim", "NPC Support " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentNPCSupport")
+    -- NPC Support Section
+    UI.Sections.NPCSupport:Header({ Name = "NPC Support" })
 
-    UI.Sections.SilentAim:Dropdown({
+    UI.Sections.NPCSupport:Toggle({
+        Name = "Enabled",
+        Default = Settings.NPCSupportEnabled,
+        Callback = function(value)
+            Settings.NPCSupportEnabled = value
+            notify("NPC Support", "Toggled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "NPCSupportEnabled")
+
+    UI.Sections.NPCSupport:Dropdown({
+        Name = "Method",
+        Options = {"SilentAim", "SelfMode"},
+        Default = Settings.NPCMethod,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.NPCMethod = value
+            notify("NPC Support", "Method set to: " .. value, false)
+        end
+    }, "NPCMethod")
+
+    UI.Sections.NPCSupport:Dropdown({
         Name = "Entities",
         Options = {"QuestAI", "SummonAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
             Settings.SelectedTarget = value
-            notify("Silent Aim", "Selected Target set to: " .. value, false)
+            notify("NPC Support", "Selected Target set to: " .. value, false)
         end
     }, "SilentEntities")
 
@@ -692,7 +709,7 @@ function Init(ui, core, notification)
         if Settings.Keybind and input.KeyCode == Settings.Keybind then
             Settings.Enabled = not Settings.Enabled
             fovCircle.Visible = Settings.Enabled
-            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), false)
+            notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), false)
         end
     end)
 
@@ -717,10 +734,16 @@ RunService.RenderStepped:Connect(function()
 
     UpdateFriendsCheck()
 
-    local target, targetPart, targetDistance = GetClosestTarget()
+    local target, targetPart, targetDistance = nil, nil, math.huge
     local npcTarget, npcTargetPart, npcDistance = nil, nil, math.huge
 
-    if Settings.NPCSupport then
+    -- Поиск игроков, если Silent Aim включён
+    if Settings.Enabled then
+        target, targetPart, targetDistance = GetClosestTarget()
+    end
+
+    -- Поиск NPC, если NPC Support включён
+    if Settings.NPCSupportEnabled then
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
         if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) and IsVisible(npcTargetPart) then
             npcDistance = (Camera.CFrame.Position - npcTargetPart.Position).Magnitude
@@ -736,14 +759,28 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Выбор цели: приоритет NPC, если ближе и в пределах FOV
-    if npcTarget and npcTargetPart and npcDistance <= targetDistance then
-        target, targetPart = npcTarget, npcTargetPart
-        DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
-    elseif target and targetPart then
-        DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
+    -- Выбор цели
+    if Settings.NPCSupportEnabled and Settings.NPCMethod == "SelfMode" then
+        -- В SelfMode атакуем только NPC, если они есть
+        if npcTarget and npcTargetPart then
+            target, targetPart = npcTarget, npcTargetPart
+            DelayedPrint("Selected NPC target (SelfMode): " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+        else
+            target, targetPart = nil, nil
+            DelayedPrint("No valid NPC target selected in SelfMode")
+        end
+    elseif Settings.Enabled then
+        -- В SilentAim режиме выбираем ближайшую цель
+        if npcTarget and npcTargetPart and npcDistance <= targetDistance then
+            target, targetPart = npcTarget, npcTargetPart
+            DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+        elseif target and targetPart then
+            DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
+        else
+            DelayedPrint("No valid target selected")
+        end
     else
-        DelayedPrint("No valid target selected")
+        DelayedPrint("No target selected: Silent Aim and NPC Support disabled or no valid targets")
     end
 
     currentTarget = target
