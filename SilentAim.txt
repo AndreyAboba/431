@@ -440,8 +440,7 @@ local function CheckToolEquipped()
     end
 
     if isToolEquipped then
-        isToolEquipped = false
-        currentTool = nil
+        isToolEquipped = false magasin        currentTool = nil
         DelayedPrint("Tool is unequipped")
     end
     return false
@@ -723,8 +722,9 @@ RunService.RenderStepped:Connect(function()
 
             if #summonNPCs > 0 then
                 table.sort(summonNPCs, function(a, b)
-                    local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
-                    local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
+                    local distanceLimit = EntityX:GetDistanceLimit()
+                    local aScore = (a.Distance / distanceLimit) * 0.5 + (a.Health / 100) * 0.5
+                    local bScore = (b.Distance / distanceLimit) * 0.5 + (b.Health / 100) * 0.5
                     return aScore < bScore
                 end)
                 npcTarget, npcTargetPart = summonNPCs[1].Mob, summonNPCs[1].TargetPart
