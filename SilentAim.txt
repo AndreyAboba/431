@@ -1,3 +1,4 @@
+```lua
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -24,12 +25,13 @@ local Settings = {
     Method = "Packet",
     SortMethod = "Auto",
     LogInterval = 0.05,
-    DistanceLimit = 1000, -- Для игроков
+    DistanceLimit = 1000,
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    NPCSupportEnabled = true, -- Включена поддержка NPC
-    NPCMethod = "SilentAim", -- Метод атаки NPC: SilentAim или SelfMode
+    NPCSupportEnabled = true,
+    NPCMethod = "SilentAim",
+    NPCToolCheck = true, -- Новый параметр для проверки инструмента
     SelectedTarget = "QuestAI"
 }
 
@@ -217,7 +219,6 @@ local function CanAttackNPC(npc)
         DelayedPrint("CanAttackNPC: NPC " .. npc.Name .. " has no Humanoid or is dead")
         return false
     end
-    -- Проверка владельца для Summon NPC
     local owner = npc:GetAttribute("Owner")
     if owner and owner == LocalPlayer.Name then
         DelayedPrint("CanAttackNPC: NPC " .. npc.Name .. " is owned by LocalPlayer")
@@ -228,21 +229,29 @@ local function CanAttackNPC(npc)
 end
 
 -- Поиск ToolListener и PistolConfig
-local function GetToolListener()
+local function GetToolListener(useBackpack)
     local toolListener = nil
     local wand = nil
+    local pistolConfig = nil
     
     local character = LocalPlayer.Character
-    if not character then
-        DelayedPrint("GetToolListener: No character found")
-        return nil, nil
-    end
-
-    for _, item in pairs(character:GetChildren()) do
-        if item.ClassName == "Tool" then
-            wand = item
-            toolListener = wand:FindFirstChild("ToolListnerEvent")
-            break
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    
+    if useBackpack and backpack then
+        for _, item in pairs(backpack:GetChildren()) do
+            if item.ClassName == "Tool" then
+                wand = item
+                toolListener = wand:FindFirstChild("ToolListnerEvent")
+                break
+            end
+        end
+    elseif character then
+        for _, item in pairs(character:GetChildren()) do
+            if item.ClassName == "Tool" then
+                wand = item
+                toolListener = wand:FindFirstChild("ToolListnerEvent")
+                break
+            end
         end
     end
     
@@ -252,7 +261,9 @@ local function GetToolListener()
     end
     
     local playerContainer = workspace:FindFirstChild("Characters") and workspace.Characters:FindFirstChild(LocalPlayer.Name)
-    local pistolConfig = playerContainer and playerContainer:FindFirstChild(wand.Name) and playerContainer[wand.Name]:FindFirstChild("PistolConfig")
+    if playerContainer and playerContainer:FindFirstChild(wand.Name) then
+        pistolConfig = playerContainer[wand.Name]:FindFirstChild("PistolConfig")
+    end
     if not pistolConfig then
         DelayedPrint("GetToolListener: PistolConfig not found for " .. (wand and wand.Name or "Unknown"))
         return toolListener, nil
@@ -399,7 +410,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local toolListener, pistolConfig = GetToolListener()
+    local useBackpack = Settings.NPCMethod == "SelfMode" and not Settings.NPCToolCheck
+    local toolListener, pistolConfig = GetToolListener(useBackpack)
     if not toolListener then
         DelayedPrint("SilentShot: ToolListener not found")
         return
@@ -682,6 +694,15 @@ function Init(ui, core, notification)
         end
     }, "NPCMethod")
 
+    UI.Sections.NPCSupport:Toggle({
+        Name = "Tool Check",
+        Default = Settings.NPCToolCheck,
+        Callback = function(value)
+            Settings.NPCToolCheck = value
+            notify("NPC Support", "Tool Check " .. (value and "ON" or "OFF"), false)
+        end
+    }, "NPCToolCheck")
+
     UI.Sections.NPCSupport:Dropdown({
         Name = "Entities",
         Options = {"QuestAI", "SummonAI"},
@@ -726,7 +747,9 @@ RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 
-    if not CheckToolEquipped() then
+    if Settings.NPCMethod == "SelfMode" and not Settings.NPCToolCheck then
+        -- В SelfMode без Tool Check не проверяем экипировку
+    elseif not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
         return
@@ -737,12 +760,10 @@ RunService.RenderStepped:Connect(function()
     local target, targetPart, targetDistance = nil, nil, math.huge
     local npcTarget, npcTargetPart, npcDistance = nil, nil, math.huge
 
-    -- Поиск игроков, если Silent Aim включён
     if Settings.Enabled then
         target, targetPart, targetDistance = GetClosestTarget()
     end
 
-    -- Поиск NPC, если NPC Support включён
     if Settings.NPCSupportEnabled then
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
         if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) and IsVisible(npcTargetPart) then
@@ -759,9 +780,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Выбор цели
     if Settings.NPCSupportEnabled and Settings.NPCMethod == "SelfMode" then
-        -- В SelfMode атакуем только NPC, если они есть
         if npcTarget and npcTargetPart then
             target, targetPart = npcTarget, npcTargetPart
             DelayedPrint("Selected NPC target (SelfMode): " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
@@ -770,7 +789,6 @@ RunService.RenderStepped:Connect(function()
             DelayedPrint("No valid NPC target selected in SelfMode")
         end
     elseif Settings.Enabled then
-        -- В SilentAim режиме выбираем ближайшую цель
         if npcTarget and npcTargetPart and npcDistance <= targetDistance then
             target, targetPart = npcTarget, npcTargetPart
             DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
