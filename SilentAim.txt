@@ -24,11 +24,11 @@ local Settings = {
     Method = "Packet",
     SortMethod = "Auto",
     LogInterval = 0.05,
-    DistanceLimit = 1000, -- Для игроков остается 1000
+    DistanceLimit = 1000, -- Для игроков
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    NPCSupport = false,
+    NPCSupport = true, -- Включена поддержка NPC
     SelectedTarget = "QuestAI"
 }
 
@@ -69,7 +69,10 @@ local function IsVisible(targetPart)
     
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return false end
+    if not rootPart then
+        DelayedPrint("IsVisible: No root part found for local player")
+        return false
+    end
     
     local rayOrigin = rootPart.Position
     local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
@@ -146,20 +149,20 @@ local function HasLasso(player)
     return fakeLimbs ~= nil
 end
 
--- Проверка возможности атаки
-local function CanAttack(player)
+-- Проверка возможности атаки игрока
+local function CanAttackPlayer(player)
     if not player then
-        DelayedPrint("CanAttack: No player provided")
+        DelayedPrint("CanAttackPlayer: No player provided")
         return false
     end
     
     if HasLasso(player) then
-        DelayedPrint("CanAttack: Player " .. player.Name .. " has Lasso")
+        DelayedPrint("CanAttackPlayer: Player " .. player.Name .. " has Lasso")
         return false
     end
     
     if not Settings.TeamCheck then
-        DelayedPrint("CanAttack: TeamCheck disabled, allowing attack on " .. player.Name)
+        DelayedPrint("CanAttackPlayer: TeamCheck disabled, allowing attack on " .. player.Name)
         return true
     end
     
@@ -167,38 +170,59 @@ local function CanAttack(player)
     local theirTeam = player.Team and player.Team.Name
     
     if not myTeam or not theirTeam then
-        DelayedPrint("CanAttack: Team data missing, allowing attack on " .. player.Name)
+        DelayedPrint("CanAttackPlayer: Team data missing, allowing attack on " .. player.Name)
         return true
     end
     
     if HasProtectionBubble(player) then
-        DelayedPrint("CanAttack: Player " .. player.Name .. " has ProtectionBubble")
+        DelayedPrint("CanAttackPlayer: Player " .. player.Name .. " has ProtectionBubble")
         return false
     end
     
     local targetPart = player.Character and player.Character:FindFirstChild(Settings.TargetPart)
     if targetPart and IsInSafezone(targetPart.Position) then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
+            DelayedPrint("CanAttackPlayer: Player " .. player.Name .. " in safezone and is Wizard/Royal Wizard")
             return false
         end
-        DelayedPrint("CanAttack: Player " .. player.Name .. " in safezone, allowing attack")
+        DelayedPrint("CanAttackPlayer: Player " .. player.Name .. " in safezone, allowing attack")
         return true
     end
     
     if myTeam == "Shadow Wizards" then
-        DelayedPrint("CanAttack: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
+        DelayedPrint("CanAttackPlayer: LocalPlayer is Shadow Wizard, allowing attack on " .. player.Name)
         return true
     elseif myTeam == "Wizards" or myTeam == "Royal Wizards" then
         if theirTeam == "Wizards" or theirTeam == "Royal Wizards" then
-            DelayedPrint("CanAttack: Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
+            DelayedPrint("CanAttackPlayer: Cannot attack player " .. player.Name .. ", same team (Wizard/Royal Wizard)")
             return false
         end
-        DelayedPrint("CanAttack: Allowing attack on " .. player.Name .. " (different team)")
+        DelayedPrint("CanAttackPlayer: Allowing attack on " .. player.Name .. " (different team)")
         return true
     end
     
-    DelayedPrint("CanAttack: Allowing attack on " .. player.Name)
+    DelayedPrint("CanAttackPlayer: Allowing attack on " .. player.Name)
+    return true
+end
+
+-- Проверка возможности атаки NPC
+local function CanAttackNPC(npc)
+    if not npc then
+        DelayedPrint("CanAttackNPC: No NPC provided")
+        return false
+    end
+    local humanoid = npc:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        DelayedPrint("CanAttackNPC: NPC " .. npc.Name .. " has no Humanoid or is dead")
+        return false
+    end
+    -- Проверка владельца для Summon NPC
+    local owner = npc:GetAttribute("Owner")
+    if owner and owner == LocalPlayer.Name then
+        DelayedPrint("CanAttackNPC: NPC " .. npc.Name .. " is owned by LocalPlayer")
+        return false
+    end
+    DelayedPrint("CanAttackNPC: Allowing attack on NPC " .. npc.Name)
     return true
 end
 
@@ -246,7 +270,7 @@ local function GetClosestTarget()
     local charactersFolder = workspace:FindFirstChild("Characters")
     if not charactersFolder then
         DelayedPrint("GetClosestTarget: Characters folder not found")
-        return nil, nil
+        return nil, nil, nil
     end
 
     for _, player in pairs(Players:GetPlayers()) do
@@ -266,16 +290,14 @@ local function GetClosestTarget()
             continue
         end
         
-        local playerContainer = charactersFolder:FindFirstChild(player
-
-.Name)
+        local playerContainer = charactersFolder:FindFirstChild(player.Name)
         if not playerContainer then
             continue
         end
         
         local humanoid = playerContainer:FindFirstChild("Humanoid")
         local humanoidRoot = playerContainer:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoidHealth <= 0 then
+        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
             continue
         end
         
@@ -300,7 +322,7 @@ local function GetClosestTarget()
             continue
         end
         
-        if CanAttack(player) and IsVisible(targetPart) then
+        if CanAttackPlayer(player) and IsVisible(targetPart) then
             local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
             local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
             if mouseDistance <= Settings.FOV then
@@ -332,12 +354,13 @@ local function GetClosestTarget()
     
     local target = validTargets[1] and validTargets[1].Player
     local selectedPart = validTargets[1] and validTargets[1].TargetPart
+    local targetDistance = validTargets[1] and validTargets[1].Distance or math.huge
     if target then
-        DelayedPrint("Targeting player: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(validTargets[1].MouseDistance) .. "px)")
-        return target, selectedPart
+        DelayedPrint("Targeting player: " .. target.Name .. " (Hitbox: " .. selectedPart.Name .. ", Distance: " .. math.floor(targetDistance) .. " studs)")
+        return target, selectedPart, targetDistance
     end
     DelayedPrint("No valid player target found")
-    return nil, nil
+    return nil, nil, nil
 end
 
 -- Отправка выстрела через RemoteEvent
@@ -352,7 +375,7 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local targetContainer = workspace.Characters:FindFirstChild(target.Name) or target
+    local targetContainer = target:IsA("Player") and workspace.Characters:FindFirstChild(target.Name) or target
     if not targetContainer or not targetContainer.Parent then
         DelayedPrint("SilentShot: Invalid target container for " .. (target.Name or "Unknown"))
         return
@@ -404,7 +427,7 @@ local function SilentShot(target, targetPart)
         [8] = {}
     }
     
-    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (Hitbox: " .. targetPart.Name .. ") with args: " .. tostring(args))
+    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (Hitbox: " .. targetPart.Name .. ")")
     local success, err = pcall(function()
         toolListener:FireServer(unpack(args))
     end)
@@ -412,7 +435,7 @@ local function SilentShot(target, targetPart)
     if success then
         DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
         lastFireTime = currentTime
-        Core.GunSilentTarget.CurrentTarget = target.Name
+        Core.GunSilentTarget.CurrentTarget = target.Name or "NPC"
     else
         DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
@@ -604,6 +627,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             Settings.DistanceLimit = value
+            EntityX:SetDistanceLimit(value) -- Синхронизация с EntityX
             notify("Silent Aim", "Distance Limit set to: " .. value .. " studs", false)
         end
     }, "SilentDistanceLimit")
@@ -693,60 +717,30 @@ RunService.RenderStepped:Connect(function()
 
     UpdateFriendsCheck()
 
-    local target, targetPart = GetClosestTarget()
-    local npcTarget, npcTargetPart = nil, nil
+    local target, targetPart, targetDistance = GetClosestTarget()
+    local npcTarget, npcTargetPart, npcDistance = nil, nil, math.huge
+
     if Settings.NPCSupport then
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
-        if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
-            local allNPCs = EntityX:GetAllNPCs()
-            -- Проверка Summon NPC (Spiderling и Shade) с атрибутом Owner
-            local spiderling = workspace:FindFirstChild("Spiderling")
-            local shade = workspace:FindFirstChild("Shade")
-            local summonNPCs = {}
-            
-            local function addSummonIfValid(mob)
-                local summonData = EntityX.checkSummonNPC(mob)
-                if summonData then
-                    local owner = mob:GetAttribute("Owner")
-                    if not owner or owner ~= LocalPlayer.Name then
-                        table.insert(summonNPCs, summonData)
-                    else
-                        DelayedPrint("Ignored " .. mob.Name .. " due to Owner matching LocalPlayer")
-                    end
-                end
-            end
-
-            addSummonIfValid(spiderling)
-            addSummonIfValid(shade)
-
-            for _, npc in pairs(allNPCs) do
-                table.insert(summonNPCs, npc)
-            end
-
-            if #summonNPCs > 0 then
-                -- Проверка корректности данных NPC
-                for _, npc in pairs(summonNPCs) do
-                    if not npc.Distance or not npc.Health then
-                        DelayedPrint("Invalid NPC data in summonNPCs: " .. tostring(npc.Mob))
-                        return
-                    end
-                end
-                table.sort(summonNPCs, function(a, b)
-                    local distanceLimit = EntityX:GetDistanceLimit()
-                    local aScore = (a.Distance / distanceLimit) * 0.5 + (a.Health / 100) * 0.5
-                    local bScore = (b.Distance / distanceLimit) * 0.5 + (b.Health / 100) * 0.5
-                    return aScore < bScore
-                end)
-                npcTarget, npcTargetPart = summonNPCs[1].Mob, summonNPCs[1].TargetPart
-            end
-
-            if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
-                if not target or (npcTarget and (npcTarget.Name == "Spiderling" or npcTarget.Name == "Shade") and summonNPCs[1].Distance < (validTargets[1] and validTargets[1].Distance or math.huge)) then
-                    target, targetPart = npcTarget, npcTargetPart
-                end
-            end
+        if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) and IsVisible(npcTargetPart) then
+            npcDistance = (Camera.CFrame.Position - npcTargetPart.Position).Magnitude
+            DelayedPrint("Found NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+        else
+            DelayedPrint("No valid NPC target found")
+            npcTarget, npcTargetPart = nil, nil
         end
     end
+
+    -- Выбор цели: приоритет NPC, если ближе
+    if npcTarget and npcTargetPart and npcDistance < targetDistance then
+        target, targetPart = npcTarget, npcTargetPart
+        DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " over player (Distance: " .. math.floor(npcDistance) .. " studs)")
+    elseif target and targetPart then
+        DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
+    else
+        DelayedPrint("No valid target selected")
+    end
+
     currentTarget = target
     
     if target and targetPart then
