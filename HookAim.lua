@@ -6,7 +6,6 @@ local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 
 -- Загрузка EntityX
-local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
 
 local Core = nil
 local UI = nil
