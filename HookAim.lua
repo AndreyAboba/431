@@ -21,7 +21,6 @@ local Settings = {
     TeamCheck = true,
     VisibilityCheck = true,
     PrintDelay = 0.2,
-    FireDelay = 0.5,
     SortMethod = "Auto",
     LogInterval = 0.05,
     DistanceLimit = 400,
@@ -33,7 +32,6 @@ local Settings = {
 }
 
 local lastPrintTime = 0
-local lastFireTime = 0
 local currentTarget = nil
 local lastLogTime = 0
 
@@ -207,117 +205,6 @@ local function CanAttackNPC(npc)
     return true
 end
 
--- Поиск ToolListener и PistolConfig
-local function GetToolListener(useBackpack)
-    local toolListener = nil
-    local wand = nil
-    local pistolConfig = nil
-    
-    local character = LocalPlayer.Character
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    
-    if useBackpack and backpack then
-        for _, item in pairs(backpack:GetChildren()) do
-            if item.ClassName == "Tool" then
-                wand = item
-                toolListener = wand:FindFirstChild("ToolListnerEvent")
-                break
-            end
-        end
-    end
-    if not toolListener and character then
-        for _, item in pairs(character:GetChildren()) do
-            if item.ClassName == "Tool" then
-                wand = item
-                toolListener = wand:FindFirstChild("ToolListnerEvent")
-                break
-            end
-        end
-    end
-    
-    if not toolListener or not wand then
-        DelayedPrint("GetToolListener: Could not find ToolListnerEvent or wand")
-        return nil, nil
-    end
-    
-    local playerContainer = workspace:FindFirstChild("Characters") and workspace.Characters:FindFirstChild(LocalPlayer.Name)
-    if playerContainer and playerContainer:FindFirstChild(wand.Name) then
-        pistolConfig = playerContainer[wand.Name]:FindFirstChild("PistolConfig")
-    end
-    if not pistolConfig then
-        DelayedPrint("GetToolListener: PistolConfig not found for " .. (wand and wand.Name or "Unknown"))
-        return toolListener, nil
-    end
-    
-    DelayedPrint("GetToolListener: Found ToolListnerEvent and PistolConfig for " .. wand.Name)
-    return toolListener, pistolConfig
-end
-
--- Raycast (адаптировано из Raycast.txt)
-local function RayCast(origin, direction, filter1, filter2, extraFilters)
-    local raycastParams = RaycastParams.new()
-    local filter = { filter1, filter2, workspace.Entities }
-    if extraFilters then
-        for _, item in pairs(extraFilters) do
-            table.insert(filter, item)
-        end
-    end
-    local iteration = 0
-    while true do
-        raycastParams.FilterDescendantsInstances = filter
-        local result = workspace:Raycast(origin, direction, raycastParams)
-        if result then
-            local instance = result.Instance
-            table.insert(filter, instance)
-        end
-        iteration = iteration + 1
-        if not result or (not result.Instance.Parent:IsA("Accoutrement") or iteration >= 5) then
-            return result
-        end
-    end
-end
-
--- FireRay (адаптировано из Raycast.txt)
-local function FireRay(origin, character, pistolConfig, targetPos, extraFilters)
-    local spread = pistolConfig and (pistolConfig:GetAttribute("Spread") or 0) or 0
-    if LocalPlayer:GetAttribute("AimingDown") then
-        spread = spread * (pistolConfig and pistolConfig:GetAttribute("Aimdown_Amp") or 0.35)
-    end
-    local direction = (targetPos - origin).Unit * 256 -- FireDistance из Raycast.txt
-    local hitPositions = {}
-    local rayResults = {}
-    local humanoids = {}
-    local gadgets = {}
-
-    local rayResult = RayCast(origin, direction, character, nil, extraFilters)
-    local hitPosition = rayResult and rayResult.Position or (origin + direction)
-    local instance = rayResult and rayResult.Instance
-    local humanoid = instance and instance.Parent:FindFirstChild("Humanoid")
-    local gadget = nil
-    if instance and instance:GetAttribute("GadgetHealth") then
-        gadget = instance
-    elseif instance and (instance.Parent:GetAttribute("GadgetHealth") or instance.Parent:GetAttribute("VehicleHealth")) then
-        gadget = instance.Parent
-    end
-
-    hitPositions[1] = hitPosition
-    rayResults[1] = rayResult
-    humanoids[1] = humanoid
-    gadgets[1] = gadget
-
-    local hitData = {}
-    if rayResults[1] then
-        hitData[1] = {
-            rayResults[1].Instance,
-            rayResults[1].Position,
-            rayResults[1].Normal,
-            humanoids[1] and "Humanoid" or (rayResults[1].Instance:GetAttribute("HitMaterial") or rayResults[1].Material.Name)
-        }
-    end
-
-    return hitPositions, hitData, humanoids, gadgets
-end
-
 -- Поиск ближайшей цели (игроки, адаптировано из GetMouseHit.txt)
 local function GetClosestPlayerTarget()
     local mousePos = UserInputService:GetMouseLocation()
@@ -413,75 +300,101 @@ local function GetClosestPlayerTarget()
     return nil, nil, math.huge
 end
 
--- Перенаправление выстрела
-local function SilentShot(target, targetPart)
+-- Хук RayCast (адаптировано из Raycast.txt)
+local OriginalRayCast = nil
+local function HookedRayCast(self, origin, direction, filter1, filter2, extraFilters)
+    if not Settings.Enabled then
+        return OriginalRayCast(self, origin, direction, filter1, filter2, extraFilters)
+    end
+
+    local target, targetPart = currentTarget, currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild(Settings.TargetPart)
     if not target or not targetPart then
-        DelayedPrint("SilentShot: No target or targetPart")
-        return
+        return OriginalRayCast(self, origin, direction, filter1, filter2, extraFilters)
     end
 
-    if not Settings.Enabled and Settings.NPCMethod == "HookAim" then
-        DelayedPrint("SilentShot: Hook Aim disabled and NPCMethod is HookAim")
-        return
+    local newDirection = (targetPart.Position - origin).Unit * 256
+    local raycastParams = RaycastParams.new()
+    local filter = { filter1, filter2, workspace.Entities }
+    if extraFilters then
+        for _, item in pairs(extraFilters) do
+            table.insert(filter, item)
+        end
+    end
+    local iteration = 0
+    while true do
+        raycastParams.FilterDescendantsInstances = filter
+        local result = workspace:Raycast(origin, newDirection, raycastParams)
+        if result then
+            local instance = result.Instance
+            table.insert(filter, instance)
+        end
+        iteration = iteration + 1
+        if not result or (not result.Instance.Parent:IsA("Accoutrement") or iteration >= 5) then
+            DelayedPrint("HookedRayCast: Redirected ray to " .. (target.Name or "NPC") .. " at " .. tostring(result and result.Position))
+            return result
+        end
+    end
+end
+
+-- Хук FireRay (адаптировано из Raycast.txt)
+local OriginalFireRay = nil
+local function HookedFireRay(self, origin, character, pistolConfig, direction, shots, extraFilters)
+    if not Settings.Enabled then
+        return OriginalFireRay(self, origin, character, pistolConfig, direction, shots, extraFilters)
     end
 
-    local targetContainer = target:IsA("Player") and workspace.Characters:FindFirstChild(target.Name) or target
-    if not targetContainer or not targetContainer.Parent then
-        DelayedPrint("SilentShot: Invalid target container for " .. (target.Name or "Unknown"))
-        return
-    end
-
-    local currentTime = tick()
-    if currentTime - lastFireTime < Settings.FireDelay then
-        DelayedPrint("SilentShot: Fire delay not met (" .. string.format("%.4f", currentTime - lastFireTime) .. " < " .. Settings.FireDelay .. ")")
-        return
+    local target, targetPart = currentTarget, currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild(Settings.TargetPart)
+    if not target or not targetPart then
+        return OriginalFireRay(self, origin, character, pistolConfig, direction, shots, extraFilters)
     end
 
     if math.random(1, 100) > Settings.HitChance then
-        DelayedPrint("SilentShot: Hit chance failed (" .. Settings.HitChance .. "%)")
-        return
+        DelayedPrint("HookedFireRay: Hit chance failed (" .. Settings.HitChance .. "%)")
+        return OriginalFireRay(self, origin, character, pistolConfig, direction, shots, extraFilters)
     end
 
-    local humanoid = targetContainer:FindFirstChild("Humanoid")
-    if not humanoid then
-        DelayedPrint("SilentShot: Humanoid not found for " .. (target.Name or "Unknown"))
-        return
+    local spread = pistolConfig and (pistolConfig:GetAttribute("Spread") or 0) or 0
+    if LocalPlayer:GetAttribute("AimingDown") then
+        spread = spread * (pistolConfig and pistolConfig:GetAttribute("Aimdown_Amp") or 0.35)
+    end
+    local newDirection = (targetPart.Position - origin).Unit * 256
+    local hitPositions = {}
+    local rayResults = {}
+    local humanoids = {}
+    local gadgets = {}
+
+    for i = 1, shots or 1 do
+        local rayResult = HookedRayCast(self, origin, newDirection, character, nil, extraFilters)
+        local hitPosition = rayResult and rayResult.Position or (origin + newDirection)
+        local instance = rayResult and rayResult.Instance
+        local humanoid = instance and instance.Parent:FindFirstChild("Humanoid")
+        local gadget = nil
+        if instance and instance:GetAttribute("GadgetHealth") then
+            gadget = instance
+        elseif instance and (instance.Parent:GetAttribute("GadgetHealth") or instance.Parent:GetAttribute("VehicleHealth")) then
+            gadget = instance.Parent
+        end
+
+        hitPositions[i] = hitPosition
+        rayResults[i] = rayResult
+        humanoids[i] = humanoid
+        gadgets[i] = gadget
     end
 
-    local useBackpack = Settings.NPCMethod == "SelfMode"
-    local toolListener, pistolConfig = GetToolListener(useBackpack)
-    if not toolListener then
-        DelayedPrint("SilentShot: ToolListener not found")
-        return
+    local hitData = {}
+    for i, result in ipairs(rayResults) do
+        if result then
+            hitData[i] = {
+                result.Instance,
+                result.Position,
+                result.Normal,
+                humanoids[i] and "Humanoid" or (result.Instance:GetAttribute("HitMaterial") or result.Material.Name)
+            }
+        end
     end
 
-    local originPosition = Camera.CFrame.Position
-    local targetPosition = targetPart.Position
-    local hitPositions, hitData, humanoids, _ = FireRay(originPosition, LocalPlayer.Character, pistolConfig, targetPosition, {})
-
-    local args = {
-        [1] = "Activate",
-        [2] = originPosition,
-        [3] = targetPosition,
-        [4] = pistolConfig or game:GetService("Players").LocalPlayer:WaitForChild("PistolConfig"),
-        [5] = hitPositions,
-        [6] = hitData,
-        [7] = humanoids,
-        [8] = {}
-    }
-
-    DelayedPrint("SilentShot: Attempting to fire at " .. (target.Name or "Unknown") .. " (Hitbox: " .. targetPart.Name .. ")")
-    local success, err = pcall(function()
-        toolListener:FireServer(unpack(args))
-    end)
-
-    if success then
-        DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
-        lastFireTime = currentTime
-        Core.GunSilentTarget.CurrentTarget = target.Name or "NPC"
-    else
-        DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
-    end
+    DelayedPrint("HookedFireRay: Redirected shot to " .. (target.Name or "NPC") .. " at " .. tostring(hitPositions[1]))
+    return hitPositions, hitData, humanoids, gadgets
 end
 
 -- Обновление списка друзей
@@ -526,7 +439,7 @@ function Init(ui, core, notification)
 
     UpdateFriendsCheck()
 
-    -- Используем существующую вкладку Combat, созданную SilentAim
+    -- Используем существующую вкладку Combat
     UI.Tabs = UI.Tabs or {}
     UI.Tabs.Combat = UI.Tabs.Combat or UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
 
@@ -637,19 +550,6 @@ function Init(ui, core, notification)
         end
     }, "HookDistanceLimit")
 
-    UI.Sections.HookAim:Slider({
-        Name = "Fire Delay",
-        Minimum = 0.001,
-        Maximum = 2,
-        Default = Settings.FireDelay,
-        Precision = 2,
-        Suffix = "s",
-        Callback = function(value)
-            Settings.FireDelay = value
-            notify("Hook Aim", "Fire Delay set to: " .. value .. "s", false)
-        end
-    }, "HookFireDelay")
-
     UI.Sections.HookAim:Dropdown({
         Name = "Sort Method",
         Options = {"Distance", "Health", "Crosshair", "Auto"},
@@ -695,6 +595,12 @@ function Init(ui, core, notification)
         end
     }, "HookNPCEntities")
 
+    -- Хук функций RayCast и FireRay
+    local RaycastModule = require(game:GetService("ReplicatedStorage").Modules.ToolClient.Raw.Raycast)
+    OriginalRayCast = hookfunction(RaycastModule.RayCast, HookedRayCast)
+    OriginalFireRay = hookfunction(RaycastModule.FireRay, HookedFireRay)
+    DelayedPrint("Hooked RayCast and FireRay functions")
+
     if Core and Core.Services then
         local lastFriendsList = Core.Services.FriendsList
         RunService.Heartbeat:Connect(function()
@@ -718,7 +624,7 @@ function Init(ui, core, notification)
     DelayedPrint("HookAim module initialized successfully")
 end
 
--- Обновление FOV Circle и логика Hook Aim
+-- Обновление FOV Circle и выбор цели
 RunService.RenderStepped:Connect(function()
     if not Settings.Enabled then
         fovCircle.Visible = false
@@ -783,12 +689,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     currentTarget = target
-    
-    if target and targetPart then
-        SilentShot(target, targetPart)
-    else
-        Core.GunSilentTarget.CurrentTarget = nil
-    end
+    Core.GunSilentTarget.CurrentTarget = target and (target.Name or "NPC") or nil
 end)
 
 -- Очистка при телепортации
