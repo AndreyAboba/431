@@ -1,4 +1,3 @@
-
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
@@ -29,15 +28,56 @@ Initialize()
 -- Internal cache для оптимизации
 local npcCache = {}
 local lastUpdate = 0
-local updateInterval = 0.5 -- Обновление кэша каждые 0.5 секунды
+local updateInterval = 0.3 -- Обновление кэша каждые 0.3 секунды
 local lastLog = 0
 local logInterval = 2.0
+
+-- Кэш для отдельных локаций
+local locationCaches = {
+    Missions = { cache = {}, lastUpdate = 0 },
+    SpiderCave = { cache = {}, lastUpdate = 0 }
+}
 
 -- Конфигурация поиска NPC
 local npcConfig = {
     DistanceLimit = 120,
-    TargetPart = "Head"
+    TargetPart = "Head",
+    MaxHealth = 100 -- Для нормализации здоровья в сортировке
 }
+
+-- Проверка видимости NPC
+local function IsVisible(targetPart)
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then
+        return false
+    end
+    
+    local rayOrigin = rootPart.Position
+    local rayDirection = (targetPart.Position - rayOrigin).Unit * 1000
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    if raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent) then
+        return true
+    end
+    
+    local offsetDirections = {
+        rayDirection + Vector3.new(0.1, 0, 0),
+        rayDirection + Vector3.new(-0.1, 0, 0),
+        rayDirection + Vector3.new(0, 0.1, 0),
+        rayDirection + Vector3.new(0, -0.1, 0)
+    }
+    for _, offsetDir in pairs(offsetDirections) do
+        local offsetRay = workspace:Raycast(rayOrigin, offsetDir.Unit * 1000, raycastParams)
+        if offsetRay and offsetRay.Instance:IsDescendantOf(targetPart.Parent) then
+            return true
+        end
+    end
+    return false
+end
 
 -- Вспомогательная функция для проверки Summon NPC
 function EntityX.checkSummonNPC(mob)
@@ -47,7 +87,7 @@ function EntityX.checkSummonNPC(mob)
             local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
             if targetPart then
                 local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                if distance <= npcConfig.DistanceLimit then
+                if distance <= npcConfig.DistanceLimit and IsVisible(targetPart) then
                     return {
                         Mob = mob,
                         TargetPart = targetPart,
@@ -65,20 +105,24 @@ end
 local function SearchNPCsInLocation(location, mobTypes, cacheKey)
     local validTargets = {}
     if not location then
-        Log("Location not found for " .. cacheKey, "❌")
         return validTargets
+    end
+
+    local currentTime = tick()
+    if currentTime - locationCaches[cacheKey].lastUpdate < updateInterval and #locationCaches[cacheKey].cache > 0 then
+        return locationCaches[cacheKey].cache
     end
 
     for _, container in pairs(location:GetChildren()) do
         for _, mobType in pairs(mobTypes or {}) do
-            local mob = container:FindFirstChild(mobType, true) -- Рекурсивный поиск
+            local mob = container:FindFirstChild(mobType)
             if mob and mob.Parent then
                 local humanoid = mob:FindFirstChild("Humanoid")
                 if humanoid and humanoid.Health > 0 then
                     local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                     if targetPart then
                         local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                        if distance <= npcConfig.DistanceLimit then
+                        if distance <= npcConfig.DistanceLimit and IsVisible(targetPart) then
                             table.insert(validTargets, {
                                 Mob = mob,
                                 TargetPart = targetPart,
@@ -91,6 +135,9 @@ local function SearchNPCsInLocation(location, mobTypes, cacheKey)
             end
         end
     end
+
+    locationCaches[cacheKey].cache = validTargets
+    locationCaches[cacheKey].lastUpdate = currentTime
     return validTargets
 end
 
@@ -114,12 +161,10 @@ local function FindAllNPCs()
                 "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
                 "Poacher Apprentice", "Nightfall Spider"
             }
-            local missionNPCs = SearchNPCsInLocation(missions, mobTypes, "Missions")
+            local missionNPCs = SearchNPCsInLocation(missions:FindFirstChild("AISpawners") or missions, mobTypes, "Missions")
             for _, npc in pairs(missionNPCs) do
                 table.insert(npcCache, npc)
             end
-        else
-            Log("Missions folder not found", "❌")
         end
         completed.Missions = true
     end
@@ -133,8 +178,6 @@ local function FindAllNPCs()
             for _, npc in pairs(caveNPCs) do
                 table.insert(npcCache, npc)
             end
-        else
-            Log("SpiderCave folder not found", "❌")
         end
         completed.SpiderCave = true
     end
@@ -145,7 +188,7 @@ local function FindAllNPCs()
 
     -- Ожидание завершения всех задач
     local startTime = tick()
-    while not (completed.Missions and completed.SpiderCave) and tick() - startTime < 0.2 do
+    while not (completed.Missions and completed.SpiderCave) and tick() - startTime < 0.1 do
         task.wait()
     end
 
@@ -153,8 +196,6 @@ local function FindAllNPCs()
     if currentTime - lastLog >= logInterval and #npcCache > 0 then
         Log("Found entities! (" .. #npcCache .. ")", "🛡")
         lastLog = currentTime
-    elseif #npcCache == 0 then
-        Log("No NPCs found in any location", "⚠️")
     end
     return npcCache
 end
@@ -167,8 +208,8 @@ function EntityX:GetClosestNPC()
     end
 
     table.sort(npcs, function(a, b)
-        local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
-        local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
+        local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / npcConfig.MaxHealth) * 0.5
+        local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / npcConfig.MaxHealth) * 0.5
         return aScore < bScore
     end)
 
