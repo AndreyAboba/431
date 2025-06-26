@@ -1,9 +1,10 @@
--- EntityX Library for NPC Interaction
+-- EntityX Library for NPC and Player Interaction
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
 
 -- Красивое логирование
 local function Log(message, emoji)
@@ -20,7 +21,7 @@ local function Initialize()
     if hasErrors then
         Log("Loaded with errors, some features may be unavailable.", "🟠")
     else
-        Log("Lightweight NPC interactions.", "🧠")
+        Log("Lightweight NPC and Player interactions.", "🧠")
         Log("Loaded successfully!", "🟢")
     end
 end
@@ -28,13 +29,14 @@ Initialize()
 
 -- Internal cache for performance
 local npcCache = {}
+local entityList = {}
 local lastUpdate = 0
 local lastLog = 0
 local updateInterval = 0.5 -- Обновление кэша каждые 0.5 секунды
 local logInterval = 2.0 -- Логи каждые 2 секунды
 
--- Конфигурация поиска NPC
-local npcConfig = {
+-- Конфигурация поиска сущностей
+local entityConfig = {
     DistanceLimit = 120,
     TargetPart = "Head"
 }
@@ -44,10 +46,10 @@ function EntityX.checkSummonNPC(mob)
     if mob and mob.Parent then
         local humanoid = mob:FindFirstChild("Humanoid")
         if humanoid and humanoid.Health > 0 then
-            local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+            local targetPart = mob:FindFirstChild(entityConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
             if targetPart then
                 local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                if distance <= npcConfig.DistanceLimit then
+                if distance <= entityConfig.DistanceLimit then
                     return {
                         Mob = mob,
                         TargetPart = targetPart,
@@ -72,7 +74,6 @@ local function FindAllNPCs()
     local missions = workspace:FindFirstChild("Missions")
     npcCache = {}
 
-    -- Поиск в Missions
     if missions then
         for _, mission in pairs(missions:GetChildren()) do
             local aiSpawners = mission:FindFirstChild("AISpawners")
@@ -88,15 +89,16 @@ local function FindAllNPCs()
                         if mob and mob.Parent then
                             local humanoid = mob:FindFirstChild("Humanoid")
                             if humanoid and humanoid.Health > 0 then
-                                local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+                                local targetPart = mob:FindFirstChild(entityConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                                 if targetPart then
                                     local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                                    if distance <= npcConfig.DistanceLimit then
+                                    if distance <= entityConfig.DistanceLimit then
                                         table.insert(npcCache, {
                                             Mob = mob,
                                             TargetPart = targetPart,
                                             Distance = distance,
-                                            Health = humanoid.Health
+                                            Health = humanoid.Health,
+                                            NPC = true
                                         })
                                     end
                                 end
@@ -108,7 +110,6 @@ local function FindAllNPCs()
         end
     end
 
-    -- Поиск в SpiderCave
     if spiderCave then
         for _, container in pairs(spiderCave:GetChildren()) do
             local spiderTypes = {"Spider", "Cave Spider"}
@@ -117,15 +118,16 @@ local function FindAllNPCs()
                 if mob and mob.Parent then
                     local humanoid = mob:FindFirstChild("Humanoid")
                     if humanoid and humanoid.Health > 0 then
-                        local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+                        local targetPart = mob:FindFirstChild(entityConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                         if targetPart then
                             local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                            if distance <= npcConfig.DistanceLimit then
+                            if distance <= entityConfig.DistanceLimit then
                                 table.insert(npcCache, {
                                     Mob = mob,
                                     TargetPart = targetPart,
                                     Distance = distance,
-                                    Health = humanoid.Health
+                                    Health = humanoid.Health,
+                                    NPC = true
                                 })
                             end
                         end
@@ -136,12 +138,170 @@ local function FindAllNPCs()
     end
 
     lastUpdate = currentTime
-    local currentLogTime = tick()
-    if currentLogTime - lastLog >= logInterval and #npcCache > 0 then
+    if currentTime - lastLog >= logInterval and #npcCache > 0 then
         Log("Found entities! (" .. #npcCache .. ")", "🛡")
-        lastLog = currentLogTime
+        lastLog = currentTime
     end
     return npcCache
+end
+
+-- События
+EntityX.Events = setmetatable({}, {
+    __index = function(self, ind)
+        self[ind] = {
+            Connections = {},
+            Connect = function(rself, func)
+                table.insert(rself.Connections, func)
+                return {
+                    Disconnect = function()
+                        local rind = table.find(rself.Connections, func)
+                        if rind then
+                            table.remove(rself.Connections, rind)
+                        end
+                    end
+                }
+            end,
+            Fire = function(rself, ...)
+                for _, v in rself.Connections do
+                    task.spawn(v, ...)
+                end
+            end,
+            Destroy = function(rself)
+                table.clear(rself.Connections)
+                table.clear(rself)
+            end
+        }
+        return self[ind]
+    end
+})
+
+-- Добавление сущности (игрок или NPC)
+function EntityX.addEntity(char, plr, teamfunc)
+    if not char then return end
+    local entityThread = task.spawn(function()
+        local hum = char:FindFirstChild("Humanoid") or char:WaitForChild("Humanoid", 10)
+        local humrootpart = hum and (hum:FindFirstChild("RootPart") or char:WaitForChild("HumanoidRootPart", 10))
+        local head = char:FindFirstChild("Head") or humrootpart
+
+        if hum and humrootpart then
+            local entity = {
+                Connections = {},
+                Character = char,
+                Health = hum.Health,
+                Head = head,
+                Humanoid = hum,
+                HumanoidRootPart = humrootpart,
+                HipHeight = hum.HipHeight + (humrootpart.Size.Y / 2) + (hum.RigType == Enum.HumanoidRigType.R6 and 2 or 0),
+                MaxHealth = hum.MaxHealth,
+                NPC = plr == nil,
+                Player = plr,
+                RootPart = humrootpart,
+                Targetable = plr == nil or (teamfunc and not teamfunc()) or (plr ~= LocalPlayer and (not plr.Team or plr.Team ~= LocalPlayer.Team))
+            }
+
+            if plr == LocalPlayer then
+                EntityX.character = entity
+                EntityX.isAlive = true
+                EntityX.Events.LocalAdded:Fire(entity)
+            else
+                for _, v in EntityX.getUpdateConnections(entity) do
+                    table.insert(entity.Connections, v:Connect(function()
+                        entity.Health = hum.Health
+                        entity.MaxHealth = hum.MaxHealth
+                        EntityX.Events.EntityUpdated:Fire(entity)
+                    end))
+                end
+                table.insert(entityList, entity)
+                EntityX.Events.EntityAdded:Fire(entity)
+            end
+        end
+    end)
+end
+
+-- Удаление сущности
+function EntityX.removeEntity(char, localcheck)
+    if localcheck then
+        if EntityX.isAlive then
+            EntityX.isAlive = false
+            for _, v in EntityX.character.Connections do
+                v:Disconnect()
+            end
+            table.clear(EntityX.character.Connections)
+            EntityX.Events.LocalRemoved:Fire(EntityX.character)
+        end
+        return
+    end
+
+    if char then
+        local entity, ind = EntityX.getEntity(char)
+        if ind then
+            for _, v in entity.Connections do
+                v:Disconnect()
+            end
+            table.clear(entity.Connections)
+            table.remove(entityList, ind)
+            EntityX.Events.EntityRemoved:Fire(entity)
+        end
+    end
+end
+
+-- Обновление соединений сущности
+function EntityX.getUpdateConnections(ent)
+    local hum = ent.Humanoid
+    return {
+        hum:GetPropertyChangedSignal('Health'),
+        hum:GetPropertyChangedSignal('MaxHealth')
+    }
+end
+
+-- Получение сущности по персонажу
+function EntityX.getEntity(char)
+    for i, v in ipairs(entityList) do
+        if v.Player == char or v.Character == char then
+            return v, i
+        end
+    end
+    return nil, nil
+end
+
+-- Поиск ближайшей сущности по позиции
+function EntityX.EntityPosition(entitysettings)
+    if EntityX.isAlive then
+        local localPosition = entitysettings.Origin or (EntityX.character and EntityX.character.HumanoidRootPart and EntityX.character.HumanoidRootPart.Position) or Camera.CFrame.Position
+        local sortingTable = {}
+        for _, v in ipairs(entityList) do
+            if not entitysettings.Players and v.Player then continue end
+            if not entitysettings.NPCs and v.NPC then continue end
+            if not v.Targetable then continue end
+            local mag = (v[entitysettings.Part or entityConfig.TargetPart].Position - localPosition).Magnitude
+            if mag > (entitysettings.Range or entityConfig.DistanceLimit) then continue end
+            if v.Health > 0 and not v.Character:FindFirstChildWhichIsA("ForceField") then
+                table.insert(sortingTable, {Entity = v, Magnitude = mag})
+            end
+        end
+
+        table.sort(sortingTable, function(a, b)
+            return a.Magnitude < b.Magnitude
+        end)
+
+        for _, v in ipairs(sortingTable) do
+            if entitysettings.Wallcheck then
+                local ignorelist = {Camera, LocalPlayer.Character}
+                for _, e in ipairs(entityList) do
+                    if e.Targetable then table.insert(ignorelist, e.Character) end
+                end
+                local rayParams = RaycastParams.new()
+                rayParams.FilterDescendantsInstances = ignorelist
+                if workspace.Raycast(workspace, localPosition, (v.Entity[entitysettings.Part or entityConfig.TargetPart].Position - localPosition), rayParams) then continue end
+            end
+            table.clear(entitysettings)
+            table.clear(sortingTable)
+            return v.Entity
+        end
+        table.clear(sortingTable)
+    end
+    table.clear(entitysettings)
+    return nil
 end
 
 -- Получение ближайшего NPC
@@ -152,8 +312,8 @@ function EntityX:GetClosestNPC()
     end
 
     table.sort(npcs, function(a, b)
-        local aScore = (a.Distance / npcConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
-        local bScore = (b.Distance / npcConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
+        local aScore = (a.Distance / entityConfig.DistanceLimit) * 0.5 + (a.Health / 100) * 0.5
+        local bScore = (b.Distance / entityConfig.DistanceLimit) * 0.5 + (b.Health / 100) * 0.5
         return aScore < bScore
     end)
 
@@ -167,21 +327,21 @@ end
 
 -- Получение DistanceLimit
 function EntityX:GetDistanceLimit()
-    local limit = npcConfig.DistanceLimit
+    local limit = entityConfig.DistanceLimit
     Log("Returning DistanceLimit: " .. tostring(limit), "⚙️")
     return limit
 end
 
 -- Установка предела дистанции
 function EntityX:SetDistanceLimit(limit)
-    npcConfig.DistanceLimit = limit or 120
-    Log("Distance limit set to " .. npcConfig.DistanceLimit .. ".", "⚙️")
+    entityConfig.DistanceLimit = limit or 120
+    Log("Distance limit set to " .. entityConfig.DistanceLimit .. ".", "⚙️")
 end
 
 -- Установка целевой части тела
 function EntityX:SetTargetPart(part)
-    npcConfig.TargetPart = part or "Head"
-    Log("Target part set to " .. npcConfig.TargetPart .. ".", "⚙️")
+    entityConfig.TargetPart = part or "Head"
+    Log("Target part set to " .. entityConfig.TargetPart .. ".", "⚙️")
 end
 
 -- Кастомный поиск NPC в заданной локации
@@ -198,10 +358,10 @@ function EntityX:FindNPCsInLocation(location, mobTypes)
             if mob and mob.Parent then
                 local humanoid = mob:FindFirstChild("Humanoid")
                 if humanoid and humanoid.Health > 0 then
-                    local targetPart = mob:FindFirstChild(npcConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
+                    local targetPart = mob:FindFirstChild(entityConfig.TargetPart) or mob:FindFirstChild("HumanoidRootPart")
                     if targetPart then
                         local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                        if distance <= npcConfig.DistanceLimit then
+                        if distance <= entityConfig.DistanceLimit then
                             table.insert(validTargets, {
                                 Mob = mob,
                                 TargetPart = targetPart,
@@ -230,8 +390,102 @@ end
 
 -- Получение расстояния до NPC
 function EntityX:GetDistanceToNPC(mob)
-    if not mob or not mob:FindFirstChild(npcConfig.TargetPart) then return math.huge end
-    return (Camera.CFrame.Position - mob[npcConfig.TargetPart].Position).Magnitude
+    if not mob or not mob:FindFirstChild(entityConfig.TargetPart) then return math.huge end
+    return (Camera.CFrame.Position - mob[entityConfig.TargetPart].Position).Magnitude
 end
+
+-- Запуск системы
+function EntityX.start()
+    if EntityX.Running then EntityX.stop() end
+    table.insert(EntityX.Connections, Players.PlayerAdded:Connect(function(v)
+        EntityX.addPlayer(v)
+    end))
+    table.insert(EntityX.Connections, Players.PlayerRemoving:Connect(function(v)
+        EntityX.removePlayer(v)
+    end))
+    for _, v in Players:GetPlayers() do
+        EntityX.addPlayer(v)
+    end
+    table.insert(EntityX.Connections, workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
+        Camera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
+    end))
+    EntityX.Running = true
+end
+
+-- Остановка системы
+function EntityX.stop()
+    for _, v in EntityX.Connections do
+        v:Disconnect()
+    end
+    for _, v in EntityX.PlayerConnections do
+        for _, v2 in v do
+            v2:Disconnect()
+        end
+        table.clear(v)
+    end
+    EntityX.removeEntity(nil, true)
+    local cloned = table.clone(entityList)
+    for _, v in cloned do
+        EntityX.removeEntity(v.Character)
+    end
+    for _, v in EntityX.EntityThreads do
+        task.cancel(v)
+    end
+    table.clear(EntityX.PlayerConnections)
+    table.clear(EntityX.EntityThreads)
+    table.clear(EntityX.Connections)
+    table.clear(cloned)
+    EntityX.Running = false
+end
+
+-- Добавление игрока
+function EntityX.addPlayer(plr)
+    if plr.Character then
+        EntityX.addEntity(plr.Character, plr)
+    end
+    EntityX.PlayerConnections[plr] = {
+        plr.CharacterAdded:Connect(function(char)
+            EntityX.addEntity(char, plr)
+        end),
+        plr.CharacterRemoving:Connect(function(char)
+            EntityX.removeEntity(char, plr == LocalPlayer)
+        end),
+        plr:GetPropertyChangedSignal('Team'):Connect(function()
+            for _, v in entityList do
+                if v.Targetable ~= (v.NPC or (v.Player ~= LocalPlayer and (not v.Player.Team or v.Player.Team ~= LocalPlayer.Team))) then
+                    EntityX.removeEntity(v.Character)
+                    EntityX.addEntity(v.Character, v.Player)
+                end
+            end
+            if plr == LocalPlayer then
+                EntityX.start()
+            else
+                EntityX.addEntity(plr.Character, plr)
+            end
+        end)
+    }
+end
+
+-- Удаление игрока
+function EntityX.removePlayer(plr)
+    if EntityX.PlayerConnections[plr] then
+        for _, v in EntityX.PlayerConnections[plr] do
+            v:Disconnect()
+        end
+        table.clear(EntityX.PlayerConnections[plr])
+        EntityX.PlayerConnections[plr] = nil
+    end
+    EntityX.removeEntity(plr.Character)
+end
+
+-- Статус системы
+EntityX.isAlive = false
+EntityX.character = nil
+EntityX.Connections = {}
+EntityX.PlayerConnections = {}
+EntityX.EntityThreads = {}
+EntityX.Running = false
+
+EntityX.start()
 
 return EntityX
