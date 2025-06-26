@@ -7,7 +7,7 @@ local CollectionService = game:GetService("CollectionService")
 local Core = nil
 local UI = nil
 local notify = nil
-
+local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
 -- Конфигурация Hook Aim
 local Settings = {
     Enabled = false,
