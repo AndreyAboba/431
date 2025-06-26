@@ -1,4 +1,4 @@
-```lua
+
 local EntityX = {}
 local workspace = game:GetService("Workspace")
 local Camera = workspace.CurrentCamera
