@@ -28,7 +28,7 @@ Initialize()
 -- Internal cache для оптимизации
 local npcCache = {}
 local lastUpdate = 0
-local updateInterval = 0.2 -- Уменьшено для более частого обновления
+local updateInterval = 0.2 -- Интервал обновления кэша
 local lastLog = 0
 local logInterval = 2.0
 
@@ -98,7 +98,7 @@ local function SearchNPCsInLocation(location, mobTypes, cacheKey)
     return validTargets
 end
 
--- Поиск всех NPC с мультипоточностью
+-- Поиск всех NPC с использованием корутин
 local function FindAllNPCs()
     local currentTime = tick()
     if currentTime - lastUpdate < updateInterval and #npcCache > 0 then
@@ -106,17 +106,18 @@ local function FindAllNPCs()
     end
 
     npcCache = {}
-    local tasks = {}
+    local coroutines = {}
+    local completed = {}
 
-    -- Поиск в Missions
-    local missions = workspace:FindFirstChild("Missions")
-    if missions then
-        if currentTime - locationCaches.Missions.lastUpdate < updateInterval then
-            for _, npc in pairs(locationCaches.Missions.cache) do
-                table.insert(npcCache, npc)
-            end
-        else
-            table.insert(tasks, task.spawn(function()
+    -- Создание корутины для поиска в Missions
+    local function searchMissions()
+        local missions = workspace:FindFirstChild("Missions")
+        if missions then
+            if currentTime - locationCaches.Missions.lastUpdate < updateInterval then
+                for _, npc in pairs(locationCaches.Missions.cache) do
+                    table.insert(npcCache, npc)
+                end
+            else
                 local mobTypes = {
                     "Poacher", "Poacher Mage", "Poacher Gunner", "Poacher Rifleman", "Imperial",
                     "Imperial Mage", "Nightfall Spitter Spider", "Nightfall Blink Spider",
@@ -126,30 +127,42 @@ local function FindAllNPCs()
                 for _, npc in pairs(missionNPCs) do
                     table.insert(npcCache, npc)
                 end
-            end))
+            end
         end
+        completed.Missions = true
     end
 
-    -- Поиск в SpiderCave
-    local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
-    if spiderCave then
-        if currentTime - locationCaches.SpiderCave.lastUpdate < updateInterval then
-            for _, npc in pairs(locationCaches.SpiderCave.cache) do
-                table.insert(npcCache, npc)
-            end
-        else
-            table.insert(tasks, task.spawn(function()
+    -- Создание корутины для поиска в SpiderCave
+    local function searchSpiderCave()
+        local spiderCave = workspace:FindFirstChild("MapProps") and workspace.MapProps:FindFirstChild("SpiderCave")
+        if spiderCave then
+            if currentTime - locationCaches.SpiderCave.lastUpdate < updateInterval then
+                for _, npc in pairs(locationCaches.SpiderCave.cache) do
+                    table.insert(npcCache, npc)
+                end
+            else
                 local spiderTypes = {"Spider", "Cave Spider"}
                 local caveNPCs = SearchNPCsInLocation(spiderCave, spiderTypes, "SpiderCave")
                 for _, npc in pairs(caveNPCs) do
                     table.insert(npcCache, npc)
                 end
-            end))
+            end
         end
+        completed.SpiderCave = true
     end
 
-    -- Ожидание завершения всех задач
-    for _, task in pairs(tasks) do
+    -- Запуск корутин
+    table.insert(coroutines, coroutine.wrap(searchMissions))
+    table.insert(coroutines, coroutine.wrap(searchSpiderCave))
+
+    -- Выполнение корутин
+    for _, co in pairs(coroutines) do
+        coroutine.resume(co)
+    end
+
+    -- Ожидание завершения всех корутин
+    local startTime = tick()
+    while not (completed.Missions and completed.SpiderCave) and tick() - startTime < 0.1 do
         task.wait()
     end
 
