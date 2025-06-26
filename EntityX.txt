@@ -152,12 +152,15 @@ local function FindAllNPCs()
     end
 
     -- Запуск корутин
-    table.insert(coroutines, coroutine.wrap(searchMissions))
-    table.insert(coroutines, coroutine.wrap(searchSpiderCave))
+    table.insert(coroutines, coroutine.create(searchMissions))
+    table.insert(coroutines, coroutine.create(searchSpiderCave))
 
     -- Выполнение корутин
     for _, co in pairs(coroutines) do
-        coroutine.resume(co)
+        local success, err = coroutine.resume(co)
+        if not success then
+            Log("Coroutine error: " .. tostring(err), "❌")
+        end
     end
 
     -- Ожидание завершения всех корутин
