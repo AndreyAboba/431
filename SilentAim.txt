@@ -30,15 +30,12 @@ local Settings = {
     Keybind = nil,
     NPCSupportEnabled = true,
     NPCMethod = "SilentAim",
-    NPCToolCheck = true,
     SelectedTarget = "QuestAI"
 }
 
 local lastPrintTime = 0
 local lastFireTime = 0
 local currentTarget = nil
-local isToolEquipped = false
-local currentTool = nil
 local lastLogTime = 0
 
 -- Кэш для FriendsList
@@ -244,7 +241,8 @@ local function GetToolListener(useBackpack)
                 break
             end
         end
-    elseif character then
+    end
+    if not toolListener and character then
         for _, item in pairs(character:GetChildren()) do
             if item.ClassName == "Tool" then
                 wand = item
@@ -409,7 +407,7 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local useBackpack = Settings.NPCMethod == "SelfMode" and not Settings.NPCToolCheck
+    local useBackpack = Settings.NPCMethod == "SelfMode"
     local toolListener, pistolConfig = GetToolListener(useBackpack)
     if not toolListener then
         DelayedPrint("SilentShot: ToolListener not found")
@@ -451,37 +449,6 @@ local function SilentShot(target, targetPart)
     else
         DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
-end
-
--- Проверка экипировки инструмента
-local function CheckToolEquipped()
-    local character = LocalPlayer.Character
-    if not character then
-        if isToolEquipped then
-            isToolEquipped = false
-            currentTool = nil
-            DelayedPrint("Tool is unequipped (no character)")
-        end
-        return false
-    end
-
-    for _, item in pairs(character:GetChildren()) do
-        if item.ClassName == "Tool" then
-            if not isToolEquipped then
-                isToolEquipped = true
-                currentTool = item
-                DelayedPrint("Tool " .. (item.Name or "Unknown") .. " is equipped")
-            end
-            return true
-        end
-    end
-
-    if isToolEquipped then
-        isToolEquipped = false
-        currentTool = nil
-        DelayedPrint("Tool is unequipped")
-    end
-    return false
 end
 
 -- Обновление списка друзей
@@ -693,15 +660,6 @@ function Init(ui, core, notification)
         end
     }, "NPCMethod")
 
-    UI.Sections.NPCSupport:Toggle({
-        Name = "Tool Check",
-        Default = Settings.NPCToolCheck,
-        Callback = function(value)
-            Settings.NPCToolCheck = value
-            notify("NPC Support", "Tool Check " .. (value and "ON" or "OFF"), false)
-        end
-    }, "NPCToolCheck")
-
     UI.Sections.NPCSupport:Dropdown({
         Name = "Entities",
         Options = {"QuestAI", "SummonAI"},
@@ -753,14 +711,6 @@ RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
     fovCircle.Visible = Settings.Enabled
-
-    if Settings.NPCMethod == "SelfMode" and not Settings.NPCToolCheck then
-        -- В SelfMode без Tool Check не проверяем экипировку
-    elseif not CheckToolEquipped() then
-        currentTarget = nil
-        Core.GunSilentTarget.CurrentTarget = nil
-        return
-    end
 
     UpdateFriendsCheck()
 
