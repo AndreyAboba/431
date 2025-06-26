@@ -30,7 +30,7 @@ local Settings = {
     Keybind = nil,
     NPCSupportEnabled = true,
     NPCMethod = "SilentAim",
-    NPCToolCheck = true, -- Новый параметр для проверки инструмента
+    NPCToolCheck = true,
     SelectedTarget = "QuestAI"
 }
 
@@ -765,7 +765,7 @@ RunService.RenderStepped:Connect(function()
 
     if Settings.NPCSupportEnabled then
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
-        if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) and IsVisible(npcTargetPart) then
+        if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) then
             npcDistance = (Camera.CFrame.Position - npcTargetPart.Position).Magnitude
             if npcDistance <= Settings.FOV then
                 DelayedPrint("Found NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
