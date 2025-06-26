@@ -4,10 +4,14 @@ local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
+
+-- Загрузка EntityX
+local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
+
 local Core = nil
 local UI = nil
 local notify = nil
-local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
+
 -- Конфигурация Hook Aim
 local Settings = {
     Enabled = false,
@@ -522,13 +526,13 @@ function Init(ui, core, notification)
 
     UpdateFriendsCheck()
 
-    UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
+    -- Используем существующую вкладку Combat, созданную SilentAim
     UI.Tabs = UI.Tabs or {}
-    UI.Tabs.Combat = UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
+    UI.Tabs.Combat = UI.Tabs.Combat or UI.TabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://4391741881" })
 
     UI.Sections = UI.Sections or {}
     UI.Sections.HookAim = UI.Tabs.Combat:Section({ Name = "Hook Aim", Side = "Right" })
-    UI.Sections.NPCSupport = UI.Tabs.Combat:Section({ Name = "NPC Support", Side = "Right" })
+    UI.Sections.HookNPC = UI.Tabs.Combat:Section({ Name = "Hook NPC", Side = "Right" })
 
     -- Hook Aim Section
     UI.Sections.HookAim:Header({ Name = "Hook Aim" })
@@ -657,39 +661,39 @@ function Init(ui, core, notification)
         end
     }, "HookSortMethod")
 
-    -- NPC Support Section
-    UI.Sections.NPCSupport:Header({ Name = "NPC Support" })
+    -- Hook NPC Section
+    UI.Sections.HookNPC:Header({ Name = "Hook NPC" })
 
-    UI.Sections.NPCSupport:Toggle({
+    UI.Sections.HookNPC:Toggle({
         Name = "Enabled",
         Default = Settings.NPCSupportEnabled,
         Callback = function(value)
             Settings.NPCSupportEnabled = value
-            notify("NPC Support", "Toggled " .. (value and "ON" or "OFF"), false)
+            notify("Hook NPC", "Toggled " .. (value and "ON" or "OFF"), false)
         end
-    }, "NPCSupportEnabled")
+    }, "HookNPCEnabled")
 
-    UI.Sections.NPCSupport:Dropdown({
+    UI.Sections.HookNPC:Dropdown({
         Name = "Method",
         Options = {"HookAim", "SelfMode"},
         Default = Settings.NPCMethod,
         MultiSelection = false,
         Callback = function(value)
             Settings.NPCMethod = value
-            notify("NPC Support", "Method set to: " .. value, false)
+            notify("Hook NPC", "Method set to: " .. value, false)
         end
-    }, "NPCMethod")
+    }, "HookNPCMethod")
 
-    UI.Sections.NPCSupport:Dropdown({
+    UI.Sections.HookNPC:Dropdown({
         Name = "Entities",
         Options = {"QuestAI", "SummonAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
             Settings.SelectedTarget = value
-            notify("NPC Support", "Selected Target set to: " .. value, false)
+            notify("Hook NPC", "Selected Target set to: " .. value, false)
         end
-    }, "HookEntities")
+    }, "HookNPCEntities")
 
     if Core and Core.Services then
         local lastFriendsList = Core.Services.FriendsList
@@ -775,7 +779,7 @@ RunService.RenderStepped:Connect(function()
             DelayedPrint("No valid target selected")
         end
     else
-        DelayedPrint("No target selected: Hook Aim and NPC Support disabled or no valid targets")
+        DelayedPrint("No target selected: Hook Aim and Hook NPC disabled or no valid targets")
     end
 
     currentTarget = target
