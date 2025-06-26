@@ -25,7 +25,7 @@ local function Initialize()
     end
 end
 Initialize()
-Log("Made by stuppp110", "💠")
+
 -- Internal cache for performance
 local npcCache = {}
 local lastUpdate = 0
@@ -39,7 +39,7 @@ local npcConfig = {
     TargetPart = "Head"
 }
 
--- Вспомогательная функция для проверки Summon NPC (сделана публичной)
+-- Вспомогательная функция для проверки Summon NPC
 function EntityX.checkSummonNPC(mob)
     if mob and mob.Parent then
         local humanoid = mob:FindFirstChild("Humanoid")
@@ -59,12 +59,6 @@ function EntityX.checkSummonNPC(mob)
         end
     end
     return nil
-end
-
--- Получение предела дистанции
-function EntityX:GetDistanceLimit()
-    Log("Returning DistanceLimit: " .. tostring(npcConfig.DistanceLimit), "⚙️")
-    return npcConfig.DistanceLimit
 end
 
 -- Поиск всех NPC в указанных локациях
@@ -169,6 +163,13 @@ end
 -- Получение всех NPC
 function EntityX:GetAllNPCs()
     return FindAllNPCs()
+end
+
+-- Получение DistanceLimit
+function EntityX:GetDistanceLimit()
+    local limit = npcConfig.DistanceLimit
+    Log("Returning DistanceLimit: " .. tostring(limit), "⚙️")
+    return limit
 end
 
 -- Установка предела дистанции
