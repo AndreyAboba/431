@@ -270,7 +270,7 @@ local function GetClosestTarget()
     local charactersFolder = workspace:FindFirstChild("Characters")
     if not charactersFolder then
         DelayedPrint("GetClosestTarget: Characters folder not found")
-        return nil, nil, nil
+        return nil, nil, math.huge
     end
 
     for _, player in pairs(Players:GetPlayers()) do
@@ -360,7 +360,7 @@ local function GetClosestTarget()
         return target, selectedPart, targetDistance
     end
     DelayedPrint("No valid player target found")
-    return nil, nil, nil
+    return nil, nil, math.huge
 end
 
 -- Отправка выстрела через RemoteEvent
@@ -692,7 +692,7 @@ function Init(ui, core, notification)
         if Settings.Keybind and input.KeyCode == Settings.Keybind then
             Settings.Enabled = not Settings.Enabled
             fovCircle.Visible = Settings.Enabled
-            notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), false)
+            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), false)
         end
     end)
 
@@ -724,17 +724,22 @@ RunService.RenderStepped:Connect(function()
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
         if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) and IsVisible(npcTargetPart) then
             npcDistance = (Camera.CFrame.Position - npcTargetPart.Position).Magnitude
-            DelayedPrint("Found NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+            if npcDistance <= Settings.FOV then
+                DelayedPrint("Found NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+            else
+                DelayedPrint("NPC " .. npcTarget.Name .. " is outside FOV (" .. math.floor(npcDistance) .. " > " .. Settings.FOV .. ")")
+                npcTarget, npcTargetPart = nil, nil
+            end
         else
             DelayedPrint("No valid NPC target found")
             npcTarget, npcTargetPart = nil, nil
         end
     end
 
-    -- Выбор цели: приоритет NPC, если ближе
-    if npcTarget and npcTargetPart and npcDistance < targetDistance then
+    -- Выбор цели: приоритет NPC, если ближе и в пределах FOV
+    if npcTarget and npcTargetPart and npcDistance <= targetDistance then
         target, targetPart = npcTarget, npcTargetPart
-        DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " over player (Distance: " .. math.floor(npcDistance) .. " studs)")
+        DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
     elseif target and targetPart then
         DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
     else
