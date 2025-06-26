@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
+local EntityX = loadstring(game:HttpGet("https://raw.githubusercontent.com/AndreyAboba/431/refs/heads/main/EntityX.txt", true))()
 -- Загрузка EntityX
 
 local Core = nil
