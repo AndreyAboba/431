@@ -266,14 +266,16 @@ local function GetClosestTarget()
             continue
         end
         
-        local playerContainer = charactersFolder:FindFirstChild(player.Name)
+        local playerContainer = charactersFolder:FindFirstChild(player
+
+.Name)
         if not playerContainer then
             continue
         end
         
         local humanoid = playerContainer:FindFirstChild("Humanoid")
         local humanoidRoot = playerContainer:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not humanoidRoot or humanoid.Health <= 0 then
+        if not humanoid or not humanoidRoot or humanoidHealth <= 0 then
             continue
         end
         
@@ -440,7 +442,8 @@ local function CheckToolEquipped()
     end
 
     if isToolEquipped then
-        isToolEquipped = false magasin        currentTool = nil
+        isToolEquipped = false
+        currentTool = nil
         DelayedPrint("Tool is unequipped")
     end
     return false
@@ -721,6 +724,13 @@ RunService.RenderStepped:Connect(function()
             end
 
             if #summonNPCs > 0 then
+                -- Проверка корректности данных NPC
+                for _, npc in pairs(summonNPCs) do
+                    if not npc.Distance or not npc.Health then
+                        DelayedPrint("Invalid NPC data in summonNPCs: " .. tostring(npc.Mob))
+                        return
+                    end
+                end
                 table.sort(summonNPCs, function(a, b)
                     local distanceLimit = EntityX:GetDistanceLimit()
                     local aScore = (a.Distance / distanceLimit) * 0.5 + (a.Health / 100) * 0.5
@@ -731,7 +741,7 @@ RunService.RenderStepped:Connect(function()
             end
 
             if npcTarget and npcTargetPart and IsVisible(npcTargetPart) then
-                if not target or (npcTarget and (npcTarget.Name == "Spiderling" or npcTarget.Name == "Shade") and summonNPCs[1].Distance < (target and validTargets[1].Distance or math.huge)) then
+                if not target or (npcTarget and (npcTarget.Name == "Spiderling" or npcTarget.Name == "Shade") and summonNPCs[1].Distance < (validTargets[1] and validTargets[1].Distance or math.huge)) then
                     target, targetPart = npcTarget, npcTargetPart
                 end
             end
