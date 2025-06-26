@@ -24,11 +24,13 @@ local Settings = {
     Method = "Packet",
     SortMethod = "Auto",
     LogInterval = 0.05,
-    DistanceLimit = 1000, -- Для игроков
+    DistanceLimit = 1000,
     SmartHitbox = false,
     FOVColor = Color3.fromRGB(0, 255, 0),
     Keybind = nil,
-    NPCSupport = true, -- Включена поддержка NPC
+    NPCSupportEnabled = true,
+    NPCMethod = "SilentAim",
+    NPCToolCheck = true,
     SelectedTarget = "QuestAI"
 }
 
@@ -216,7 +218,6 @@ local function CanAttackNPC(npc)
         DelayedPrint("CanAttackNPC: NPC " .. npc.Name .. " has no Humanoid or is dead")
         return false
     end
-    -- Проверка владельца для Summon NPC
     local owner = npc:GetAttribute("Owner")
     if owner and owner == LocalPlayer.Name then
         DelayedPrint("CanAttackNPC: NPC " .. npc.Name .. " is owned by LocalPlayer")
@@ -227,21 +228,29 @@ local function CanAttackNPC(npc)
 end
 
 -- Поиск ToolListener и PistolConfig
-local function GetToolListener()
+local function GetToolListener(useBackpack)
     local toolListener = nil
     local wand = nil
+    local pistolConfig = nil
     
     local character = LocalPlayer.Character
-    if not character then
-        DelayedPrint("GetToolListener: No character found")
-        return nil, nil
-    end
-
-    for _, item in pairs(character:GetChildren()) do
-        if item.ClassName == "Tool" then
-            wand = item
-            toolListener = wand:FindFirstChild("ToolListnerEvent")
-            break
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    
+    if useBackpack and backpack then
+        for _, item in pairs(backpack:GetChildren()) do
+            if item.ClassName == "Tool" then
+                wand = item
+                toolListener = wand:FindFirstChild("ToolListnerEvent")
+                break
+            end
+        end
+    elseif character then
+        for _, item in pairs(character:GetChildren()) do
+            if item.ClassName == "Tool" then
+                wand = item
+                toolListener = wand:FindFirstChild("ToolListnerEvent")
+                break
+            end
         end
     end
     
@@ -251,7 +260,9 @@ local function GetToolListener()
     end
     
     local playerContainer = workspace:FindFirstChild("Characters") and workspace.Characters:FindFirstChild(LocalPlayer.Name)
-    local pistolConfig = playerContainer and playerContainer:FindFirstChild(wand.Name) and playerContainer[wand.Name]:FindFirstChild("PistolConfig")
+    if playerContainer and playerContainer:FindFirstChild(wand.Name) then
+        pistolConfig = playerContainer[wand.Name]:FindFirstChild("PistolConfig")
+    end
     if not pistolConfig then
         DelayedPrint("GetToolListener: PistolConfig not found for " .. (wand and wand.Name or "Unknown"))
         return toolListener, nil
@@ -370,8 +381,8 @@ local function SilentShot(target, targetPart)
         return
     end
 
-    if not Settings.Enabled then
-        DelayedPrint("SilentShot: Silent Aim disabled")
+    if not Settings.Enabled and Settings.NPCMethod == "SilentAim" then
+        DelayedPrint("SilentShot: Silent Aim disabled and NPCMethod is SilentAim")
         return
     end
     
@@ -398,7 +409,8 @@ local function SilentShot(target, targetPart)
         return
     end
     
-    local toolListener, pistolConfig = GetToolListener()
+    local useBackpack = Settings.NPCMethod == "SelfMode" and not Settings.NPCToolCheck
+    local toolListener, pistolConfig = GetToolListener(useBackpack)
     if not toolListener then
         DelayedPrint("SilentShot: ToolListener not found")
         return
@@ -520,7 +532,9 @@ function Init(ui, core, notification)
 
     UI.Sections = UI.Sections or {}
     UI.Sections.SilentAim = UI.Tabs.Combat:Section({ Name = "Silent Aim", Side = "Left" })
+    UI.Sections.NPCSupport = UI.Tabs.Combat:Section({ Name = "NPC Support", Side = "Right" })
 
+    -- Silent Aim Section
     UI.Sections.SilentAim:Header({ Name = "Silent Aim" })
 
     UI.Sections.SilentAim:Toggle({
@@ -627,7 +641,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             Settings.DistanceLimit = value
-            EntityX:SetDistanceLimit(value) -- Синхронизация с EntityX
+            EntityX:SetDistanceLimit(value)
             notify("Silent Aim", "Distance Limit set to: " .. value .. " studs", false)
         end
     }, "SilentDistanceLimit")
@@ -656,23 +670,46 @@ function Init(ui, core, notification)
         end
     }, "SilentSortMethod")
 
-    UI.Sections.SilentAim:Toggle({
-        Name = "NPC Support",
-        Default = Settings.NPCSupport,
-        Callback = function(value)
-            Settings.NPCSupport = value
-            notify("Silent Aim", "NPC Support " .. (value and "ON" or "OFF"), false)
-        end
-    }, "SilentNPCSupport")
+    -- NPC Support Section
+    UI.Sections.NPCSupport:Header({ Name = "NPC Support" })
 
-    UI.Sections.SilentAim:Dropdown({
+    UI.Sections.NPCSupport:Toggle({
+        Name = "Enabled",
+        Default = Settings.NPCSupportEnabled,
+        Callback = function(value)
+            Settings.NPCSupportEnabled = value
+            notify("NPC Support", "Toggled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "NPCSupportEnabled")
+
+    UI.Sections.NPCSupport:Dropdown({
+        Name = "Method",
+        Options = {"SilentAim", "SelfMode"},
+        Default = Settings.NPCMethod,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.NPCMethod = value
+            notify("NPC Support", "Method set to: " .. value, false)
+        end
+    }, "NPCMethod")
+
+    UI.Sections.NPCSupport:Toggle({
+        Name = "Tool Check",
+        Default = Settings.NPCToolCheck,
+        Callback = function(value)
+            Settings.NPCToolCheck = value
+            notify("NPC Support", "Tool Check " .. (value and "ON" or "OFF"), false)
+        end
+    }, "NPCToolCheck")
+
+    UI.Sections.NPCSupport:Dropdown({
         Name = "Entities",
         Options = {"QuestAI", "SummonAI"},
         Default = Settings.SelectedTarget,
         MultiSelection = false,
         Callback = function(value)
             Settings.SelectedTarget = value
-            notify("Silent Aim", "Selected Target set to: " .. value, false)
+            notify("NPC Support", "Selected Target set to: " .. value, false)
         end
     }, "SilentEntities")
 
@@ -692,7 +729,7 @@ function Init(ui, core, notification)
         if Settings.Keybind and input.KeyCode == Settings.Keybind then
             Settings.Enabled = not Settings.Enabled
             fovCircle.Visible = Settings.Enabled
-            notify("Silent Aim", "Toggled " .. (value and "ON" or "OFF"), false)
+            notify("Silent Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), false)
         end
     end)
 
@@ -701,6 +738,13 @@ end
 
 -- Обновление FOV Circle и логика Silent Aim
 RunService.RenderStepped:Connect(function()
+    if not Settings.Enabled then
+        fovCircle.Visible = false
+        currentTarget = nil
+        Core.GunSilentTarget.CurrentTarget = nil
+        return
+    end
+
     if not UI or not Core then
         DelayedPrint("Warning: UI or Core is nil during RenderStepped")
         return
@@ -708,8 +752,11 @@ RunService.RenderStepped:Connect(function()
 
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+    fovCircle.Visible = Settings.Enabled
 
-    if not CheckToolEquipped() then
+    if Settings.NPCMethod == "SelfMode" and not Settings.NPCToolCheck then
+        -- В SelfMode без Tool Check не проверяем экипировку
+    elseif not CheckToolEquipped() then
         currentTarget = nil
         Core.GunSilentTarget.CurrentTarget = nil
         return
@@ -717,10 +764,14 @@ RunService.RenderStepped:Connect(function()
 
     UpdateFriendsCheck()
 
-    local target, targetPart, targetDistance = GetClosestTarget()
+    local target, targetPart, targetDistance = nil, nil, math.huge
     local npcTarget, npcTargetPart, npcDistance = nil, nil, math.huge
 
-    if Settings.NPCSupport then
+    if Settings.Enabled then
+        target, targetPart, targetDistance = GetClosestTarget()
+    end
+
+    if Settings.NPCSupportEnabled then
         npcTarget, npcTargetPart = EntityX:GetClosestNPC()
         if npcTarget and npcTargetPart and CanAttackNPC(npcTarget) and IsVisible(npcTargetPart) then
             npcDistance = (Camera.CFrame.Position - npcTargetPart.Position).Magnitude
@@ -736,14 +787,25 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Выбор цели: приоритет NPC, если ближе и в пределах FOV
-    if npcTarget and npcTargetPart and npcDistance <= targetDistance then
-        target, targetPart = npcTarget, npcTargetPart
-        DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
-    elseif target and targetPart then
-        DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
+    if Settings.NPCSupportEnabled and Settings.NPCMethod == "SelfMode" then
+        if npcTarget and npcTargetPart then
+            target, targetPart = npcTarget, npcTargetPart
+            DelayedPrint("Selected NPC target (SelfMode): " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+        else
+            target, targetPart = nil, nil
+            DelayedPrint("No valid NPC target selected in SelfMode")
+        end
+    elseif Settings.Enabled then
+        if npcTarget and npcTargetPart and npcDistance <= targetDistance then
+            target, targetPart = npcTarget, npcTargetPart
+            DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+        elseif target and targetPart then
+            DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
+        else
+            DelayedPrint("No valid target selected")
+        end
     else
-        DelayedPrint("No valid target selected")
+        DelayedPrint("No target selected: Silent Aim and NPC Support disabled or no valid targets")
     end
 
     currentTarget = target
