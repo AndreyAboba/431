@@ -11,6 +11,34 @@ local function Log(message, emoji)
     print("{" .. emoji .. "} EntityX | " .. message)
 end
 
+-- Вспомогательные функции
+local function waitForChildOfType(obj, name, timeout, prop)
+    local checktick = tick() + (timeout or 10)
+    local returned
+    repeat
+        returned = prop and obj[name] or obj:FindFirstChildOfClass(name)
+        if returned or checktick < tick() then break end
+        task.wait()
+    until false
+    return returned
+end
+
+local function getMousePosition()
+    if UserInputService.TouchEnabled then
+        return Camera.ViewportSize / 2
+    end
+    return UserInputService:GetMouseLocation()
+end
+
+local function loopClean(tbl)
+    for i, v in pairs(tbl) do
+        if type(v) == 'table' then
+            loopClean(v)
+        end
+        tbl[i] = nil
+    end
+end
+
 -- Проверка ошибок и инициализация
 local function Initialize()
     local hasErrors = false
@@ -176,13 +204,61 @@ EntityX.Events = setmetatable({}, {
     end
 })
 
+-- Проверка уязвимости
+function EntityX.isVulnerable(ent)
+    return ent.Health > 0 and not ent.Character:FindFirstChildWhichIsA("ForceField")
+end
+
+-- Проверка команды
+function EntityX.targetCheck(ent)
+    if ent.TeamCheck then
+        return ent:TeamCheck()
+    end
+    if ent.NPC then return true end
+    if not LocalPlayer.Team then return true end
+    if not ent.Player.Team then return true end
+    if ent.Player.Team ~= LocalPlayer.Team then return true end
+    return #ent.Player.Team:GetPlayers() == #Players:GetPlayers()
+end
+
+-- Обновление соединений сущности
+function EntityX.getUpdateConnections(ent)
+    local hum = ent.Humanoid
+    return {
+        hum:GetPropertyChangedSignal('Health'),
+        hum:GetPropertyChangedSignal('MaxHealth')
+    }
+end
+
+-- Проверка стены
+EntityX.IgnoreObject = RaycastParams.new()
+EntityX.IgnoreObject.RespectCanCollide = true
+function EntityX.Wallcheck(origin, position, ignoreobject)
+    if typeof(ignoreobject) ~= 'Instance' then
+        local ignorelist = {Camera, LocalPlayer.Character}
+        for _, v in entityList do
+            if v.Targetable then
+                table.insert(ignorelist, v.Character)
+            end
+        end
+        if typeof(ignoreobject) == 'table' then
+            for _, v in ignoreobject do
+                table.insert(ignorelist, v)
+            end
+        end
+        ignoreobject = EntityX.IgnoreObject
+        ignoreobject.FilterDescendantsInstances = ignorelist
+    end
+    return workspace:Raycast(origin, position - origin, ignoreobject)
+end
+
 -- Добавление сущности (игрок или NPC)
 function EntityX.addEntity(char, plr, teamfunc)
     if not char then return end
     EntityX.EntityThreads[char] = task.spawn(function()
-        local hum = char:FindFirstChild("Humanoid") or char:WaitForChild("Humanoid", 10)
-        local humrootpart = hum and (hum:FindFirstChild("RootPart") or char:WaitForChild("HumanoidRootPart", 10))
-        local head = char:FindFirstChild("Head") or humrootpart
+        local hum = waitForChildOfType(char, 'Humanoid', 10)
+        local humrootpart = hum and waitForChildOfType(hum, 'RootPart', workspace.StreamingEnabled and 9e9 or 10, true)
+        local head = char:WaitForChild('Head', 10) or humrootpart
 
         if hum and humrootpart then
             local entity = {
@@ -206,7 +282,7 @@ function EntityX.addEntity(char, plr, teamfunc)
                 EntityX.Events.LocalAdded:Fire(entity)
                 Log("Local player entity added.", "🟢")
             else
-                entity.Targetable = teamfunc and teamfunc() or (not plr.Team or plr.Team ~= LocalPlayer.Team)
+                entity.Targetable = EntityX.targetCheck(entity)
 
                 for _, v in EntityX.getUpdateConnections(entity) do
                     table.insert(entity.Connections, v:Connect(function()
@@ -263,15 +339,6 @@ function EntityX.removeEntity(char, localcheck)
     end
 end
 
--- Обновление соединений сущности
-function EntityX.getUpdateConnections(ent)
-    local hum = ent.Humanoid
-    return {
-        hum:GetPropertyChangedSignal('Health'),
-        hum:GetPropertyChangedSignal('MaxHealth')
-    }
-end
-
 -- Получение сущности по персонажу
 function EntityX.getEntity(char)
     for i, v in ipairs(entityList) do
@@ -293,8 +360,8 @@ function EntityX.EntityPosition(entitysettings)
             if not v.Targetable then continue end
             local mag = (v[entitysettings.Part or entityConfig.TargetPart].Position - localPosition).Magnitude
             if mag > (entitysettings.Range or entityConfig.DistanceLimit) then continue end
-            if v.Health > 0 and not v.Character:FindFirstChildWhichIsA("ForceField") then
-                table.insert(sortingTable, {Entity = v, Magnitude = mag})
+            if EntityX.isVulnerable(v) then
+                table.insert(sortingTable, {Entity = v, Magnitude = v.Target and -1 or mag})
                 Log("Found entity " .. (v.NPC and "NPC" or v.Player.Name) .. " at distance " .. mag, "🗺️")
             end
         end
@@ -306,21 +373,13 @@ function EntityX.EntityPosition(entitysettings)
             return nil
         end
 
-        table.sort(sortingTable, function(a, b)
+        table.sort(sortingTable, entitysettings.Sort or function(a, b)
             return a.Magnitude < b.Magnitude
         end)
 
         for _, v in ipairs(sortingTable) do
             if entitysettings.Wallcheck then
-                local ignorelist = {Camera, LocalPlayer.Character}
-                for _, e in ipairs(entityList) do
-                    if e.Targetable then table.insert(ignorelist, e.Character) end
-                end
-                local rayParams = RaycastParams.new()
-                rayParams.FilterDescendantsInstances = ignorelist
-                rayParams.RespectCanCollide = true
-                local result = workspace.Raycast(workspace, localPosition, (v.Entity[entitysettings.Part or entityConfig.TargetPart].Position - localPosition), rayParams)
-                if result then
+                if EntityX.Wallcheck(localPosition, v.Entity[entitysettings.Part or entityConfig.TargetPart].Position, entitysettings.Wallcheck) then
                     Log("Wallcheck blocked target " .. (v.Entity.NPC and "NPC" or v.Entity.Player.Name), "🚫")
                     continue
                 end
@@ -505,7 +564,7 @@ function EntityX.addPlayer(plr)
         end),
         plr:GetPropertyChangedSignal('Team'):Connect(function()
             for _, v in entityList do
-                if v.Targetable ~= (v.NPC or (v.Player ~= LocalPlayer and (not v.Player.Team or v.Player.Team ~= LocalPlayer.Team))) then
+                if v.Targetable ~= EntityX.targetCheck(v) then
                     EntityX.removeEntity(v.Character)
                     EntityX.addEntity(v.Character, v.Player, function()
                         return v.Player.Team and v.Player.Team == LocalPlayer.Team
@@ -538,7 +597,8 @@ end
 
 -- Статус системы
 EntityX.isAlive = false
-EntityX.character = nil
+EntityX.character = {}
+EntityX.List = entityList
 EntityX.Connections = {}
 EntityX.PlayerConnections = {}
 EntityX.EntityThreads = {}
