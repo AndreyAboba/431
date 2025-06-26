@@ -4,9 +4,6 @@ local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
-
--- Загрузка EntityX
-
 local Core = nil
 local UI = nil
 local notify = nil
@@ -252,10 +249,74 @@ local function GetToolListener(useBackpack)
     return toolListener, pistolConfig
 end
 
+-- Raycast (адаптировано из Raycast.txt)
+local function RayCast(origin, direction, filter1, filter2, extraFilters)
+    local raycastParams = RaycastParams.new()
+    local filter = { filter1, filter2, workspace.Entities }
+    if extraFilters then
+        for _, item in pairs(extraFilters) do
+            table.insert(filter, item)
+        end
+    end
+    local iteration = 0
+    while true do
+        raycastParams.FilterDescendantsInstances = filter
+        local result = workspace:Raycast(origin, direction, raycastParams)
+        if result then
+            local instance = result.Instance
+            table.insert(filter, instance)
+        end
+        iteration = iteration + 1
+        if not result or (not result.Instance.Parent:IsA("Accoutrement") or iteration >= 5) then
+            return result
+        end
+    end
+end
+
+-- FireRay (адаптировано из Raycast.txt)
+local function FireRay(origin, character, pistolConfig, targetPos, extraFilters)
+    local spread = pistolConfig and (pistolConfig:GetAttribute("Spread") or 0) or 0
+    if LocalPlayer:GetAttribute("AimingDown") then
+        spread = spread * (pistolConfig and pistolConfig:GetAttribute("Aimdown_Amp") or 0.35)
+    end
+    local direction = (targetPos - origin).Unit * 256 -- FireDistance из Raycast.txt
+    local hitPositions = {}
+    local rayResults = {}
+    local humanoids = {}
+    local gadgets = {}
+
+    local rayResult = RayCast(origin, direction, character, nil, extraFilters)
+    local hitPosition = rayResult and rayResult.Position or (origin + direction)
+    local instance = rayResult and rayResult.Instance
+    local humanoid = instance and instance.Parent:FindFirstChild("Humanoid")
+    local gadget = nil
+    if instance and instance:GetAttribute("GadgetHealth") then
+        gadget = instance
+    elseif instance and (instance.Parent:GetAttribute("GadgetHealth") or instance.Parent:GetAttribute("VehicleHealth")) then
+        gadget = instance.Parent
+    end
+
+    hitPositions[1] = hitPosition
+    rayResults[1] = rayResult
+    humanoids[1] = humanoid
+    gadgets[1] = gadget
+
+    local hitData = {}
+    if rayResults[1] then
+        hitData[1] = {
+            rayResults[1].Instance,
+            rayResults[1].Position,
+            rayResults[1].Normal,
+            humanoids[1] and "Humanoid" or (rayResults[1].Instance:GetAttribute("HitMaterial") or rayResults[1].Material.Name)
+        }
+    end
+
+    return hitPositions, hitData, humanoids, gadgets
+end
+
 -- Поиск ближайшей цели (игроки, адаптировано из GetMouseHit.txt)
 local function GetClosestPlayerTarget()
     local mousePos = UserInputService:GetMouseLocation()
-    local viewportCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     local validTargets = {}
     local possibleParts = {"Head", "UpperTorso", "Torso", "LeftLeg", "RightLeg"}
 
@@ -348,30 +409,6 @@ local function GetClosestPlayerTarget()
     return nil, nil, math.huge
 end
 
--- Raycast (адаптировано из Raycast.txt)
-local function RayCast(origin, direction, filter1, filter2, extraFilters)
-    local raycastParams = RaycastParams.new()
-    local filter = { filter1, filter2, workspace.Entities }
-    if extraFilters then
-        for _, item in pairs(extraFilters) do
-            table.insert(filter, item)
-        end
-    end
-    local iteration = 0
-    while true do
-        raycastParams.FilterDescendantsInstances = filter
-        local result = workspace:Raycast(origin, direction, raycastParams)
-        if result then
-            local instance = result.Instance
-            table.insert(filter, instance)
-        end
-        iteration = iteration + 1
-        if not result or (not result.Instance.Parent:IsA("Accoutrement") or iteration >= 5) then
-            return result
-        end
-    end
-end
-
 -- Перенаправление выстрела
 local function SilentShot(target, targetPart)
     if not target or not targetPart then
@@ -416,35 +453,16 @@ local function SilentShot(target, targetPart)
 
     local originPosition = Camera.CFrame.Position
     local targetPosition = targetPart.Position
-    local direction = (targetPosition - originPosition).Unit
-    local hitPosition = targetPosition - direction * 1
-
-    -- Адаптация FireRay из Raycast.txt
-    local spread = pistolConfig and (pistolConfig:GetAttribute("Spread") or 0) or 0
-    if LocalPlayer:GetAttribute("AimingDown") then
-        spread = spread * (pistolConfig and pistolConfig:GetAttribute("Aimdown_Amp") or 0.35)
-    end
-    local rayDirection = direction * 256 -- Используем FireDistance из Raycast.txt
-    local rayResult = RayCast(originPosition, rayDirection, LocalPlayer.Character, nil, {})
-    local finalHitPosition = rayResult and rayResult.Position or (originPosition + rayDirection)
-    local finalInstance = rayResult and rayResult.Instance
-    local finalHumanoid = finalInstance and finalInstance.Parent:FindFirstChild("Humanoid") or humanoid
+    local hitPositions, hitData, humanoids, _ = FireRay(originPosition, LocalPlayer.Character, pistolConfig, targetPosition, {})
 
     local args = {
         [1] = "Activate",
         [2] = originPosition,
         [3] = targetPosition,
         [4] = pistolConfig or game:GetService("Players").LocalPlayer:WaitForChild("PistolConfig"),
-        [5] = { hitPosition },
-        [6] = {
-            [1] = {
-                [1] = targetPart,
-                [2] = hitPosition,
-                [3] = direction,
-                [4] = "Humanoid"
-            }
-        },
-        [7] = { finalHumanoid },
+        [5] = hitPositions,
+        [6] = hitData,
+        [7] = humanoids,
         [8] = {}
     }
 
@@ -597,7 +615,6 @@ function Init(ui, core, notification)
         Default = Settings.VisibilityCheck,
         Callback = function(value)
             Settings.VisibilityCheck = value
-            notify("Hook Aim", "Visibility Check " .. (value and "ON" or "OFF"), falseFac
             notify("Hook Aim", "Visibility Check " .. (value and "ON" or "OFF"), false)
         end
     }, "HookVisibilityCheck")
@@ -690,7 +707,7 @@ function Init(ui, core, notification)
         if Settings.Keybind and input.KeyCode == Settings.Keybind then
             Settings.Enabled = not Settings.Enabled
             fovCircle.Visible = Settings.Enabled
-            notify("Hook Aim", "Toggled " .. (value and "ON" or "OFF"), false)
+            notify("Hook Aim", "Toggled " .. (Settings.Enabled and "ON" or "OFF"), false)
         end
     end)
 
