@@ -177,9 +177,9 @@ EntityX.Events = setmetatable({}, {
 })
 
 -- Добавление сущности (игрок или NPC)
-function EntityX.addEntity(char, plr)
+function EntityX.addEntity(char, plr, teamfunc)
     if not char then return end
-    local entityThread = task.spawn(function()
+    EntityX.EntityThreads[char] = task.spawn(function()
         local hum = char:FindFirstChild("Humanoid") or char:WaitForChild("Humanoid", 10)
         local humrootpart = hum and (hum:FindFirstChild("RootPart") or char:WaitForChild("HumanoidRootPart", 10))
         local head = char:FindFirstChild("Head") or humrootpart
@@ -197,7 +197,7 @@ function EntityX.addEntity(char, plr)
                 NPC = plr == nil,
                 Player = plr,
                 RootPart = humrootpart,
-                Targetable = plr == nil or (plr ~= LocalPlayer and (not plr.Team or plr.Team ~= LocalPlayer.Team))
+                TeamCheck = teamfunc
             }
 
             if plr == LocalPlayer then
@@ -206,6 +206,8 @@ function EntityX.addEntity(char, plr)
                 EntityX.Events.LocalAdded:Fire(entity)
                 Log("Local player entity added.", "🟢")
             else
+                entity.Targetable = teamfunc and teamfunc() or (not plr.Team or plr.Team ~= LocalPlayer.Team)
+
                 for _, v in EntityX.getUpdateConnections(entity) do
                     table.insert(entity.Connections, v:Connect(function()
                         entity.Health = hum.Health
@@ -214,6 +216,7 @@ function EntityX.addEntity(char, plr)
                         Log("Entity " .. (entity.NPC and "NPC" or entity.Player.Name) .. " updated.", "🔄")
                     end))
                 end
+
                 table.insert(entityList, entity)
                 EntityX.Events.EntityAdded:Fire(entity)
                 Log("Entity " .. (entity.NPC and "NPC" or entity.Player.Name) .. " added.", "🟢")
@@ -222,7 +225,6 @@ function EntityX.addEntity(char, plr)
             Log("Failed to create entity for " .. (plr and plr.Name or "NPC") .. ": Humanoid or RootPart not found.", "❌")
         end
     end)
-    EntityX.EntityThreads[char] = entityThread
 end
 
 -- Удаление сущности
@@ -287,8 +289,7 @@ function EntityX.EntityPosition(entitysettings)
         local localPosition = entitysettings.Origin or (EntityX.character and EntityX.character.HumanoidRootPart and EntityX.character.HumanoidRootPart.Position) or Camera.CFrame.Position
         local sortingTable = {}
         for _, v in ipairs(entityList) do
-            if not entitysettings.Players and v.Player then continue end
-            if not entitysettings.NPCs and v.NPC then continue end
+            if (not entitysettings.Players and v.Player) or (not entitysettings.NPCs and v.NPC) then continue end
             if not v.Targetable then continue end
             local mag = (v[entitysettings.Part or entityConfig.TargetPart].Position - localPosition).Magnitude
             if mag > (entitysettings.Range or entityConfig.DistanceLimit) then continue end
@@ -317,7 +318,8 @@ function EntityX.EntityPosition(entitysettings)
                 end
                 local rayParams = RaycastParams.new()
                 rayParams.FilterDescendantsInstances = ignorelist
-                local result = workspace.Raycast(workspace, localPosition, (v.Entity[entitysettings.Part or entityConfig.TargetPart].Position - localPosition).Unit * mag, rayParams)
+                rayParams.RespectCanCollide = true
+                local result = workspace.Raycast(workspace, localPosition, (v.Entity[entitysettings.Part or entityConfig.TargetPart].Position - localPosition), rayParams)
                 if result then
                     Log("Wallcheck blocked target " .. (v.Entity.NPC and "NPC" or v.Entity.Player.Name), "🚫")
                     continue
@@ -432,6 +434,8 @@ end
 function EntityX.start()
     if EntityX.Running then EntityX.stop() end
     EntityX.Connections = EntityX.Connections or {}
+    EntityX.PlayerConnections = EntityX.PlayerConnections or {}
+    EntityX.EntityThreads = EntityX.EntityThreads or {}
     table.insert(EntityX.Connections, Players.PlayerAdded:Connect(function(v)
         EntityX.addPlayer(v)
     end))
@@ -482,13 +486,17 @@ end
 -- Добавление игрока
 function EntityX.addPlayer(plr)
     if not plr or EntityX.PlayerConnections[plr] then return end
-    EntityX.PlayerConnections = EntityX.PlayerConnections or {}
+    EntityX.PlayerConnections[plr] = EntityX.PlayerConnections[plr] or {}
     if plr.Character then
-        EntityX.addEntity(plr.Character, plr)
+        EntityX.addEntity(plr.Character, plr, function()
+            return plr.Team and plr.Team == LocalPlayer.Team
+        end)
     end
     EntityX.PlayerConnections[plr] = {
         plr.CharacterAdded:Connect(function(char)
-            EntityX.addEntity(char, plr)
+            EntityX.addEntity(char, plr, function()
+                return plr.Team and plr.Team == LocalPlayer.Team
+            end)
             Log("Player " .. plr.Name .. " character added.", "🟢")
         end),
         plr.CharacterRemoving:Connect(function(char)
@@ -499,13 +507,17 @@ function EntityX.addPlayer(plr)
             for _, v in entityList do
                 if v.Targetable ~= (v.NPC or (v.Player ~= LocalPlayer and (not v.Player.Team or v.Player.Team ~= LocalPlayer.Team))) then
                     EntityX.removeEntity(v.Character)
-                    EntityX.addEntity(v.Character, v.Player)
+                    EntityX.addEntity(v.Character, v.Player, function()
+                        return v.Player.Team and v.Player.Team == LocalPlayer.Team
+                    end)
                 end
             end
             if plr == LocalPlayer then
                 EntityX.start()
             else
-                EntityX.addEntity(plr.Character, plr)
+                EntityX.addEntity(plr.Character, plr, function()
+                    return plr.Team and plr.Team == LocalPlayer.Team
+                end)
             end
             Log("Player " .. plr.Name .. " team updated.", "🔄")
         end)
