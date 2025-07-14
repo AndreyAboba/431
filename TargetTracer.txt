@@ -11,6 +11,7 @@ local notify = nil
 local Settings = {
     Enabled = false,
     TracerMode = "2D", -- "2D" или "3D"
+    Tracer2DOrigin = "From Bottom", -- "From Top", "From Bottom", "From Player"
     PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера для игроков
     NPCColor = Color3.fromRGB(0, 255, 255), -- Цвет трейсера для NPC
     TracerThickness = 2,
@@ -25,13 +26,13 @@ tracer2D.Visible = false
 
 -- 3D трейсер (LineHandleAdornment)
 local tracer3D = Instance.new("LineHandleAdornment")
-tracer3D.Adornee = workspace
+tracer3D.Adornee = nil -- Будет устанавливаться динамически
 tracer3D.Color3 = Settings.PlayerColor
 tracer3D.Transparency = Settings.TracerTransparency
-tracer3D.Thickness = 2
+tracer3D.Thickness = Settings.TracerThickness
 tracer3D.Visible = false
 tracer3D.ZIndex = 10
-tracer3D.Parent = workspace
+tracer3D.Parent = workspace.Terrain -- Используем Terrain как стабильный родитель
 
 -- Функция для вывода отладочных сообщений
 local function DebugPrint(message)
@@ -45,25 +46,42 @@ local function GetLocalPlayerPosition()
     return rootPart and rootPart.Position or Camera.CFrame.Position
 end
 
+-- Получение экранной позиции локального игрока
+local function GetLocalPlayerScreenPosition()
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        return onScreen and Vector2.new(screenPos.X, screenPos.Y) or nil
+    end
+    return nil
+end
+
 -- Получение позиции цели
 local function GetTargetPosition(targetName, isNPC)
     if isNPC then
         local entities = workspace:FindFirstChild("Entities")
         if entities then
-            local npc = entities:FindFirstChild(targetName)
-            if npc then
-                local humanoidRoot = npc:FindFirstChild("HumanoidRootPart")
-                return humanoidRoot and humanoidRoot.Position or nil
+            for _, npc in pairs(entities:GetChildren()) do
+                if npc.Name == targetName then
+                    local humanoidRoot = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChildOfClass("BasePart")
+                    if humanoidRoot then
+                        return humanoidRoot.Position
+                    end
+                end
             end
         end
+        DebugPrint("No valid NPC position for " .. tostring(targetName))
+        return nil
     else
         local player = Players:FindFirstChild(targetName)
         if player and player.Character then
             local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
             return humanoidRoot and humanoidRoot.Position or nil
         end
+        DebugPrint("No valid player position for " .. tostring(targetName))
+        return nil
     end
-    return nil
 end
 
 -- Проверка, является ли цель NPC
@@ -96,18 +114,37 @@ local function UpdateTracer()
     if Settings.TracerMode == "2D" then
         local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
         if onScreen then
-            tracer2D.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            local fromPos
+            if Settings.Tracer2DOrigin == "From Top" then
+                fromPos = Vector2.new(Camera.ViewportSize.X / 2, 0)
+            elseif Settings.Tracer2DOrigin == "From Bottom" then
+                fromPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            elseif Settings.Tracer2DOrigin == "From Player" then
+                fromPos = GetLocalPlayerScreenPosition()
+                if not fromPos then
+                    tracer2D.Visible = false
+                    tracer3D.Visible = false
+                    DebugPrint("No valid player screen position")
+                    return
+                end
+            end
+            tracer2D.From = fromPos
             tracer2D.To = Vector2.new(screenPos.X, screenPos.Y)
             tracer2D.Color = isNPC and Settings.NPCColor or Settings.PlayerColor
+            tracer2D.Thickness = Settings.TracerThickness
+            tracer2D.Transparency = Settings.TracerTransparency
             tracer2D.Visible = true
         else
             tracer2D.Visible = false
         end
         tracer3D.Visible = false
     else -- 3D
+        tracer3D.Adornee = workspace.Terrain
         tracer3D.CFrame = CFrame.new(localPosition, targetPosition) * CFrame.new(0, 0, -(localPosition - targetPosition).Magnitude / 2)
         tracer3D.Length = (localPosition - targetPosition).Magnitude
         tracer3D.Color3 = isNPC and Settings.NPCColor or Settings.PlayerColor
+        tracer3D.Thickness = Settings.TracerThickness
+        tracer3D.Transparency = Settings.TracerTransparency
         tracer3D.Visible = true
         tracer2D.Visible = false
     end
@@ -140,8 +177,9 @@ function Init(ui, core, notification)
         Default = Settings.Enabled,
         Callback = function(value)
             Settings.Enabled = value
-            tracer2D.Visible = value and Settings.TracerMode == "2D" and Core.GunSilentTarget.CurrentTarget ~= nil
-            tracer3D.Visible = value and Settings.TracerMode == "3D" and Core.GunSilentTarget.CurrentTarget ~= nil
+            local is2D = Settings.TracerMode == "2D"
+            tracer2D:SetVisibility(is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil)
+            tracer3D.Visible = not is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "Toggled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerEnabled")
@@ -171,11 +209,53 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.TracerMode = value
-            tracer2D.Visible = Settings.Enabled and value == "2D" and Core.GunSilentTarget.CurrentTarget ~= nil
-            tracer3D.Visible = Settings.Enabled and value == "3D" and Core.GunSilentTarget.CurrentTarget ~= nil
+            local is2D = value == "2D"
+            tracer2D:SetVisibility(is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil)
+            tracer3D.Visible = not is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "Tracer Mode set to: " .. value, false)
         end
     }, "TargetTracerMode")
+
+    UI.Sections.TargetTracer:Dropdown({
+        Name = "2D Tracer Origin",
+        Options = {"From Top", "From Bottom", "From Player"},
+        Default = Settings.Tracer2DOrigin,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.Tracer2DOrigin = value
+            notify("Target Tracer", "2D Tracer Origin set to: " .. value, false)
+        end
+    }, "TargetTracer2DOrigin")
+
+    UI.Sections.TargetTracer:Slider({
+        Name = "Tracer Thickness",
+        Minimum = 1,
+        Maximum = 10,
+        Default = Settings.TracerThickness,
+        Precision = 0,
+        Suffix = "px",
+        Callback = function(value)
+            Settings.TracerThickness = value
+            tracer2D.Thickness = value
+            tracer3D.Thickness = value
+            notify("Target Tracer", "Tracer Thickness set to: " .. value .. "px", false)
+        end
+    }, "TargetTracerThickness")
+
+    UI.Sections.TargetTracer:Slider({
+        Name = "Tracer Transparency",
+        Minimum = 0,
+        Maximum = 1,
+        Default = Settings.TracerTransparency,
+        Precision = 2,
+        Suffix = "",
+        Callback = function(value)
+            Settings.TracerTransparency = value
+            tracer2D.Transparency = value
+            tracer3D.Transparency = value
+            notify("Target Tracer", "Tracer Transparency set to: " .. value, false)
+        end
+    }, "TargetTracerTransparency")
 
     -- Обновление трейсера каждый кадр
     RunService.RenderStepped:Connect(UpdateTracer)
