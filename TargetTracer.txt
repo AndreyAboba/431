@@ -13,9 +13,11 @@ local Settings = {
     TracerMode = "2D", -- "2D" или "3D"
     Tracer2DOrigin = "From Bottom", -- "From Top", "From Bottom", "From Player"
     PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера для игроков
-    NPCColor = Color3.fromRGB(0, 255, 255), -- Цвет трейсера для NPC
     TracerThickness = 2,
-    TracerTransparency = 0.7
+    TracerTransparency = 0.7,
+    YOffset = 0, -- Смещение по Y для "From Player" и 3D
+    CircleRadius = 5, -- Радиус кругов
+    CircleTransparency = 0.7
 }
 
 -- 2D трейсер (Drawing)
@@ -24,15 +26,57 @@ tracer2D.Thickness = Settings.TracerThickness
 tracer2D.Transparency = Settings.TracerTransparency
 tracer2D.Visible = false
 
--- 3D трейсер (LineHandleAdornment)
-local tracer3D = Instance.new("LineHandleAdornment")
-tracer3D.Adornee = nil -- Будет устанавливаться динамически
-tracer3D.Color3 = Settings.PlayerColor
-tracer3D.Transparency = Settings.TracerTransparency
-tracer3D.Thickness = Settings.TracerThickness
-tracer3D.Visible = false
-tracer3D.ZIndex = 10
-tracer3D.Parent = workspace.Terrain -- Используем Terrain как стабильный родитель
+-- 2D круги
+local startCircle2D = Drawing.new("Circle")
+startCircle2D.Radius = Settings.CircleRadius
+startCircle2D.Thickness = 1
+startCircle2D.Transparency = Settings.CircleTransparency
+startCircle2D.Color = Settings.PlayerColor
+startCircle2D.Visible = false
+startCircle2D.Filled = true
+
+local endCircle2D = Drawing.new("Circle")
+endCircle2D.Radius = Settings.CircleRadius
+endCircle2D.Thickness = 1
+endCircle2D.Transparency = Settings.CircleTransparency
+endCircle2D.Color = Settings.PlayerColor
+endCircle2D.Visible = false
+endCircle2D.Filled = true
+
+-- 3D трейсер (Beam)
+local beam = Instance.new("Beam")
+beam.Color = ColorSequence.new(Settings.PlayerColor)
+beam.Transparency = NumberSequence.new(Settings.TracerTransparency)
+beam.Width0 = Settings.TracerThickness / 10
+beam.Width1 = Settings.TracerThickness / 10
+beam.Enabled = false
+beam.Parent = workspace.Terrain
+
+local startAttachment = Instance.new("Attachment")
+startAttachment.Parent = workspace.Terrain
+local endAttachment = Instance.new("Attachment")
+endAttachment.Parent = workspace.Terrain
+beam.Attachment0 = startAttachment
+beam.Attachment1 = endAttachment
+
+-- 3D круги (Part с Spherical формами)
+local startSphere = Instance.new("Part")
+startSphere.Size = Vector3.new(0.2, 0.2, 0.2)
+startSphere.Shape = Enum.PartType.Ball
+startSphere.Anchored = true
+startSphere.CanCollide = false
+startSphere.Transparency = Settings.CircleTransparency
+startSphere.Color = Settings.PlayerColor
+startSphere.Parent = workspace.Terrain
+
+local endSphere = Instance.new("Part")
+endSphere.Size = Vector3.new(0.2, 0.2, 0.2)
+endSphere.Shape = Enum.PartType.Ball
+endSphere.Anchored = true
+endSphere.CanCollide = false
+endSphere.Transparency = Settings.CircleTransparency
+endSphere.Color = Settings.PlayerColor
+endSphere.Parent = workspace.Terrain
 
 -- Функция для вывода отладочных сообщений
 local function DebugPrint(message)
@@ -43,7 +87,7 @@ end
 local function GetLocalPlayerPosition()
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    return rootPart and rootPart.Position or Camera.CFrame.Position
+    return rootPart and (rootPart.Position + Vector3.new(0, Settings.YOffset, 0)) or Camera.CFrame.Position
 end
 
 -- Получение экранной позиции локального игрока
@@ -51,60 +95,45 @@ local function GetLocalPlayerScreenPosition()
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     if rootPart then
-        local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position + Vector3.new(0, Settings.YOffset, 0))
         return onScreen and Vector2.new(screenPos.X, screenPos.Y) or nil
     end
     return nil
 end
 
 -- Получение позиции цели
-local function GetTargetPosition(targetName, isNPC)
-    if isNPC then
-        local entities = workspace:FindFirstChild("Entities")
-        if entities then
-            for _, npc in pairs(entities:GetChildren()) do
-                if npc.Name == targetName then
-                    local humanoidRoot = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChildOfClass("BasePart")
-                    if humanoidRoot then
-                        return humanoidRoot.Position
-                    end
-                end
-            end
-        end
-        DebugPrint("No valid NPC position for " .. tostring(targetName))
-        return nil
-    else
-        local player = Players:FindFirstChild(targetName)
-        if player and player.Character then
-            local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-            return humanoidRoot and humanoidRoot.Position or nil
-        end
-        DebugPrint("No valid player position for " .. tostring(targetName))
-        return nil
-    end
-end
-
--- Проверка, является ли цель NPC
-local function IsNPCTarget(targetName)
+local function GetTargetPosition(targetName)
     local player = Players:FindFirstChild(targetName)
-    return not player -- Если игрок не найден, считаем это NPC
+    if player and player.Character then
+        local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+        return humanoidRoot and (humanoidRoot.Position + Vector3.new(0, Settings.YOffset, 0)) or nil
+    end
+    DebugPrint("No valid player position for " .. tostring(targetName))
+    return nil
 end
 
 -- Обновление трейсера
 local function UpdateTracer()
     if not Settings.Enabled or not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
         tracer2D.Visible = false
-        tracer3D.Visible = false
+        startCircle2D.Visible = false
+        endCircle2D.Visible = false
+        beam.Enabled = false
+        startSphere.Transparency = 1
+        endSphere.Transparency = 1
         return
     end
 
     local targetName = Core.GunSilentTarget.CurrentTarget
-    local isNPC = IsNPCTarget(targetName)
-    local targetPosition = GetTargetPosition(targetName, isNPC)
+    local targetPosition = GetTargetPosition(targetName)
 
     if not targetPosition then
         tracer2D.Visible = false
-        tracer3D.Visible = false
+        startCircle2D.Visible = false
+        endCircle2D.Visible = false
+        beam.Enabled = false
+        startSphere.Transparency = 1
+        endSphere.Transparency = 1
         DebugPrint("No valid target position for " .. tostring(targetName))
         return
     end
@@ -123,30 +152,61 @@ local function UpdateTracer()
                 fromPos = GetLocalPlayerScreenPosition()
                 if not fromPos then
                     tracer2D.Visible = false
-                    tracer3D.Visible = false
+                    startCircle2D.Visible = false
+                    endCircle2D.Visible = false
+                    beam.Enabled = false
+                    startSphere.Transparency = 1
+                    endSphere.Transparency = 1
                     DebugPrint("No valid player screen position")
                     return
                 end
             end
             tracer2D.From = fromPos
             tracer2D.To = Vector2.new(screenPos.X, screenPos.Y)
-            tracer2D.Color = isNPC and Settings.NPCColor or Settings.PlayerColor
+            tracer2D.Color = Settings.PlayerColor
             tracer2D.Thickness = Settings.TracerThickness
             tracer2D.Transparency = Settings.TracerTransparency
             tracer2D.Visible = true
+
+            -- Круги для 2D
+            endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
+            endCircle2D.Color = Settings.PlayerColor
+            endCircle2D.Visible = true
+            if Settings.Tracer2DOrigin == "From Player" then
+                startCircle2D.Position = fromPos
+                startCircle2D.Color = Settings.PlayerColor
+                startCircle2D.Visible = true
+            else
+                startCircle2D.Visible = false
+            end
         else
             tracer2D.Visible = false
+            startCircle2D.Visible = false
+            endCircle2D.Visible = false
         end
-        tracer3D.Visible = false
+        beam.Enabled = false
+        startSphere.Transparency = 1
+        endSphere.Transparency = 1
     else -- 3D
-        tracer3D.Adornee = workspace.Terrain
-        tracer3D.CFrame = CFrame.new(localPosition, targetPosition) * CFrame.new(0, 0, -(localPosition - targetPosition).Magnitude / 2)
-        tracer3D.Length = (localPosition - targetPosition).Magnitude
-        tracer3D.Color3 = isNPC and Settings.NPCColor or Settings.PlayerColor
-        tracer3D.Thickness = Settings.TracerThickness
-        tracer3D.Transparency = Settings.TracerTransparency
-        tracer3D.Visible = true
+        startAttachment.Position = localPosition
+        endAttachment.Position = targetPosition
+        beam.Color = ColorSequence.new(Settings.PlayerColor)
+        beam.Transparency = NumberSequence.new(Settings.TracerTransparency)
+        beam.Width0 = Settings.TracerThickness / 10
+        beam.Width1 = Settings.TracerThickness / 10
+        beam.Enabled = true
+
+        -- Сферы для 3D
+        startSphere.Position = localPosition
+        startSphere.Color = Settings.PlayerColor
+        startSphere.Transparency = Settings.CircleTransparency
+        endSphere.Position = targetPosition
+        endSphere.Color = Settings.PlayerColor
+        endSphere.Transparency = Settings.CircleTransparency
+
         tracer2D.Visible = false
+        startCircle2D.Visible = false
+        endCircle2D.Visible = false
     end
 end
 
@@ -179,7 +239,11 @@ function Init(ui, core, notification)
             Settings.Enabled = value
             local is2D = Settings.TracerMode == "2D"
             tracer2D.Visible = is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
-            tracer3D.Visible = not is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
+            endCircle2D.Visible = is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
+            startCircle2D.Visible = is2D and value and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            beam.Enabled = not is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
+            startSphere.Transparency = not is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil and Settings.CircleTransparency or 1
+            endSphere.Transparency = not is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil and Settings.CircleTransparency or 1
             notify("Target Tracer", "Toggled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerEnabled")
@@ -193,15 +257,6 @@ function Init(ui, core, notification)
         end
     }, "TargetTracerPlayerColor")
 
-    UI.Sections.TargetTracer:Colorpicker({
-        Name = "NPC Color",
-        Default = Settings.NPCColor,
-        Callback = function(value)
-            Settings.NPCColor = value
-            notify("Target Tracer", "NPC Color updated", false)
-        end
-    }, "TargetTracerNPCColor")
-
     UI.Sections.TargetTracer:Dropdown({
         Name = "Tracer Mode",
         Options = {"2D", "3D"},
@@ -211,7 +266,11 @@ function Init(ui, core, notification)
             Settings.TracerMode = value
             local is2D = value == "2D"
             tracer2D.Visible = is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            tracer3D.Visible = not is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
+            endCircle2D.Visible = is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
+            startCircle2D.Visible = is2D and Settings.Enabled and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            beam.Enabled = not is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
+            startSphere.Transparency = not is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil and Settings.CircleTransparency or 1
+            endSphere.Transparency = not is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil and Settings.CircleTransparency or 1
             notify("Target Tracer", "Tracer Mode set to: " .. value, false)
         end
     }, "TargetTracerMode")
@@ -223,6 +282,7 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.Tracer2DOrigin = value
+            startCircle2D.Visible = Settings.Enabled and Settings.TracerMode == "2D" and value == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "2D Tracer Origin set to: " .. value, false)
         end
     }, "TargetTracer2DOrigin")
@@ -237,7 +297,8 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.TracerThickness = value
             tracer2D.Thickness = value
-            tracer3D.Thickness = value
+            beam.Width0 = value / 10
+            beam.Width1 = value / 10
             notify("Target Tracer", "Tracer Thickness set to: " .. value .. "px", false)
         end
     }, "TargetTracerThickness")
@@ -252,10 +313,23 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.TracerTransparency = value
             tracer2D.Transparency = value
-            tracer3D.Transparency = value
+            beam.Transparency = NumberSequence.new(value)
             notify("Target Tracer", "Tracer Transparency set to: " .. value, false)
         end
     }, "TargetTracerTransparency")
+
+    UI.Sections.TargetTracer:Slider({
+        Name = "Y Offset",
+        Minimum = -3,
+        Maximum = 3,
+        Default = Settings.YOffset,
+        Precision = 2,
+        Suffix = "studs",
+        Callback = function(value)
+            Settings.YOffset = value
+            notify("Target Tracer", "Y Offset set to: " .. value .. " studs", false)
+        end
+    }, "TargetTracerYOffset")
 
     -- Обновление трейсера каждый кадр
     RunService.RenderStepped:Connect(UpdateTracer)
@@ -266,7 +340,13 @@ end
 -- Очистка при телепортации
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     tracer2D:Remove()
-    tracer3D:Remove()
+    startCircle2D:Remove()
+    endCircle2D:Remove()
+    beam:Destroy()
+    startAttachment:Destroy()
+    endAttachment:Destroy()
+    startSphere:Destroy()
+    endSphere:Destroy()
 end)
 
 return {
