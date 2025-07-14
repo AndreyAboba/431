@@ -44,7 +44,7 @@ local HudSettings = {
     AvatarDamageColor = Color3.fromRGB(200, 0, 0),
     AvatarPulseDuration = 0.4,
     AvatarResetDuration = 0.6,
-    DamageAnimationCooldown = 0.5,
+    DamageCooldown = 0.5,
     OrbsEnabled = true,
     OrbCount = 6,
     OrbSize = Vector2.new(8, 8),
@@ -162,8 +162,8 @@ healthStroke.Parent = healthLabel
 local healthBarBackground = Instance.new("Frame")
 healthBarBackground.Size = UDim2.new(0, HudSettings.HealthBarSize.X * HudSettings.Scale, 0, HudSettings.HealthBarSize.Y * HudSettings.Scale)
 healthBarBackground.Position = UDim2.new(0, HudSettings.HealthBarPosition.X.Offset * HudSettings.Scale, 0, HudSettings.HealthBarPosition.Y.Offset * HudSettings.Scale)
-healthBarBackground.BackgroundColor3 = HudSettings.HealthBarBackgroundColor
-healthBarBackground.BackgroundTransparency = HudSettings.HealthBarBackgroundTransparency
+healthBarBackground.BackgroundColor3 = HudSettings.HudBackgroundColor
+healthBarBackground.BackgroundTransparency = HudSettings.HudBackgroundTransparency
 healthBarBackground.BorderSizePixel = 0
 healthBarBackground.Visible = false
 healthBarBackground.Parent = hudFrame
@@ -477,7 +477,7 @@ local function UpdateHud()
 
         if previousHealth and health < previousHealth then
             local currentTime = tick()
-            if currentTime - lastDamageAnimationTime >= HudSettings.DamageAnimationCooldown then
+            if currentTime - lastDamageAnimationTime >= HudSettings.DamageCooldown then
                 PlayDamageAnimation()
                 lastDamageAnimationTime = currentTime
             end
@@ -620,6 +620,10 @@ function Init(ui, core, notification)
     if not UI or not Core or not notify then
         return
     end
+
+    -- Установка начальных цветов градиента для орбов
+    HudSettings.OrbGradientStart = Core.GradientColors.Color1.Value
+    HudSettings.OrbGradientEnd = Core.GradientColors.Color2.Value
 
     -- Создание секций в UI.Tabs.Visuals (вкладка уже существует)
     UI.Sections = UI.Sections or {}
@@ -851,20 +855,20 @@ function Init(ui, core, notification)
     }, "TargetHudAvatarResetDuration")
 
     UI.Sections.TargetHud:Slider({
-        Name = "DamageAnimationCooldown",
+        Name = "Damage Cooldown",
         Minimum = 0.1,
         Maximum = 2,
-        Default = HudSettings.DamageAnimationCooldown,
+        Default = HudSettings.DamageCooldown,
         Precision = 1,
         Suffix = "s",
         Callback = function(value)
-            HudSettings.DamageAnimationCooldown = value
-            notify("Target Hud", "DamageAnimationCooldown set to: " .. value .. "s", false)
+            HudSettings.DamageCooldown = value
+            notify("Target Hud", "Damage Cooldown set to: " .. value .. "s", false)
         end
-    }, "TargetHudDamageAnimationCooldown")
+    }, "TargetHudDamageCooldown")
 
     UI.Sections.TargetHud:Slider({
-        Name = "OrbCount",
+        Name = "Orb Count",
         Minimum = 1,
         Maximum = 10,
         Default = HudSettings.OrbCount,
@@ -872,12 +876,12 @@ function Init(ui, core, notification)
         Suffix = "",
         Callback = function(value)
             HudSettings.OrbCount = value
-            notify("Target Hud", "OrbCount set to: " .. value, false)
+            notify("Target Hud", "Orb Count set to: " .. value, false)
         end
     }, "TargetHudOrbCount")
 
     UI.Sections.TargetHud:Slider({
-        Name = "OrbSize",
+        Name = "Orb Size",
         Minimum = 4,
         Maximum = 20,
         Default = HudSettings.OrbSize.X,
@@ -885,12 +889,12 @@ function Init(ui, core, notification)
         Suffix = "px",
         Callback = function(value)
             HudSettings.OrbSize = Vector2.new(value, value)
-            notify("Target Hud", "OrbSize set to: " .. value .. "px", false)
+            notify("Target Hud", "Orb Size set to: " .. value .. "px", false)
         end
     }, "TargetHudOrbSize")
 
     UI.Sections.TargetHud:Slider({
-        Name = "OrbLifetime",
+        Name = "Orb Lifetime",
         Minimum = 0.5,
         Maximum = 3,
         Default = HudSettings.OrbLifetime,
@@ -898,7 +902,7 @@ function Init(ui, core, notification)
         Suffix = "s",
         Callback = function(value)
             HudSettings.OrbLifetime = value
-            notify("Target Hud", "OrbLifetime set to: " .. value .. "s", false)
+            notify("Target Hud", "Orb Lifetime set to: " .. value .. "s", false)
         end
     }, "TargetHudOrbLifetime")
 
@@ -928,6 +932,28 @@ function Init(ui, core, notification)
             notify("Target Hud", "Scale set to: " .. value, false)
         end
     }, "TargetHudScale")
+
+    UI.Sections.TargetHud:Colorpicker({
+        Name = "Orb Gradient Color 1",
+        Default = Core.GradientColors.Color1.Value,
+        Callback = function(value)
+            HudSettings.OrbGradientStart = value
+            Core.GradientColors.Color1.Value = value
+            Core.GlobalConfigs.GradientColors["Gradient Color 1"] = value
+            notify("Target Hud", "Orb Gradient Color 1 updated", false)
+        end
+    }, "TargetHudOrbGradientColor1")
+
+    UI.Sections.TargetHud:Colorpicker({
+        Name = "Orb Gradient Color 2",
+        Default = Core.GradientColors.Color2.Value,
+        Callback = function(value)
+            HudSettings.OrbGradientEnd = value
+            Core.GradientColors.Color2.Value = value
+            Core.GlobalConfigs.GradientColors["Gradient Color 2"] = value
+            notify("Target Hud", "Orb Gradient Color 2 updated", false)
+        end
+    }, "TargetHudOrbGradientColor2")
 
     -- Обновление трейсера и кругов каждый кадр
     RunService.RenderStepped:Connect(UpdateTracer)
