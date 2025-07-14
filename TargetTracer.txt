@@ -89,13 +89,6 @@ local function GetTargetPosition(targetName)
     return nil
 end
 
--- Вычисление радиуса круга с учетом расстояния
-local function GetScaledRadius(position)
-    local distance = (Camera.CFrame.Position - position).Magnitude
-    local baseDistance = 50 -- Базовое расстояние для масштабирования
-    return math.clamp(Settings.CircleDiameter / 2 * (baseDistance / math.max(distance, 1)), 1, Settings.CircleDiameter)
-end
-
 -- Обновление трейсера и кругов
 local function UpdateTracer()
     if not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
@@ -158,10 +151,9 @@ local function UpdateTracer()
 
     -- Обновление кругов (работают независимо от Settings.Enabled)
     if Settings.CirclesEnabled and onScreen then
-        local targetRadius = GetScaledRadius(targetPosition)
         endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
         endCircle2D.Color = Settings.PlayerColor
-        endCircle2D.Radius = targetRadius
+        endCircle2D.Radius = Settings.CircleDiameter / 2
         endCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
         endCircle2D.Filled = Settings.CircleFilled
         endCircle2D.Visible = true
@@ -176,10 +168,9 @@ local function UpdateTracer()
         if Settings.Tracer2DOrigin == "From Player" then
             local fromPos = GetLocalPlayerScreenPosition()
             if fromPos then
-                local playerRadius = GetScaledRadius(localPosition)
                 startCircle2D.Position = fromPos
                 startCircle2D.Color = Settings.PlayerColor
-                startCircle2D.Radius = playerRadius
+                startCircle2D.Radius = Settings.CircleDiameter / 2
                 startCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
                 startCircle2D.Filled = Settings.CircleFilled
                 startCircle2D.Visible = true
