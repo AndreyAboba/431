@@ -12,12 +12,14 @@ local Settings = {
     Enabled = false,
     TracerMode = "2D", -- "2D" или "3D"
     Tracer2DOrigin = "From Bottom", -- "From Top", "From Bottom", "From Player"
-    PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера для игроков
+    PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера и кругов
     TracerThickness = 2,
     TracerTransparency = 0.7,
-    YOffset = 0, -- Смещение по Y для "From Player" и 3D
-    CircleRadius = 5, -- Радиус кругов
-    CircleTransparency = 0.7
+    YOffset = 0, -- Смещение начальной точки по Y
+    EndYOffset = 0, -- Смещение конечной точки по Y
+    CircleDiameter = 5, -- Диаметр кругов
+    CircleTransparency = 0.7,
+    CircleFilled = true -- Заполнение кругов
 }
 
 -- 2D трейсер (Drawing)
@@ -28,20 +30,20 @@ tracer2D.Visible = false
 
 -- 2D круги
 local startCircle2D = Drawing.new("Circle")
-startCircle2D.Radius = Settings.CircleRadius
+startCircle2D.Radius = Settings.CircleDiameter / 2
 startCircle2D.Thickness = 1
 startCircle2D.Transparency = Settings.CircleTransparency
 startCircle2D.Color = Settings.PlayerColor
 startCircle2D.Visible = false
-startCircle2D.Filled = true
+startCircle2D.Filled = Settings.CircleFilled
 
 local endCircle2D = Drawing.new("Circle")
-endCircle2D.Radius = Settings.CircleRadius
+endCircle2D.Radius = Settings.CircleDiameter / 2
 endCircle2D.Thickness = 1
 endCircle2D.Transparency = Settings.CircleTransparency
 endCircle2D.Color = Settings.PlayerColor
 endCircle2D.Visible = false
-endCircle2D.Filled = true
+endCircle2D.Filled = Settings.CircleFilled
 
 -- 3D трейсер (Beam)
 local beam = Instance.new("Beam")
@@ -61,7 +63,7 @@ beam.Attachment1 = endAttachment
 
 -- 3D круги (Part с Spherical формами)
 local startSphere = Instance.new("Part")
-startSphere.Size = Vector3.new(0.2, 0.2, 0.2)
+startSphere.Size = Vector3.new(Settings.CircleDiameter / 10, Settings.CircleDiameter / 10, Settings.CircleDiameter / 10)
 startSphere.Shape = Enum.PartType.Ball
 startSphere.Anchored = true
 startSphere.CanCollide = false
@@ -70,18 +72,13 @@ startSphere.Color = Settings.PlayerColor
 startSphere.Parent = workspace.Terrain
 
 local endSphere = Instance.new("Part")
-endSphere.Size = Vector3.new(0.2, 0.2, 0.2)
+endSphere.Size = Vector3.new(Settings.CircleDiameter / 10, Settings.CircleDiameter / 10, Settings.CircleDiameter / 10)
 endSphere.Shape = Enum.PartType.Ball
 endSphere.Anchored = true
 endSphere.CanCollide = false
 endSphere.Transparency = Settings.CircleTransparency
 endSphere.Color = Settings.PlayerColor
 endSphere.Parent = workspace.Terrain
-
--- Функция для вывода отладочных сообщений
-local function DebugPrint(message)
-    print("[TargetESP Debug] " .. os.date("%H:%M:%S", os.time()) .. ": " .. message)
-end
 
 -- Получение позиции локального игрока
 local function GetLocalPlayerPosition()
@@ -106,9 +103,8 @@ local function GetTargetPosition(targetName)
     local player = Players:FindFirstChild(targetName)
     if player and player.Character then
         local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        return humanoidRoot and (humanoidRoot.Position + Vector3.new(0, Settings.YOffset, 0)) or nil
+        return humanoidRoot and (humanoidRoot.Position + Vector3.new(0, Settings.EndYOffset, 0)) or nil
     end
-    DebugPrint("No valid player position for " .. tostring(targetName))
     return nil
 end
 
@@ -134,7 +130,6 @@ local function UpdateTracer()
         beam.Enabled = false
         startSphere.Transparency = 1
         endSphere.Transparency = 1
-        DebugPrint("No valid target position for " .. tostring(targetName))
         return
     end
 
@@ -157,7 +152,6 @@ local function UpdateTracer()
                     beam.Enabled = false
                     startSphere.Transparency = 1
                     endSphere.Transparency = 1
-                    DebugPrint("No valid player screen position")
                     return
                 end
             end
@@ -171,10 +165,16 @@ local function UpdateTracer()
             -- Круги для 2D
             endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
             endCircle2D.Color = Settings.PlayerColor
+            endCircle2D.Radius = Settings.CircleDiameter / 2
+            endCircle2D.Transparency = Settings.CircleTransparency
+            endCircle2D.Filled = Settings.CircleFilled
             endCircle2D.Visible = true
             if Settings.Tracer2DOrigin == "From Player" then
                 startCircle2D.Position = fromPos
                 startCircle2D.Color = Settings.PlayerColor
+                startCircle2D.Radius = Settings.CircleDiameter / 2
+                startCircle2D.Transparency = Settings.CircleTransparency
+                startCircle2D.Filled = Settings.CircleFilled
                 startCircle2D.Visible = true
             else
                 startCircle2D.Visible = false
@@ -198,9 +198,11 @@ local function UpdateTracer()
 
         -- Сферы для 3D
         startSphere.Position = localPosition
+        startSphere.Size = Vector3.new(Settings.CircleDiameter / 10, Settings.CircleDiameter / 10, Settings.CircleDiameter / 10)
         startSphere.Color = Settings.PlayerColor
         startSphere.Transparency = Settings.CircleTransparency
         endSphere.Position = targetPosition
+        endSphere.Size = Vector3.new(Settings.CircleDiameter / 10, Settings.CircleDiameter / 10, Settings.CircleDiameter / 10)
         endSphere.Color = Settings.PlayerColor
         endSphere.Transparency = Settings.CircleTransparency
 
@@ -211,21 +213,16 @@ local function UpdateTracer()
 end
 
 -- Инициализация модуля
-function Init(ui, core, notification)
+function Init(ui, core, notifyFunc)
     UI = ui
     Core = core
-    notify = notification
+    notify = notifyFunc
 
-    DebugPrint("TargetESP module initializing with Core: " .. tostring(Core))
     if not UI or not Core or not notify then
-        DebugPrint("Warning: UI, Core, or notification is nil during initialization")
         return
     end
 
-    -- Создание секции в UI.Tabs.Visuals
-    UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
-    UI.Tabs = UI.Tabs or {}
-    UI.Tabs.Visuals = UI.Tabs.Visuals or UI.TabGroups.Main:Tab({ Name = "Visuals", Image = "rbxassetid://12809023371" })
+    -- Создание секции в UI.Tabs.Visuals (вкладка уже существует)
     UI.Sections = UI.Sections or {}
     UI.Sections.TargetTracer = UI.Tabs.Visuals:Section({ Name = "Target Tracer", Side = "Right" })
 
@@ -253,6 +250,11 @@ function Init(ui, core, notification)
         Default = Settings.PlayerColor,
         Callback = function(value)
             Settings.PlayerColor = value
+            startCircle2D.Color = value
+            endCircle2D.Color = value
+            startSphere.Color = value
+            endSphere.Color = value
+            beam.Color = ColorSequence.new(value)
             notify("Target Tracer", "Player Color updated", false)
         end
     }, "TargetTracerPlayerColor")
@@ -324,17 +326,53 @@ function Init(ui, core, notification)
         Maximum = 3,
         Default = Settings.YOffset,
         Precision = 2,
-        Suffix = "studs",
+        Suffix = "",
         Callback = function(value)
             Settings.YOffset = value
-            notify("Target Tracer", "Y Offset set to: " .. value .. " studs", false)
+            notify("Target Tracer", "Y Offset set to: " .. value, false)
         end
     }, "TargetTracerYOffset")
 
-    -- Обновление трейсера каждый кадр
-    RunService.RenderStepped:Connect(UpdateTracer)
+    UI.Sections.TargetTracer:Slider({
+        Name = "End Y Offset",
+        Minimum = -3,
+        Maximum = 3,
+        Default = Settings.EndYOffset,
+        Precision = 2,
+        Suffix = "",
+        Callback = function(value)
+            Settings.EndYOffset = value
+            notify("Target Tracer", "End Y Offset set to: " .. value, false)
+        end
+    }, "TargetTracerEndYOffset")
 
-    DebugPrint("TargetESP module initialized successfully")
+    UI.Sections.TargetTracer:Slider({
+        Name = "Circle Diameter",
+        Minimum = 2,
+        Maximum = 20,
+        Default = Settings.CircleDiameter,
+        Precision = 0,
+        Suffix = "px",
+        Callback = function(value)
+            Settings.CircleDiameter = value
+            startCircle2D.Radius = value / 2
+            endCircle2D.Radius = value / 2
+            startSphere.Size = Vector3.new(value / 10, value / 10, value / 10)
+            endSphere.Size = Vector3.new(value / 10, value / 10, value / 10)
+            notify("Target Tracer", "Circle Diameter set to: " .. value .. "px", false)
+        end
+    }, "TargetTracerCircleDiameter")
+
+    UI.Sections.TargetTracer:Toggle({
+        Name = "Circle Filled",
+        Default = Settings.CircleFilled,
+        Callback = function(value)
+            Settings.CircleFilled = value
+            startCircle2D.Filled = value
+            endCircle2D.Filled = value
+            notify("Target Tracer", "Circle Filled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "TargetTracerCircleFilled")
 end
 
 -- Очистка при телепортации
