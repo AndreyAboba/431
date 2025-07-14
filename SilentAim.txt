@@ -444,7 +444,7 @@ local function SilentShot(target, targetPart)
     if success then
         DelayedPrint("SilentShot: Successfully fired at " .. (target.Name or "Unknown") .. " (" .. targetPart.Name .. ")")
         lastFireTime = currentTime
-        Core.GunSilentTarget.CurrentTarget = target.Name or "NPC"
+        Core.GunSilentTarget.CurrentTarget = target:IsA("Player") and target.Name or target.Name -- Установка имени цели (игрок или NPC)
     else
         DelayedPrint("SilentShot: Failed to fire - Error: " .. tostring(err))
     end
@@ -740,21 +740,27 @@ RunService.RenderStepped:Connect(function()
         if npcTarget and npcTargetPart then
             target, targetPart = npcTarget, npcTargetPart
             DelayedPrint("Selected NPC target (SelfMode): " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+            Core.GunSilentTarget.CurrentTarget = npcTarget.Name -- Установка имени NPC как текущей цели
         else
             target, targetPart = nil, nil
             DelayedPrint("No valid NPC target selected in SelfMode")
+            Core.GunSilentTarget.CurrentTarget = nil
         end
     elseif Settings.Enabled then
         if npcTarget and npcTargetPart and npcDistance <= targetDistance then
             target, targetPart = npcTarget, npcTargetPart
             DelayedPrint("Selected NPC target: " .. npcTarget.Name .. " (Distance: " .. math.floor(npcDistance) .. " studs)")
+            Core.GunSilentTarget.CurrentTarget = npcTarget.Name -- Установка имени NPC как текущей цели
         elseif target and targetPart then
             DelayedPrint("Selected player target: " .. target.Name .. " (Distance: " .. math.floor(targetDistance) .. " studs)")
+            Core.GunSilentTarget.CurrentTarget = target.Name -- Установка имени игрока как текущей цели
         else
             DelayedPrint("No valid target selected")
+            Core.GunSilentTarget.CurrentTarget = nil
         end
     else
         DelayedPrint("No target selected: Silent Aim and NPC Support disabled or no valid targets")
+        Core.GunSilentTarget.CurrentTarget = nil
     end
 
     currentTarget = target
