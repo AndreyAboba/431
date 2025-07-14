@@ -1,0 +1,194 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Core = nil
+local UI = nil
+local notify = nil
+
+-- Конфигурация TargetESP
+local Settings = {
+    Enabled = false,
+    TracerMode = "2D", -- "2D" или "3D"
+    PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера для игроков
+    NPCColor = Color3.fromRGB(0, 255, 255), -- Цвет трейсера для NPC
+    TracerThickness = 2,
+    TracerTransparency = 0.7
+}
+
+-- 2D трейсер (Drawing)
+local tracer2D = Drawing.new("Line")
+tracer2D.Thickness = Settings.TracerThickness
+tracer2D.Transparency = Settings.TracerTransparency
+tracer2D.Visible = false
+
+-- 3D трейсер (LineHandleAdornment)
+local tracer3D = Instance.new("LineHandleAdornment")
+tracer3D.Adornee = workspace
+tracer3D.Color3 = Settings.PlayerColor
+tracer3D.Transparency = Settings.TracerTransparency
+tracer3D.Thickness = 2
+tracer3D.Visible = false
+tracer3D.ZIndex = 10
+tracer3D.Parent = workspace
+
+-- Функция для вывода отладочных сообщений
+local function DebugPrint(message)
+    print("[TargetESP Debug] " .. os.date("%H:%M:%S", os.time()) .. ": " .. message)
+end
+
+-- Получение позиции локального игрока
+local function GetLocalPlayerPosition()
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    return rootPart and rootPart.Position or Camera.CFrame.Position
+end
+
+-- Получение позиции цели
+local function GetTargetPosition(targetName, isNPC)
+    if isNPC then
+        local entities = workspace:FindFirstChild("Entities")
+        if entities then
+            local npc = entities:FindFirstChild(targetName)
+            if npc then
+                local humanoidRoot = npc:FindFirstChild("HumanoidRootPart")
+                return humanoidRoot and humanoidRoot.Position or nil
+            end
+        end
+    else
+        local player = Players:FindFirstChild(targetName)
+        if player and player.Character then
+            local humanoidRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            return humanoidRoot and humanoidRoot.Position or nil
+        end
+    end
+    return nil
+end
+
+-- Проверка, является ли цель NPC
+local function IsNPCTarget(targetName)
+    local player = Players:FindFirstChild(targetName)
+    return not player -- Если игрок не найден, считаем это NPC
+end
+
+-- Обновление трейсера
+local function UpdateTracer()
+    if not Settings.Enabled or not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
+        tracer2D.Visible = false
+        tracer3D.Visible = false
+        return
+    end
+
+    local targetName = Core.GunSilentTarget.CurrentTarget
+    local isNPC = IsNPCTarget(targetName)
+    local targetPosition = GetTargetPosition(targetName, isNPC)
+
+    if not targetPosition then
+        tracer2D.Visible = false
+        tracer3D.Visible = false
+        DebugPrint("No valid target position for " .. tostring(targetName))
+        return
+    end
+
+    local localPosition = GetLocalPlayerPosition()
+
+    if Settings.TracerMode == "2D" then
+        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
+        if onScreen then
+            tracer2D.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            tracer2D.To = Vector2.new(screenPos.X, screenPos.Y)
+            tracer2D.Color = isNPC and Settings.NPCColor or Settings.PlayerColor
+            tracer2D.Visible = true
+        else
+            tracer2D.Visible = false
+        end
+        tracer3D.Visible = false
+    else -- 3D
+        tracer3D.CFrame = CFrame.new(localPosition, targetPosition) * CFrame.new(0, 0, -(localPosition - targetPosition).Magnitude / 2)
+        tracer3D.Length = (localPosition - targetPosition).Magnitude
+        tracer3D.Color3 = isNPC and Settings.NPCColor or Settings.PlayerColor
+        tracer3D.Visible = true
+        tracer2D.Visible = false
+    end
+end
+
+-- Инициализация модуля
+function Init(ui, core, notification)
+    UI = ui
+    Core = core
+    notify = notification
+
+    DebugPrint("TargetESP module initializing with Core: " .. tostring(Core))
+    if not UI or not Core or not notify then
+        DebugPrint("Warning: UI, Core, or notification is nil during initialization")
+        return
+    end
+
+    -- Создание секции в UI.Tabs.Visuals
+    UI.TabGroups = UI.TabGroups or { Main = UI.Window:TabGroup() }
+    UI.Tabs = UI.Tabs or {}
+    UI.Tabs.Visuals = UI.Tabs.Visuals or UI.TabGroups.Main:Tab({ Name = "Visuals", Image = "rbxassetid://12809023371" })
+    UI.Sections = UI.Sections or {}
+    UI.Sections.TargetTracer = UI.Tabs.Visuals:Section({ Name = "Target Tracer", Side = "Right" })
+
+    -- UI элементы
+    UI.Sections.TargetTracer:Header({ Name = "Target Tracer" })
+
+    UI.Sections.TargetTracer:Toggle({
+        Name = "Enabled",
+        Default = Settings.Enabled,
+        Callback = function(value)
+            Settings.Enabled = value
+            tracer2D.Visible = value and Settings.TracerMode == "2D" and Core.GunSilentTarget.CurrentTarget ~= nil
+            tracer3D.Visible = value and Settings.TracerMode == "3D" and Core.GunSilentTarget.CurrentTarget ~= nil
+            notify("Target Tracer", "Toggled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "TargetTracerEnabled")
+
+    UI.Sections.TargetTracer:Colorpicker({
+        Name = "Player Color",
+        Default = Settings.PlayerColor,
+        Callback = function(value)
+            Settings.PlayerColor = value
+            notify("Target Tracer", "Player Color updated", false)
+        end
+    }, "TargetTracerPlayerColor")
+
+    UI.Sections.TargetTracer:Colorpicker({
+        Name = "NPC Color",
+        Default = Settings.NPCColor,
+        Callback = function(value)
+            Settings.NPCColor = value
+            notify("Target Tracer", "NPC Color updated", false)
+        end
+    }, "TargetTracerNPCColor")
+
+    UI.Sections.TargetTracer:Dropdown({
+        Name = "Tracer Mode",
+        Options = {"2D", "3D"},
+        Default = Settings.TracerMode,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.TracerMode = value
+            tracer2D.Visible = Settings.Enabled and value == "2D" and Core.GunSilentTarget.CurrentTarget ~= nil
+            tracer3D.Visible = Settings.Enabled and value == "3D" and Core.GunSilentTarget.CurrentTarget ~= nil
+            notify("Target Tracer", "Tracer Mode set to: " .. value, false)
+        end
+    }, "TargetTracerMode")
+
+    -- Обновление трейсера каждый кадр
+    RunService.RenderStepped:Connect(UpdateTracer)
+
+    DebugPrint("TargetESP module initialized successfully")
+end
+
+-- Очистка при телепортации
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
+    tracer2D:Remove()
+    tracer3D:Remove()
+end)
+
+return {
+    Init = Init
+}
