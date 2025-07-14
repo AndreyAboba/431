@@ -9,8 +9,7 @@ local notify = nil
 
 -- Конфигурация TargetESP
 local Settings = {
-    Enabled = false,
-    TracerMode = "2D", -- "2D" или "3D"
+    Enabled = false, -- Для трейсера
     Tracer2DOrigin = "From Bottom", -- "From Top", "From Bottom", "From Player"
     PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера и кругов
     TracerThickness = 2,
@@ -48,39 +47,6 @@ endCircle2D.Color = Settings.PlayerColor
 endCircle2D.Visible = false
 endCircle2D.Filled = Settings.CircleFilled
 
--- 3D трейсер (Beam)
-local beam = Instance.new("Beam")
-beam.Color = ColorSequence.new(Settings.PlayerColor)
-beam.Transparency = NumberSequence.new(Settings.TracerTransparency)
-beam.Width0 = math.max(Settings.TracerThickness / 10, 0.5)
-beam.Width1 = math.max(Settings.TracerThickness / 10, 0.5)
-beam.Enabled = false
-beam.Parent = workspace.Terrain
-
-local startAttachment = Instance.new("Attachment")
-startAttachment.Parent = workspace.Terrain
-local endAttachment = Instance.new("Attachment")
-endAttachment.Parent = workspace.Terrain
-beam.Attachment0 = startAttachment
-beam.Attachment1 = endAttachment
-
--- 3D круги (Drawing)
-local startCircle3D = Drawing.new("Circle")
-startCircle3D.Radius = Settings.CircleDiameter / 2
-startCircle3D.Thickness = Settings.CircleThickness
-startCircle3D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
-startCircle3D.Color = Settings.PlayerColor
-startCircle3D.Visible = false
-startCircle3D.Filled = Settings.CircleFilled
-
-local endCircle3D = Drawing.new("Circle")
-endCircle3D.Radius = Settings.CircleDiameter / 2
-endCircle3D.Thickness = Settings.CircleThickness
-endCircle3D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
-endCircle3D.Color = Settings.PlayerColor
-endCircle3D.Visible = false
-endCircle3D.Filled = Settings.CircleFilled
-
 -- Получение позиции локального игрока
 local function GetLocalPlayerPosition()
     local character = LocalPlayer.Character
@@ -112,19 +78,16 @@ end
 -- Вычисление радиуса круга с учетом расстояния
 local function GetScaledRadius(position)
     local distance = (Camera.CFrame.Position - position).Magnitude
-    local scaleFactor = 0.05 -- Увеличен для уменьшения размера кругов
+    local scaleFactor = 0.05
     return math.clamp(Settings.CircleDiameter / 2 / (distance * scaleFactor), 1, Settings.CircleDiameter)
 end
 
--- Обновление трейсера
+-- Обновление трейсера и кругов
 local function UpdateTracer()
-    if not Settings.Enabled or not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
+    if not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
         tracer2D.Visible = false
         startCircle2D.Visible = false
         endCircle2D.Visible = false
-        beam.Enabled = false
-        startCircle3D.Visible = false
-        endCircle3D.Visible = false
         return
     end
 
@@ -135,107 +98,72 @@ local function UpdateTracer()
         tracer2D.Visible = false
         startCircle2D.Visible = false
         endCircle2D.Visible = false
-        beam.Enabled = false
-        startCircle3D.Visible = false
-        endCircle3D.Visible = false
         return
     end
 
     local localPosition = GetLocalPlayerPosition()
+    local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
 
-    if Settings.TracerMode == "2D" then
-        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
-        if onScreen then
-            local fromPos
-            if Settings.Tracer2DOrigin == "From Top" then
-                fromPos = Vector2.new(Camera.ViewportSize.X / 2, 0)
-            elseif Settings.Tracer2DOrigin == "From Bottom" then
-                fromPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            elseif Settings.Tracer2DOrigin == "From Player" then
-                fromPos = GetLocalPlayerScreenPosition()
-                if not fromPos then
-                    tracer2D.Visible = false
-                    startCircle2D.Visible = false
-                    endCircle2D.Visible = false
-                    return
-                end
+    -- Обновление трейсера
+    if Settings.Enabled and onScreen then
+        local fromPos
+        if Settings.Tracer2DOrigin == "From Top" then
+            fromPos = Vector2.new(Camera.ViewportSize.X / 2, 0)
+        elseif Settings.Tracer2DOrigin == "From Bottom" then
+            fromPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+        elseif Settings.Tracer2DOrigin == "From Player" then
+            fromPos = GetLocalPlayerScreenPosition()
+            if not fromPos then
+                tracer2D.Visible = false
+            else
+                tracer2D.From = fromPos
+                tracer2D.To = Vector2.new(screenPos.X, screenPos.Y)
+                tracer2D.Color = Settings.PlayerColor
+                tracer2D.Thickness = Settings.TracerThickness
+                tracer2D.Transparency = Settings.TracerTransparency
+                tracer2D.Visible = true
             end
+        end
+        if fromPos then
             tracer2D.From = fromPos
             tracer2D.To = Vector2.new(screenPos.X, screenPos.Y)
             tracer2D.Color = Settings.PlayerColor
             tracer2D.Thickness = Settings.TracerThickness
             tracer2D.Transparency = Settings.TracerTransparency
             tracer2D.Visible = true
-
-            -- Круги для 2D
-            if Settings.CirclesEnabled then
-                endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
-                endCircle2D.Color = Settings.PlayerColor
-                endCircle2D.Radius = Settings.CircleDiameter / 2
-                endCircle2D.Thickness = Settings.CircleThickness
-                endCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
-                endCircle2D.Filled = Settings.CircleFilled
-                endCircle2D.Visible = true
-                if Settings.Tracer2DOrigin == "From Player" then
-                    startCircle2D.Position = fromPos
-                    startCircle2D.Color = Settings.PlayerColor
-                    startCircle2D.Radius = Settings.CircleDiameter / 2
-                    startCircle2D.Thickness = Settings.CircleThickness
-                    startCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
-                    startCircle2D.Filled = Settings.CircleFilled
-                    startCircle2D.Visible = true
-                else
-                    startCircle2D.Visible = false
-                end
-            else
-                startCircle2D.Visible = false
-                endCircle2D.Visible = false
-            end
         else
             tracer2D.Visible = false
-            startCircle2D.Visible = false
-            endCircle2D.Visible = false
         end
-        beam.Enabled = false
-        startCircle3D.Visible = false
-        endCircle3D.Visible = false
-    else -- 3D
-        startAttachment.Position = localPosition
-        endAttachment.Position = targetPosition
-        beam.Color = ColorSequence.new(Settings.PlayerColor)
-        beam.Transparency = NumberSequence.new(Settings.TracerTransparency)
-        beam.Width0 = math.max(Settings.TracerThickness / 10, 0.5)
-        beam.Width1 = math.max(Settings.TracerThickness / 10, 0.5)
-        beam.Enabled = true
+    else
+        tracer2D.Visible = false
+    end
 
-        -- Круги для 3D
-        if Settings.CirclesEnabled then
-            local startScreenPos, startOnScreen = Camera:WorldToViewportPoint(localPosition)
-            local endScreenPos, endOnScreen = Camera:WorldToViewportPoint(targetPosition)
-            if startOnScreen and endOnScreen then
-                startCircle3D.Position = Vector2.new(startScreenPos.X, startScreenPos.Y)
-                startCircle3D.Color = Settings.PlayerColor
-                startCircle3D.Radius = GetScaledRadius(localPosition)
-                startCircle3D.Thickness = Settings.CircleThickness
-                startCircle3D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
-                startCircle3D.Filled = Settings.CircleFilled
-                startCircle3D.Visible = true
-                endCircle3D.Position = Vector2.new(endScreenPos.X, endScreenPos.Y)
-                endCircle3D.Color = Settings.PlayerColor
-                endCircle3D.Radius = GetScaledRadius(targetPosition)
-                endCircle3D.Thickness = Settings.CircleThickness
-                endCircle3D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
-                endCircle3D.Filled = Settings.CircleFilled
-                endCircle3D.Visible = true
+    -- Обновление кругов (работают независимо от Settings.Enabled)
+    if Settings.CirclesEnabled and onScreen then
+        endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
+        endCircle2D.Color = Settings.PlayerColor
+        endCircle2D.Radius = GetScaledRadius(targetPosition)
+        endCircle2D.Thickness = Settings.CircleThickness
+        endCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
+        endCircle2D.Filled = Settings.CircleFilled
+        endCircle2D.Visible = true
+        if Settings.Tracer2DOrigin == "From Player" then
+            local fromPos = GetLocalPlayerScreenPosition()
+            if fromPos then
+                startCircle2D.Position = fromPos
+                startCircle2D.Color = Settings.PlayerColor
+                startCircle2D.Radius = GetScaledRadius(localPosition)
+                startCircle2D.Thickness = Settings.CircleThickness
+                startCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
+                startCircle2D.Filled = Settings.CircleFilled
+                startCircle2D.Visible = true
             else
-                startCircle3D.Visible = false
-                endCircle3D.Visible = false
+                startCircle2D.Visible = false
             end
         else
-            startCircle3D.Visible = false
-            endCircle3D.Visible = false
+            startCircle2D.Visible = false
         end
-        tracer2D.Visible = false
+    else
         startCircle2D.Visible = false
         endCircle2D.Visible = false
     end
@@ -264,13 +192,7 @@ function Init(ui, core, notification)
         Default = Settings.Enabled,
         Callback = function(value)
             Settings.Enabled = value
-            local is2D = Settings.TracerMode == "2D"
-            tracer2D.Visible = is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
-            endCircle2D.Visible = is2D and value and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            startCircle2D.Visible = is2D and value and Settings.CirclesEnabled and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
-            beam.Enabled = not is2D and value and Core.GunSilentTarget.CurrentTarget ~= nil
-            startCircle3D.Visible = not is2D and value and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            endCircle3D.Visible = not is2D and value and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
+            tracer2D.Visible = value and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "Toggled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerEnabled")
@@ -283,30 +205,9 @@ function Init(ui, core, notification)
             tracer2D.Color = value
             startCircle2D.Color = value
             endCircle2D.Color = value
-            startCircle3D.Color = value
-            endCircle3D.Color = value
-            beam.Color = ColorSequence.new(value)
             notify("Target Tracer", "Player Color updated", false)
         end
     }, "TargetTracerPlayerColor")
-
-    UI.Sections.TargetTracer:Dropdown({
-        Name = "Tracer Mode",
-        Options = {"2D", "3D"},
-        Default = Settings.TracerMode,
-        MultiSelection = false,
-        Callback = function(value)
-            Settings.TracerMode = value
-            local is2D = value == "2D"
-            tracer2D.Visible = is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            endCircle2D.Visible = is2D and Settings.Enabled and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            startCircle2D.Visible = is2D and Settings.Enabled and Settings.CirclesEnabled and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
-            beam.Enabled = not is2D and Settings.Enabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            startCircle3D.Visible = not is2D and Settings.Enabled and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            endCircle3D.Visible = not is2D and Settings.Enabled and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
-            notify("Target Tracer", "Tracer Mode set to: " .. value, false)
-        end
-    }, "TargetTracerMode")
 
     UI.Sections.TargetTracer:Dropdown({
         Name = "2D Tracer Origin",
@@ -315,7 +216,7 @@ function Init(ui, core, notification)
         MultiSelection = false,
         Callback = function(value)
             Settings.Tracer2DOrigin = value
-            startCircle2D.Visible = Settings.Enabled and Settings.TracerMode == "2D" and Settings.CirclesEnabled and value == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            startCircle2D.Visible = Settings.CirclesEnabled and value == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "2D Tracer Origin set to: " .. value, false)
         end
     }, "TargetTracer2DOrigin")
@@ -330,8 +231,6 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.TracerThickness = value
             tracer2D.Thickness = value
-            beam.Width0 = math.max(value / 10, 0.5)
-            beam.Width1 = math.max(value / 10, 0.5)
             notify("Target Tracer", "Tracer Thickness set to: " .. value .. "px", false)
         end
     }, "TargetTracerThickness")
@@ -346,7 +245,6 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.TracerTransparency = value
             tracer2D.Transparency = value
-            beam.Transparency = NumberSequence.new(value)
             notify("Target Tracer", "Tracer Transparency set to: " .. value, false)
         end
     }, "TargetTracerTransparency")
@@ -385,10 +283,8 @@ function Init(ui, core, notification)
         Default = Settings.CirclesEnabled,
         Callback = function(value)
             Settings.CirclesEnabled = value
-            startCircle2D.Visible = Settings.Enabled and Settings.TracerMode == "2D" and value and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
-            endCircle2D.Visible = Settings.Enabled and Settings.TracerMode == "2D" and value and Core.GunSilentTarget.CurrentTarget ~= nil
-            startCircle3D.Visible = Settings.Enabled and Settings.TracerMode == "3D" and value and Core.GunSilentTarget.CurrentTarget ~= nil
-            endCircle3D.Visible = Settings.Enabled and Settings.TracerMode == "3D" and value and Core.GunSilentTarget.CurrentTarget ~= nil
+            startCircle2D.Visible = value and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            endCircle2D.Visible = value and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "Circles Enabled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerCirclesEnabled")
@@ -404,8 +300,6 @@ function Init(ui, core, notification)
             Settings.CircleDiameter = value
             startCircle2D.Radius = value / 2
             endCircle2D.Radius = value / 2
-            startCircle3D.Radius = value / 2
-            endCircle3D.Radius = value / 2
             notify("Target Tracer", "Circle Diameter set to: " .. value .. "px", false)
         end
     }, "TargetTracerCircleDiameter")
@@ -421,8 +315,6 @@ function Init(ui, core, notification)
             Settings.CircleThickness = value
             startCircle2D.Thickness = value
             endCircle2D.Thickness = value
-            startCircle3D.Thickness = value
-            endCircle3D.Thickness = value
             notify("Target Tracer", "Circle Thickness set to: " .. value .. "px", false)
         end
     }, "TargetTracerCircleThickness")
@@ -438,8 +330,6 @@ function Init(ui, core, notification)
             Settings.FilledTransparency = value
             startCircle2D.Transparency = Settings.CircleFilled and value or Settings.CircleTransparency
             endCircle2D.Transparency = Settings.CircleFilled and value or Settings.CircleTransparency
-            startCircle3D.Transparency = Settings.CircleFilled and value or Settings.CircleTransparency
-            endCircle3D.Transparency = Settings.CircleFilled and value or Settings.CircleTransparency
             notify("Target Tracer", "Filled Transparency set to: " .. value, false)
         end
     }, "TargetTracerFilledTransparency")
@@ -451,12 +341,8 @@ function Init(ui, core, notification)
             Settings.CircleFilled = value
             startCircle2D.Filled = value
             endCircle2D.Filled = value
-            startCircle3D.Filled = value
-            endCircle3D.Filled = value
             startCircle2D.Transparency = value and Settings.FilledTransparency or Settings.CircleTransparency
             endCircle2D.Transparency = value and Settings.FilledTransparency or Settings.CircleTransparency
-            startCircle3D.Transparency = value and Settings.FilledTransparency or Settings.CircleTransparency
-            endCircle3D.Transparency = value and Settings.FilledTransparency or Settings.CircleTransparency
             notify("Target Tracer", "Circle Filled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerCircleFilled")
@@ -470,11 +356,6 @@ game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     tracer2D:Remove()
     startCircle2D:Remove()
     endCircle2D:Remove()
-    beam:Destroy()
-    startAttachment:Destroy()
-    endAttachment:Destroy()
-    startCircle3D:Remove()
-    endCircle3D:Remove()
 end)
 
 return {
