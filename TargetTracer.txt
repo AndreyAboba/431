@@ -1,7 +1,10 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local CoreGui = game:GetService("CoreGui")
 
 local Core = nil
 local UI = nil
@@ -24,6 +27,345 @@ local Settings = {
     MidCircle = false, -- Включение дополнительных кругов диаметром 6
     MidCircleColor = Color3.fromRGB(255, 255, 255) -- Цвет Mid Circle
 }
+
+-- Конфигурация TargetHud
+local HudSettings = {
+    Enabled = true, -- Включение/выключение HUD
+    HudSize = Vector2.new(220, 90), -- Базовый размер HUD
+    Scale = 1, -- Масштаб HUD
+    HudPosition = UDim2.new(0, 500, 0, 50),
+    HudBackgroundColor = Color3.fromRGB(20, 30, 50),
+    HudBackgroundTransparency = 0.3,
+    HudGradientStart = Color3.fromRGB(20, 30, 50),
+    HudGradientEnd = Color3.fromRGB(40, 60, 100),
+    AvatarSize = Vector2.new(40, 40),
+    AvatarPosition = UDim2.new(0, 10, 0, 10),
+    AvatarPulseSize = Vector2.new(44, 44),
+    AvatarDamageColor = Color3.fromRGB(200, 0, 0),
+    AvatarPulseDuration = 0.4,
+    AvatarResetDuration = 0.6,
+    DamageAnimationCooldown = 0.5,
+    OrbsEnabled = true,
+    OrbCount = 6,
+    OrbSize = Vector2.new(8, 8),
+    OrbGradientStart = Color3.fromRGB(0, 0, 255),
+    OrbGradientEnd = Color3.fromRGB(147, 112, 219),
+    OrbLifetime = 1.5,
+    OrbFadeDuration = 0.9,
+    OrbMoveDistance = 50,
+    NameSize = Vector2.new(150, 40),
+    NamePosition = UDim2.new(0, 60, 0, 10),
+    NameTextColor = Color3.fromRGB(255, 255, 255),
+    NameFont = Enum.Font.GothamBold,
+    NameTextSize = 16,
+    HealthTextSize = Vector2.new(150, 20),
+    HealthTextPosition = UDim2.new(0, 60, 0, 50),
+    HealthTextColor = Color3.fromRGB(255, 255, 255),
+    HealthFont = Enum.Font.Gotham,
+    HealthTextSizeValue = 16,
+    HealthBarSize = Vector2.new(200, 10),
+    HealthBarPosition = UDim2.new(0, 10, 0, 75),
+    HealthBarBackgroundColor = Color3.fromRGB(50, 50, 50),
+    HealthBarBackgroundTransparency = 0.5
+}
+
+-- Переменные для TargetHud
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TargetHUDGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = CoreGui
+
+local hudFrame = Instance.new("Frame")
+hudFrame.Size = UDim2.new(0, HudSettings.HudSize.X * HudSettings.Scale, 0, HudSettings.HudSize.Y * HudSettings.Scale)
+hudFrame.Position = HudSettings.HudPosition
+hudFrame.BackgroundColor3 = HudSettings.HudBackgroundColor
+hudFrame.BackgroundTransparency = HudSettings.HudBackgroundTransparency
+hudFrame.BorderSizePixel = 0
+hudFrame.Visible = false
+hudFrame.Parent = screenGui
+
+local hudCorner = Instance.new("UICorner")
+hudCorner.CornerRadius = UDim.new(0, 10)
+hudCorner.Parent = hudFrame
+
+local hudGradient = Instance.new("UIGradient")
+hudGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, HudSettings.HudGradientStart),
+    ColorSequenceKeypoint.new(1, HudSettings.HudGradientEnd)
+})
+hudGradient.Rotation = 45
+hudGradient.Parent = hudFrame
+
+local hudStroke = Instance.new("UIStroke")
+hudStroke.Color = Color3.fromRGB(0, 0, 0)
+hudStroke.Thickness = 2
+hudStroke.Transparency = 0.5
+hudStroke.Parent = hudFrame
+
+local playerIcon = Instance.new("ImageLabel")
+playerIcon.Size = UDim2.new(0, HudSettings.AvatarSize.X * HudSettings.Scale, 0, HudSettings.AvatarSize.Y * HudSettings.Scale)
+playerIcon.Position = UDim2.new(0, HudSettings.AvatarPosition.X.Offset * HudSettings.Scale, 0, HudSettings.AvatarPosition.Y.Offset * HudSettings.Scale)
+playerIcon.BackgroundTransparency = 1
+playerIcon.Image = ""
+playerIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+playerIcon.Visible = false
+playerIcon.Parent = hudFrame
+
+local iconCorner = Instance.new("UICorner")
+iconCorner.CornerRadius = UDim.new(0, 5)
+iconCorner.Parent = playerIcon
+
+local orbFrame = Instance.new("Frame")
+orbFrame.Size = UDim2.new(0, HudSettings.AvatarSize.X * HudSettings.Scale, 0, HudSettings.AvatarSize.Y * HudSettings.Scale)
+orbFrame.Position = UDim2.new(0, HudSettings.AvatarPosition.X.Offset * HudSettings.Scale, 0, HudSettings.AvatarPosition.Y.Offset * HudSettings.Scale)
+orbFrame.BackgroundTransparency = 1
+orbFrame.Visible = true
+orbFrame.Parent = hudFrame
+
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Size = UDim2.new(0, HudSettings.NameSize.X * HudSettings.Scale, 0, HudSettings.NameSize.Y * HudSettings.Scale)
+nameLabel.Position = UDim2.new(0, HudSettings.NamePosition.X.Offset * HudSettings.Scale, 0, HudSettings.NamePosition.Y.Offset * HudSettings.Scale)
+nameLabel.BackgroundTransparency = 1
+nameLabel.Text = "None"
+nameLabel.TextColor3 = HudSettings.NameTextColor
+nameLabel.TextSize = HudSettings.NameTextSize * HudSettings.Scale
+nameLabel.Font = HudSettings.NameFont
+nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+nameLabel.TextScaled = true
+nameLabel.TextWrapped = true
+nameLabel.Visible = false
+nameLabel.Parent = hudFrame
+
+local nameStroke = Instance.new("UIStroke")
+nameStroke.Color = Color3.fromRGB(0, 0, 0)
+nameStroke.Thickness = 1
+nameStroke.Parent = nameLabel
+
+local healthLabel = Instance.new("TextLabel")
+healthLabel.Size = UDim2.new(0, HudSettings.HealthTextSize.X * HudSettings.Scale, 0, HudSettings.HealthTextSize.Y * HudSettings.Scale)
+healthLabel.Position = UDim2.new(0, HudSettings.HealthTextPosition.X.Offset * HudSettings.Scale, 0, HudSettings.HealthTextPosition.Y.Offset * HudSettings.Scale)
+healthLabel.BackgroundTransparency = 1
+healthLabel.Text = "HP: 0.0"
+healthLabel.TextColor3 = HudSettings.HealthTextColor
+healthLabel.TextSize = HudSettings.HealthTextSizeValue * HudSettings.Scale
+healthLabel.Font = HudSettings.HealthFont
+healthLabel.TextXAlignment = Enum.TextXAlignment.Left
+healthLabel.Visible = false
+healthLabel.Parent = hudFrame
+
+local healthStroke = Instance.new("UIStroke")
+healthStroke.Color = Color3.fromRGB(0, 0, 0)
+healthStroke.Thickness = 1
+healthStroke.Parent = healthLabel
+
+local healthBarBackground = Instance.new("Frame")
+healthBarBackground.Size = UDim2.new(0, HudSettings.HealthBarSize.X * HudSettings.Scale, 0, HudSettings.HealthBarSize.Y * HudSettings.Scale)
+healthBarBackground.Position = UDim2.new(0, HudSettings.HealthBarPosition.X.Offset * HudSettings.Scale, 0, HudSettings.HealthBarPosition.Y.Offset * HudSettings.Scale)
+healthBarBackground.BackgroundColor3 = HudSettings.HealthBarBackgroundColor
+healthBarBackground.BackgroundTransparency = HudSettings.HealthBarBackgroundTransparency
+healthBarBackground.BorderSizePixel = 0
+healthBarBackground.Visible = false
+healthBarBackground.Parent = hudFrame
+
+local healthBarBgCorner = Instance.new("UICorner")
+healthBarBgCorner.CornerRadius = UDim.new(0, 5)
+healthBarBgCorner.Parent = healthBarBackground
+
+local healthBarFill = Instance.new("Frame")
+healthBarFill.Size = UDim2.new(0, 0, 0, HudSettings.HealthBarSize.Y * HudSettings.Scale)
+healthBarFill.Position = UDim2.new(0, 0, 0, 0)
+healthBarFill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+healthBarFill.BorderSizePixel = 0
+healthBarFill.Visible = false
+healthBarFill.Parent = healthBarBackground
+
+local healthBarFillCorner = Instance.new("UICorner")
+healthBarFillCorner.CornerRadius = UDim.new(0, 5)
+healthBarFillCorner.Parent = healthBarFill
+
+-- Переменные для анимации
+local currentTarget = nil
+local currentThumbnail = nil
+local previousHealth = nil
+local lastDamageAnimationTime = 0
+
+-- Перетаскивание HUD
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = UserInputService:GetMouseLocation()
+        local hudPos = hudFrame.Position
+        local hudSize = hudFrame.Size
+        local posX, posY = hudPos.X.Offset, hudPos.Y.Offset
+        local sizeX, sizeY = hudSize.X.Offset, hudSize.Y.Offset
+        if mousePos.X >= posX and mousePos.X <= posX + sizeX and
+           mousePos.Y >= posY and mousePos.Y <= posY + sizeY then
+            dragging = true
+            dragStart = mousePos
+            startPos = hudPos
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+        local mousePos = UserInputService:GetMouseLocation()
+        local delta = mousePos - dragStart
+        hudFrame.Position = UDim2.new(0, startPos.X.Offset + delta.X, 0, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+-- Функция для обновления аватара
+local function UpdatePlayerIcon(target)
+    if not target then
+        playerIcon.Image = ""
+        playerIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+        playerIcon.Size = UDim2.new(0, HudSettings.AvatarSize.X * HudSettings.Scale, 0, HudSettings.AvatarSize.Y * HudSettings.Scale)
+        currentThumbnail = nil
+        return
+    end
+
+    local userId = target.UserId
+    if currentThumbnail and currentThumbnail.UserId == userId then
+        return
+    end
+
+    local success, thumbnailUrl = pcall(function()
+        return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+    end)
+
+    if success and thumbnailUrl then
+        playerIcon.Image = thumbnailUrl
+        currentThumbnail = { UserId = userId, Url = thumbnailUrl }
+    else
+        playerIcon.Image = ""
+        currentThumbnail = nil
+    end
+end
+
+-- Функция для плавного изменения цвета полоски здоровья
+local function UpdateHealthBarColor(health, maxHealth)
+    local healthPercent = health / maxHealth
+    local green = Color3.fromRGB(0, 255, 0)
+    local yellow = Color3.fromRGB(255, 255, 0)
+    local red = Color3.fromRGB(255, 0, 0)
+
+    local color
+    if healthPercent > 0.5 then
+        local t = (healthPercent - 0.5) / 0.5
+        color = green:Lerp(yellow, 1 - t)
+    else
+        local t = healthPercent / 0.5
+        color = yellow:Lerp(red, 1 - t)
+    end
+
+    healthBarFill.BackgroundColor3 = color
+end
+
+-- Функция для создания орбиза
+local function CreateOrb()
+    local orb = Instance.new("ImageLabel")
+    orb.Size = UDim2.new(0, HudSettings.OrbSize.X * HudSettings.Scale, 0, HudSettings.OrbSize.Y * HudSettings.Scale)
+    orb.BackgroundTransparency = 0
+    orb.Image = "rbxassetid://0"
+    orb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    orb.Position = UDim2.new(0.5, -HudSettings.OrbSize.X * HudSettings.Scale / 2, 0.5, -HudSettings.OrbSize.Y * HudSettings.Scale / 2)
+    orb.Parent = orbFrame
+
+    local orbCorner = Instance.new("UICorner")
+    orbCorner.CornerRadius = UDim.new(0.5, 0)
+    orbCorner.Parent = orb
+
+    local orbGradient = Instance.new("UIGradient")
+    orbGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, HudSettings.OrbGradientStart),
+        ColorSequenceKeypoint.new(1, HudSettings.OrbGradientEnd)
+    })
+    orbGradient.Rotation = 45
+    orbGradient.Parent = orb
+
+    return orb
+end
+
+-- Функция анимации орбиза
+local function AnimateOrb(orb)
+    local angle = math.random() * 2 * math.pi
+    local moveX = math.cos(angle) * HudSettings.OrbMoveDistance * HudSettings.Scale
+    local moveY = math.sin(angle) * HudSettings.OrbMoveDistance * HudSettings.Scale
+
+    local targetPosition = UDim2.new(
+        0.5, -HudSettings.OrbSize.X * HudSettings.Scale / 2 + moveX,
+        0.5, -HudSettings.OrbSize.Y * HudSettings.Scale / 2 + moveY
+    )
+
+    local sizeTween = TweenService:Create(
+        orb,
+        TweenInfo.new(HudSettings.OrbLifetime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Size = UDim2.new(0, 0, 0, 0) }
+    )
+
+    local positionTween = TweenService:Create(
+        orb,
+        TweenInfo.new(HudSettings.OrbLifetime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Position = targetPosition }
+    )
+
+    local transparencyTween = TweenService:Create(
+        orb,
+        TweenInfo.new(HudSettings.OrbFadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { BackgroundTransparency = 1 }
+    )
+
+    sizeTween:Play()
+    positionTween:Play()
+    transparencyTween:Play()
+
+    transparencyTween.Completed:Connect(function()
+        orb:Destroy()
+    end)
+end
+
+-- Функция анимации урона
+local function PlayDamageAnimation()
+    if not currentTarget then return end
+
+    local redColor = HudSettings.AvatarDamageColor
+    local originalColor = Color3.fromRGB(255, 255, 255)
+    local originalSize = UDim2.new(0, HudSettings.AvatarSize.X * HudSettings.Scale, 0, HudSettings.AvatarSize.Y * HudSettings.Scale)
+    local pulseSize = UDim2.new(0, HudSettings.AvatarPulseSize.X * HudSettings.Scale, 0, HudSettings.AvatarPulseSize.Y * HudSettings.Scale)
+
+    local redTween = TweenService:Create(
+        playerIcon,
+        TweenInfo.new(HudSettings.AvatarPulseDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { ImageColor3 = redColor, Size = pulseSize }
+    )
+    redTween:Play()
+
+    if HudSettings.OrbsEnabled then
+        for i = 1, HudSettings.OrbCount do
+            local orb = CreateOrb()
+            AnimateOrb(orb)
+        end
+    end
+
+    redTween.Completed:Wait()
+    local resetTween = TweenService:Create(
+        playerIcon,
+        TweenInfo.new(HudSettings.AvatarResetDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        { ImageColor3 = originalColor, Size = originalSize }
+    )
+    resetTween:Play()
+end
 
 -- 2D трейсер (Drawing)
 local tracer2D = Drawing.new("Line")
@@ -87,6 +429,74 @@ local function GetTargetPosition(targetName)
         return humanoidRoot and (humanoidRoot.Position + Vector3.new(0, Settings.EndYOffset, 0)) or nil
     end
     return nil
+end
+
+-- Обновление HUD
+local function UpdateHud()
+    if not HudSettings.Enabled or not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
+        hudFrame.Visible = false
+        playerIcon.Visible = false
+        nameLabel.Visible = false
+        healthLabel.Visible = false
+        healthBarBackground.Visible = false
+        healthBarFill.Visible = false
+        previousHealth = nil
+        currentTarget = nil
+        return
+    end
+
+    local targetName = Core.GunSilentTarget.CurrentTarget
+    local target = Players:FindFirstChild(targetName)
+    currentTarget = target
+
+    if not target or not target.Character then
+        hudFrame.Visible = false
+        playerIcon.Visible = false
+        nameLabel.Visible = false
+        healthLabel.Visible = false
+        healthBarBackground.Visible = false
+        healthBarFill.Visible = false
+        previousHealth = nil
+        UpdatePlayerIcon(nil)
+        return
+    end
+
+    local humanoid = target.Character:FindFirstChild("Humanoid")
+    if humanoid then
+        hudFrame.Visible = true
+        playerIcon.Visible = true
+        nameLabel.Visible = true
+        healthLabel.Visible = true
+        healthBarBackground.Visible = true
+        healthBarFill.Visible = true
+
+        UpdatePlayerIcon(target)
+        nameLabel.Text = target.Name or "Unknown"
+        local health = humanoid.Health
+        local maxHealth = humanoid.MaxHealth
+
+        if previousHealth and health < previousHealth then
+            local currentTime = tick()
+            if currentTime - lastDamageAnimationTime >= HudSettings.DamageAnimationCooldown then
+                PlayDamageAnimation()
+                lastDamageAnimationTime = currentTime
+            end
+        end
+        previousHealth = health
+
+        healthLabel.Text = "HP: " .. string.format("%.1f", health)
+        healthBarFill.Size = UDim2.new(health / maxHealth, 0, 0, HudSettings.HealthBarSize.Y * HudSettings.Scale)
+        UpdateHealthBarColor(health, maxHealth)
+    else
+        hudFrame.Visible = false
+        playerIcon.Visible = false
+        nameLabel.Visible = false
+        healthLabel.Visible = false
+        healthBarBackground.Visible = false
+        healthBarFill.Visible = false
+        previousHealth = nil
+        UpdatePlayerIcon(nil)
+    end
 end
 
 -- Обновление трейсера и кругов
@@ -196,6 +606,9 @@ local function UpdateTracer()
         startMidCircle.Visible = false
         endMidCircle.Visible = false
     end
+
+    -- Обновление HUD
+    UpdateHud()
 end
 
 -- Инициализация модуля
@@ -212,6 +625,7 @@ function Init(ui, core, notification)
     UI.Sections = UI.Sections or {}
     UI.Sections.TargetTracer = UI.Tabs.Visuals:Section({ Name = "Target Tracer", Side = "Right" })
     UI.Sections.Circles = UI.Tabs.Visuals:Section({ Name = "Circles", Side = "Right" })
+    UI.Sections.TargetHud = UI.Tabs.Visuals:Section({ Name = "TargetHud", Side = "Left" })
 
     -- UI элементы для Target Tracer
     UI.Sections.TargetTracer:Header({ Name = "Target Tracer" })
@@ -388,7 +802,134 @@ function Init(ui, core, notification)
         end
     }, "TargetTracerMidCircleColor")
 
-    -- Обновление трейсера каждый кадр
+    -- UI элементы для TargetHud
+    UI.Sections.TargetHud:Header({ Name = "Target Hud" })
+
+    UI.Sections.TargetHud:Toggle({
+        Name = "Enabled",
+        Default = HudSettings.Enabled,
+        Callback = function(value)
+            HudSettings.Enabled = value
+            hudFrame.Visible = value and Core.GunSilentTarget.CurrentTarget ~= nil
+            notify("Target Hud", "Toggled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "TargetHudEnabled")
+
+    UI.Sections.TargetHud:Toggle({
+        Name = "Orbs Enabled",
+        Default = HudSettings.OrbsEnabled,
+        Callback = function(value)
+            HudSettings.OrbsEnabled = value
+            notify("Target Hud", "Orbs Enabled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "TargetHudOrbsEnabled")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "Avatar Pulse Duration",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = HudSettings.AvatarPulseDuration,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            HudSettings.AvatarPulseDuration = value
+            notify("Target Hud", "Avatar Pulse Duration set to: " .. value .. "s", false)
+        end
+    }, "TargetHudAvatarPulseDuration")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "Avatar Reset Duration",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = HudSettings.AvatarResetDuration,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            HudSettings.AvatarResetDuration = value
+            notify("Target Hud", "Avatar Reset Duration set to: " .. value .. "s", false)
+        end
+    }, "TargetHudAvatarResetDuration")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "DamageAnimationCooldown",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = HudSettings.DamageAnimationCooldown,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            HudSettings.DamageAnimationCooldown = value
+            notify("Target Hud", "DamageAnimationCooldown set to: " .. value .. "s", false)
+        end
+    }, "TargetHudDamageAnimationCooldown")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "OrbCount",
+        Minimum = 1,
+        Maximum = 10,
+        Default = HudSettings.OrbCount,
+        Precision = 0,
+        Suffix = "",
+        Callback = function(value)
+            HudSettings.OrbCount = value
+            notify("Target Hud", "OrbCount set to: " .. value, false)
+        end
+    }, "TargetHudOrbCount")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "OrbSize",
+        Minimum = 4,
+        Maximum = 20,
+        Default = HudSettings.OrbSize.X,
+        Precision = 0,
+        Suffix = "px",
+        Callback = function(value)
+            HudSettings.OrbSize = Vector2.new(value, value)
+            notify("Target Hud", "OrbSize set to: " .. value .. "px", false)
+        end
+    }, "TargetHudOrbSize")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "OrbLifetime",
+        Minimum = 0.5,
+        Maximum = 3,
+        Default = HudSettings.OrbLifetime,
+        Precision = 1,
+        Suffix = "s",
+        Callback = function(value)
+            HudSettings.OrbLifetime = value
+            notify("Target Hud", "OrbLifetime set to: " .. value .. "s", false)
+        end
+    }, "TargetHudOrbLifetime")
+
+    UI.Sections.TargetHud:Slider({
+        Name = "Scale",
+        Minimum = 0.5,
+        Maximum = 2,
+        Default = HudSettings.Scale,
+        Precision = 2,
+        Suffix = "",
+        Callback = function(value)
+            HudSettings.Scale = value
+            hudFrame.Size = UDim2.new(0, HudSettings.HudSize.X * value, 0, HudSettings.HudSize.Y * value)
+            playerIcon.Size = UDim2.new(0, HudSettings.AvatarSize.X * value, 0, HudSettings.AvatarSize.Y * value)
+            playerIcon.Position = UDim2.new(0, HudSettings.AvatarPosition.X.Offset * value, 0, HudSettings.AvatarPosition.Y.Offset * value)
+            orbFrame.Size = UDim2.new(0, HudSettings.AvatarSize.X * value, 0, HudSettings.AvatarSize.Y * value)
+            orbFrame.Position = UDim2.new(0, HudSettings.AvatarPosition.X.Offset * value, 0, HudSettings.AvatarPosition.Y.Offset * value)
+            nameLabel.Size = UDim2.new(0, HudSettings.NameSize.X * value, 0, HudSettings.NameSize.Y * value)
+            nameLabel.Position = UDim2.new(0, HudSettings.NamePosition.X.Offset * value, 0, HudSettings.NamePosition.Y.Offset * value)
+            nameLabel.TextSize = HudSettings.NameTextSize * value
+            healthLabel.Size = UDim2.new(0, HudSettings.HealthTextSize.X * value, 0, HudSettings.HealthTextSize.Y * value)
+            healthLabel.Position = UDim2.new(0, HudSettings.HealthTextPosition.X.Offset * value, 0, HudSettings.HealthTextPosition.Y.Offset * value)
+            healthLabel.TextSize = HudSettings.HealthTextSizeValue * value
+            healthBarBackground.Size = UDim2.new(0, HudSettings.HealthBarSize.X * value, 0, HudSettings.HealthBarSize.Y * value)
+            healthBarBackground.Position = UDim2.new(0, HudSettings.HealthBarPosition.X.Offset * value, 0, HudSettings.HealthBarPosition.Y.Offset * value)
+            healthBarFill.Size = UDim2.new(healthBarFill.Size.X.Scale, 0, 0, HudSettings.HealthBarSize.Y * value)
+            notify("Target Hud", "Scale set to: " .. value, false)
+        end
+    }, "TargetHudScale")
+
+    -- Обновление трейсера и кругов каждый кадр
     RunService.RenderStepped:Connect(UpdateTracer)
 end
 
@@ -399,6 +940,7 @@ game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     endCircle2D:Remove()
     startMidCircle:Remove()
     endMidCircle:Remove()
+    screenGui:Destroy()
 end)
 
 return {
