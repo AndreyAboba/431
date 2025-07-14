@@ -111,12 +111,7 @@ end
 
 -- Обновление трейсера
 local function UpdateTracer()
-    local targetName = Core and Core.GunSilentTarget and Core.GunSilentTarget.CurrentTarget
-    local isValidTarget = Settings.Enabled and targetName
-    local is2D = Settings.TracerMode == "2D"
-
-    -- Отключение всех объектов, если нет цели или модуль выключен
-    if not isValidTarget then
+    if not Settings.Enabled or not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
         tracer2D.Visible = false
         startCircle2D.Visible = false
         endCircle2D.Visible = false
@@ -126,7 +121,9 @@ local function UpdateTracer()
         return
     end
 
+    local targetName = Core.GunSilentTarget.CurrentTarget
     local targetPosition = GetTargetPosition(targetName)
+
     if not targetPosition then
         tracer2D.Visible = false
         startCircle2D.Visible = false
@@ -139,7 +136,7 @@ local function UpdateTracer()
 
     local localPosition = GetLocalPlayerPosition()
 
-    if is2D then
+    if Settings.TracerMode == "2D" then
         local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
         if onScreen then
             local fromPos
@@ -223,10 +220,10 @@ local function UpdateTracer()
 end
 
 -- Инициализация модуля
-function Init(ui, core, notifyFunc)
+function Init(UI, Core, notify)
     UI = ui
     Core = core
-    notify = notifyFunc
+    notify = notify
 
     if not UI or not Core or not notify then
         return
@@ -397,6 +394,9 @@ function Init(ui, core, notifyFunc)
             notify("Target Tracer", "Circles Enabled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerCirclesEnabled")
+
+    -- Обновление трейсера каждый кадр
+    RunService.RenderStepped:Connect(UpdateTracer)
 end
 
 -- Очистка при телепортации
