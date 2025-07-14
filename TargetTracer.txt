@@ -11,17 +11,18 @@ local notify = nil
 local Settings = {
     Enabled = false, -- Для трейсера
     Tracer2DOrigin = "From Bottom", -- "From Top", "From Bottom", "From Player"
-    PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера и кругов
+    PlayerColor = Color3.fromRGB(255, 0, 0), -- Цвет трейсера и основных кругов
     TracerThickness = 2,
     TracerTransparency = 0.7,
     YOffset = 0, -- Смещение начальной точки по Y
     EndYOffset = 0, -- Смещение конечной точки по Y
-    CircleDiameter = 5, -- Диаметр кругов
+    CircleDiameter = 5, -- Диаметр основных кругов
     CircleTransparency = 0.7, -- Прозрачность обводки кругов
-    CircleFilled = true, -- Заполнение кругов
+    CircleFilled = true, -- Заполнение основных кругов
     FilledTransparency = 0.7, -- Прозрачность заливки кругов
     CirclesEnabled = true, -- Включение/выключение кругов
-    MidCircle = false -- Включение дополнительных кругов диаметром 5
+    MidCircle = false, -- Включение дополнительных кругов диаметром 8
+    MidCircleColor = Color3.fromRGB(255, 255, 255) -- Цвет Mid Circle
 }
 
 -- 2D трейсер (Drawing)
@@ -47,16 +48,16 @@ endCircle2D.Filled = Settings.CircleFilled
 
 -- Дополнительные круги для Mid Circle
 local startMidCircle = Drawing.new("Circle")
-startMidCircle.Radius = 2.5 -- Диаметр 5
+startMidCircle.Radius = 4 -- Диаметр 8
 startMidCircle.Transparency = Settings.FilledTransparency
-startMidCircle.Color = Settings.PlayerColor
+startMidCircle.Color = Settings.MidCircleColor
 startMidCircle.Visible = false
 startMidCircle.Filled = true
 
 local endMidCircle = Drawing.new("Circle")
-endMidCircle.Radius = 2.5 -- Диаметр 5
+endMidCircle.Radius = 4 -- Диаметр 8
 endMidCircle.Transparency = Settings.FilledTransparency
-endMidCircle.Color = Settings.PlayerColor
+endMidCircle.Color = Settings.MidCircleColor
 endMidCircle.Visible = false
 endMidCircle.Filled = true
 
@@ -88,11 +89,10 @@ local function GetTargetPosition(targetName)
     return nil
 end
 
--- Вычисление радиуса круга с учетом расстояния
-local function GetScaledRadius(position)
-    local distance = (Camera.CFrame.Position - position).Magnitude
-    local baseDistance = 100 -- Базовое расстояние для масштабирования
-    return math.clamp(Settings.CircleDiameter / 2 * (baseDistance / math.max(distance, 1)), 1, Settings.CircleDiameter)
+-- Вычисление радиуса круга
+local function GetScaledRadius()
+    local scaleFactor = Camera.ViewportSize.Y / 1080 -- Нормализация по разрешению экрана (1080p как базовое)
+    return math.clamp(Settings.CircleDiameter / 2 * scaleFactor, 1, Settings.CircleDiameter)
 end
 
 -- Обновление трейсера и кругов
@@ -157,15 +157,16 @@ local function UpdateTracer()
 
     -- Обновление кругов (работают независимо от Settings.Enabled)
     if Settings.CirclesEnabled and onScreen then
+        local scaledRadius = GetScaledRadius()
         endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
         endCircle2D.Color = Settings.PlayerColor
-        endCircle2D.Radius = GetScaledRadius(targetPosition)
+        endCircle2D.Radius = scaledRadius
         endCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
         endCircle2D.Filled = Settings.CircleFilled
         endCircle2D.Visible = true
         if Settings.MidCircle then
             endMidCircle.Position = Vector2.new(screenPos.X, screenPos.Y)
-            endMidCircle.Color = Settings.PlayerColor
+            endMidCircle.Color = Settings.MidCircleColor
             endMidCircle.Transparency = Settings.FilledTransparency
             endMidCircle.Visible = true
         else
@@ -176,13 +177,13 @@ local function UpdateTracer()
             if fromPos then
                 startCircle2D.Position = fromPos
                 startCircle2D.Color = Settings.PlayerColor
-                startCircle2D.Radius = GetScaledRadius(localPosition)
+                startCircle2D.Radius = scaledRadius
                 startCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
                 startCircle2D.Filled = Settings.CircleFilled
                 startCircle2D.Visible = true
                 if Settings.MidCircle then
                     startMidCircle.Position = fromPos
-                    startMidCircle.Color = Settings.PlayerColor
+                    startMidCircle.Color = Settings.MidCircleColor
                     startMidCircle.Transparency = Settings.FilledTransparency
                     startMidCircle.Visible = true
                 else
@@ -240,8 +241,6 @@ function Init(ui, core, notification)
             tracer2D.Color = value
             startCircle2D.Color = value
             endCircle2D.Color = value
-            startMidCircle.Color = value
-            endMidCircle.Color = value
             notify("Target Tracer", "Player Color updated", false)
         end
     }, "TargetTracerPlayerColor")
@@ -384,6 +383,17 @@ function Init(ui, core, notification)
             notify("Target Tracer", "Mid Circle " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerMidCircle")
+
+    UI.Sections.Circles:Colorpicker({
+        Name = "Mid Circle Color",
+        Default = Settings.MidCircleColor,
+        Callback = function(value)
+            Settings.MidCircleColor = value
+            startMidCircle.Color = value
+            endMidCircle.Color = value
+            notify("Target Tracer", "Mid Circle Color updated", false)
+        end
+    }, "TargetTracerMidCircleColor")
 
     -- Обновление трейсера каждый кадр
     RunService.RenderStepped:Connect(UpdateTracer)
