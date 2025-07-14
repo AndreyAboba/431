@@ -52,8 +52,8 @@ endCircle2D.Filled = Settings.CircleFilled
 local beam = Instance.new("Beam")
 beam.Color = ColorSequence.new(Settings.PlayerColor)
 beam.Transparency = NumberSequence.new(Settings.TracerTransparency)
-beam.Width0 = Settings.TracerThickness / 5
-beam.Width1 = Settings.TracerThickness / 5
+beam.Width0 = math.max(Settings.TracerThickness / 10, 0.5)
+beam.Width1 = math.max(Settings.TracerThickness / 10, 0.5)
 beam.Enabled = false
 beam.Parent = workspace.Terrain
 
@@ -112,8 +112,8 @@ end
 -- Вычисление радиуса круга с учетом расстояния
 local function GetScaledRadius(position)
     local distance = (Camera.CFrame.Position - position).Magnitude
-    local scaleFactor = 0.01 -- Настройка масштаба
-    return math.clamp(Settings.CircleDiameter / 2 / (distance * scaleFactor), 2, Settings.CircleDiameter)
+    local scaleFactor = 0.05 -- Увеличен для уменьшения размера кругов
+    return math.clamp(Settings.CircleDiameter / 2 / (distance * scaleFactor), 1, Settings.CircleDiameter)
 end
 
 -- Обновление трейсера
@@ -204,8 +204,8 @@ local function UpdateTracer()
         endAttachment.Position = targetPosition
         beam.Color = ColorSequence.new(Settings.PlayerColor)
         beam.Transparency = NumberSequence.new(Settings.TracerTransparency)
-        beam.Width0 = Settings.TracerThickness / 5
-        beam.Width1 = Settings.TracerThickness / 5
+        beam.Width0 = math.max(Settings.TracerThickness / 10, 0.5)
+        beam.Width1 = math.max(Settings.TracerThickness / 10, 0.5)
         beam.Enabled = true
 
         -- Круги для 3D
@@ -330,8 +330,8 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.TracerThickness = value
             tracer2D.Thickness = value
-            beam.Width0 = value / 5
-            beam.Width1 = value / 5
+            beam.Width0 = math.max(value / 10, 0.5)
+            beam.Width1 = math.max(value / 10, 0.5)
             notify("Target Tracer", "Tracer Thickness set to: " .. value .. "px", false)
         end
     }, "TargetTracerThickness")
