@@ -220,10 +220,10 @@ local function UpdateTracer()
 end
 
 -- Инициализация модуля
-function Init(UI, Core, notify)
+function Init(ui, core, notifyFunc)
     UI = ui
     Core = core
-    notify = notify
+    notify = notifyFunc
 
     if not UI or not Core or not notify then
         return
