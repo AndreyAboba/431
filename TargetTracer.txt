@@ -21,7 +21,7 @@ local Settings = {
     CircleFilled = true, -- Заполнение кругов
     FilledTransparency = 0.7, -- Прозрачность заливки кругов
     CirclesEnabled = true, -- Включение/выключение кругов
-    MidCircle = false -- Включение кругов фиксированного диаметра 5
+    MidCircle = false -- Включение дополнительных кругов диаметром 5
 }
 
 -- 2D трейсер (Drawing)
@@ -30,20 +30,35 @@ tracer2D.Thickness = Settings.TracerThickness
 tracer2D.Transparency = Settings.TracerTransparency
 tracer2D.Visible = false
 
--- 2D круги
+-- 2D круги (основные)
 local startCircle2D = Drawing.new("Circle")
-startCircle2D.Radius = Settings.MidCircle and 2.5 or Settings.CircleDiameter / 2
-startCircle2D.Transparency = Settings.MidCircle and Settings.FilledTransparency or (Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency)
+startCircle2D.Radius = Settings.CircleDiameter / 2
+startCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
 startCircle2D.Color = Settings.PlayerColor
 startCircle2D.Visible = false
-startCircle2D.Filled = Settings.MidCircle or Settings.CircleFilled
+startCircle2D.Filled = Settings.CircleFilled
 
 local endCircle2D = Drawing.new("Circle")
-endCircle2D.Radius = Settings.MidCircle and 2.5 or Settings.CircleDiameter / 2
-endCircle2D.Transparency = Settings.MidCircle and Settings.FilledTransparency or (Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency)
+endCircle2D.Radius = Settings.CircleDiameter / 2
+endCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
 endCircle2D.Color = Settings.PlayerColor
 endCircle2D.Visible = false
-endCircle2D.Filled = Settings.MidCircle or Settings.CircleFilled
+endCircle2D.Filled = Settings.CircleFilled
+
+-- Дополнительные круги для Mid Circle
+local startMidCircle = Drawing.new("Circle")
+startMidCircle.Radius = 2.5 -- Диаметр 5
+startMidCircle.Transparency = Settings.FilledTransparency
+startMidCircle.Color = Settings.PlayerColor
+startMidCircle.Visible = false
+startMidCircle.Filled = true
+
+local endMidCircle = Drawing.new("Circle")
+endMidCircle.Radius = 2.5 -- Диаметр 5
+endMidCircle.Transparency = Settings.FilledTransparency
+endMidCircle.Color = Settings.PlayerColor
+endMidCircle.Visible = false
+endMidCircle.Filled = true
 
 -- Получение позиции локального игрока
 local function GetLocalPlayerPosition()
@@ -73,12 +88,21 @@ local function GetTargetPosition(targetName)
     return nil
 end
 
+-- Вычисление радиуса круга с учетом расстояния
+local function GetScaledRadius(position)
+    local distance = (Camera.CFrame.Position - position).Magnitude
+    local baseDistance = 100 -- Базовое расстояние для масштабирования
+    return math.clamp(Settings.CircleDiameter / 2 * (baseDistance / math.max(distance, 1)), 1, Settings.CircleDiameter)
+end
+
 -- Обновление трейсера и кругов
 local function UpdateTracer()
     if not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
         tracer2D.Visible = false
         startCircle2D.Visible = false
         endCircle2D.Visible = false
+        startMidCircle.Visible = false
+        endMidCircle.Visible = false
         return
     end
 
@@ -89,6 +113,8 @@ local function UpdateTracer()
         tracer2D.Visible = false
         startCircle2D.Visible = false
         endCircle2D.Visible = false
+        startMidCircle.Visible = false
+        endMidCircle.Visible = false
         return
     end
 
@@ -133,28 +159,48 @@ local function UpdateTracer()
     if Settings.CirclesEnabled and onScreen then
         endCircle2D.Position = Vector2.new(screenPos.X, screenPos.Y)
         endCircle2D.Color = Settings.PlayerColor
-        endCircle2D.Radius = Settings.MidCircle and 2.5 or Settings.CircleDiameter / 2
-        endCircle2D.Transparency = Settings.MidCircle and Settings.FilledTransparency or (Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency)
-        endCircle2D.Filled = Settings.MidCircle or Settings.CircleFilled
+        endCircle2D.Radius = GetScaledRadius(targetPosition)
+        endCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
+        endCircle2D.Filled = Settings.CircleFilled
         endCircle2D.Visible = true
+        if Settings.MidCircle then
+            endMidCircle.Position = Vector2.new(screenPos.X, screenPos.Y)
+            endMidCircle.Color = Settings.PlayerColor
+            endMidCircle.Transparency = Settings.FilledTransparency
+            endMidCircle.Visible = true
+        else
+            endMidCircle.Visible = false
+        end
         if Settings.Tracer2DOrigin == "From Player" then
             local fromPos = GetLocalPlayerScreenPosition()
             if fromPos then
                 startCircle2D.Position = fromPos
                 startCircle2D.Color = Settings.PlayerColor
-                startCircle2D.Radius = Settings.MidCircle and 2.5 or Settings.CircleDiameter / 2
-                startCircle2D.Transparency = Settings.MidCircle and Settings.FilledTransparency or (Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency)
-                startCircle2D.Filled = Settings.MidCircle or Settings.CircleFilled
+                startCircle2D.Radius = GetScaledRadius(localPosition)
+                startCircle2D.Transparency = Settings.CircleFilled and Settings.FilledTransparency or Settings.CircleTransparency
+                startCircle2D.Filled = Settings.CircleFilled
                 startCircle2D.Visible = true
+                if Settings.MidCircle then
+                    startMidCircle.Position = fromPos
+                    startMidCircle.Color = Settings.PlayerColor
+                    startMidCircle.Transparency = Settings.FilledTransparency
+                    startMidCircle.Visible = true
+                else
+                    startMidCircle.Visible = false
+                end
             else
                 startCircle2D.Visible = false
+                startMidCircle.Visible = false
             end
         else
             startCircle2D.Visible = false
+            startMidCircle.Visible = false
         end
     else
         startCircle2D.Visible = false
         endCircle2D.Visible = false
+        startMidCircle.Visible = false
+        endMidCircle.Visible = false
     end
 end
 
@@ -194,6 +240,8 @@ function Init(ui, core, notification)
             tracer2D.Color = value
             startCircle2D.Color = value
             endCircle2D.Color = value
+            startMidCircle.Color = value
+            endMidCircle.Color = value
             notify("Target Tracer", "Player Color updated", false)
         end
     }, "TargetTracerPlayerColor")
@@ -206,6 +254,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.Tracer2DOrigin = value
             startCircle2D.Visible = Settings.CirclesEnabled and value == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            startMidCircle.Visible = Settings.CirclesEnabled and Settings.MidCircle and value == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "2D Tracer Origin set to: " .. value, false)
         end
     }, "TargetTracer2DOrigin")
@@ -274,6 +323,8 @@ function Init(ui, core, notification)
             Settings.CirclesEnabled = value
             startCircle2D.Visible = value and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
             endCircle2D.Visible = value and Core.GunSilentTarget.CurrentTarget ~= nil
+            startMidCircle.Visible = value and Settings.MidCircle and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            endMidCircle.Visible = value and Settings.MidCircle and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "Circles Enabled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerCirclesEnabled")
@@ -287,10 +338,8 @@ function Init(ui, core, notification)
         Suffix = "px",
         Callback = function(value)
             Settings.CircleDiameter = value
-            if not Settings.MidCircle then
-                startCircle2D.Radius = value / 2
-                endCircle2D.Radius = value / 2
-            end
+            startCircle2D.Radius = value / 2
+            endCircle2D.Radius = value / 2
             notify("Target Tracer", "Circle Diameter set to: " .. value .. "px", false)
         end
     }, "TargetTracerCircleDiameter")
@@ -304,8 +353,10 @@ function Init(ui, core, notification)
         Suffix = "",
         Callback = function(value)
             Settings.FilledTransparency = value
-            startCircle2D.Transparency = (Settings.MidCircle or Settings.CircleFilled) and value or Settings.CircleTransparency
-            endCircle2D.Transparency = (Settings.MidCircle or Settings.CircleFilled) and value or Settings.CircleTransparency
+            startCircle2D.Transparency = Settings.CircleFilled and value or Settings.CircleTransparency
+            endCircle2D.Transparency = Settings.CircleFilled and value or Settings.CircleTransparency
+            startMidCircle.Transparency = value
+            endMidCircle.Transparency = value
             notify("Target Tracer", "Filled Transparency set to: " .. value, false)
         end
     }, "TargetTracerFilledTransparency")
@@ -315,10 +366,10 @@ function Init(ui, core, notification)
         Default = Settings.CircleFilled,
         Callback = function(value)
             Settings.CircleFilled = value
-            startCircle2D.Filled = Settings.MidCircle or value
-            endCircle2D.Filled = Settings.MidCircle or value
-            startCircle2D.Transparency = (Settings.MidCircle or value) and Settings.FilledTransparency or Settings.CircleTransparency
-            endCircle2D.Transparency = (Settings.MidCircle or value) and Settings.FilledTransparency or Settings.CircleTransparency
+            startCircle2D.Filled = value
+            endCircle2D.Filled = value
+            startCircle2D.Transparency = value and Settings.FilledTransparency or Settings.CircleTransparency
+            endCircle2D.Transparency = value and Settings.FilledTransparency or Settings.CircleTransparency
             notify("Target Tracer", "Circle Filled " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerCircleFilled")
@@ -328,12 +379,8 @@ function Init(ui, core, notification)
         Default = Settings.MidCircle,
         Callback = function(value)
             Settings.MidCircle = value
-            startCircle2D.Radius = value and 2.5 or Settings.CircleDiameter / 2
-            endCircle2D.Radius = value and 2.5 or Settings.CircleDiameter / 2
-            startCircle2D.Filled = value or Settings.CircleFilled
-            endCircle2D.Filled = value or Settings.CircleFilled
-            startCircle2D.Transparency = (value or Settings.CircleFilled) and Settings.FilledTransparency or Settings.CircleTransparency
-            endCircle2D.Transparency = (value or Settings.CircleFilled) and Settings.FilledTransparency or Settings.CircleTransparency
+            startMidCircle.Visible = value and Settings.CirclesEnabled and Settings.Tracer2DOrigin == "From Player" and Core.GunSilentTarget.CurrentTarget ~= nil
+            endMidCircle.Visible = value and Settings.CirclesEnabled and Core.GunSilentTarget.CurrentTarget ~= nil
             notify("Target Tracer", "Mid Circle " .. (value and "ON" or "OFF"), false)
         end
     }, "TargetTracerMidCircle")
@@ -347,6 +394,8 @@ game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
     tracer2D:Remove()
     startCircle2D:Remove()
     endCircle2D:Remove()
+    startMidCircle:Remove()
+    endMidCircle:Remove()
 end)
 
 return {
