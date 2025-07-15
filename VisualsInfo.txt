@@ -25,11 +25,12 @@ local Settings = {
     ImageSize = Vector2.new(20, 20), -- Размер иконки
     ImageBackgroundColor = Color3.fromRGB(10, 20, 30), -- Цвет фона иконки
     ImageBackgroundTransparency = 0.5, -- Прозрачность фона иконки
+    ImageBackgroundSize = Vector2.new(225, 30), -- Размер фона иконки (ширина = HudSize.X, увеличенная высота)
     ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
     ShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 30), -- Позиция первого прогресс-бара (центрирована)
     SecondShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 50), -- Позиция второго прогресс-бара (центрирована)
-    TimerSize = Vector2.new(35, 15), -- Размер таймера (уменьшен с 40 до 35)
-    TimerOffset = 3, -- Смещение таймера от прогресс-бара
+    TimerSize = Vector2.new(35, 15), -- Размер таймера
+    TimerOffset = 0, -- Смещение таймера от прогресс-бара (уменьшено с 3 до 0)
     PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
     PlayerNamePosition = UDim2.new(0.5, -150 / 2, 0, 70), -- Позиция текста имени (центрирована)
     TextColor = Color3.fromRGB(200, 200, 200), -- Цвет текста (бело-серый)
@@ -129,8 +130,8 @@ local function initElements()
 
     -- Фон иконки щита
     local imageBackground = Instance.new("Frame")
-    imageBackground.Size = scaleUDim2(UDim2.new(0, Settings.ImageSize.X + 4, 0, Settings.ImageSize.Y + 4), Settings.Scale)
-    imageBackground.Position = scaleUDim2(UDim2.new(0.5, -(Settings.ImageSize.X + 4) / 2, 0, 3), Settings.Scale)
+    imageBackground.Size = scaleUDim2(UDim2.new(0, Settings.ImageBackgroundSize.X, 0, Settings.ImageBackgroundSize.Y), Settings.Scale)
+    imageBackground.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageBackgroundSize.X / 2, 0, 0), Settings.Scale)
     imageBackground.BackgroundColor3 = Settings.ImageBackgroundColor
     imageBackground.BackgroundTransparency = Settings.ImageBackgroundTransparency
     imageBackground.BorderSizePixel = 0
@@ -501,7 +502,7 @@ UserInputService.InputBegan:Connect(function(input)
                mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y then
                 State.Dragging = true
                 State.DragStart = mousePos
-                State.StartPos = mainFrame.Position -- Сохраняем текущую позицию в масштабированных координатах
+                State.StartPos = mainFrame.AbsolutePosition
             end
         end
     end
@@ -511,9 +512,9 @@ UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
         local mousePos = UserInputService:GetMouseLocation()
         local delta = mousePos - State.DragStart
-        local newPosition = State.StartPos + UDim2.new(0, delta.X / Settings.Scale, 0, delta.Y / Settings.Scale)
-        State.LastPosition = newPosition
-        Elements.MainFrame.Position = scaleUDim2(newPosition, Settings.Scale)
+        local newAbsolutePos = State.StartPos + delta
+        State.LastPosition = UDim2.new(0, newAbsolutePos.X / Settings.Scale, 0, newAbsolutePos.Y / Settings.Scale)
+        Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
     end
 end)
 
@@ -603,8 +604,8 @@ function Init(ui, core, notification)
         Suffix = "segments",
         Callback = function(value)
             Settings.barSegments = value
-            initElements() -- Пересоздаем элементы для обновления линий
-            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale) -- Восстанавливаем позицию
+            initElements()
+            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
             notify("Shield Info", "Bar Segments set to: " .. value .. " segments", false)
         end
     }, "ShieldInfoBarSegments")
@@ -618,8 +619,8 @@ function Init(ui, core, notification)
         Suffix = "",
         Callback = function(value)
             Settings.LineScale = value
-            initElements() -- Пересоздаем элементы для обновления линий
-            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale) -- Восстанавливаем позицию
+            initElements()
+            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
             notify("Shield Info", "Line Scale set to: " .. value, false)
         end
     }, "ShieldInfoLineScale")
@@ -633,18 +634,13 @@ function Init(ui, core, notification)
         Suffix = "",
         Callback = function(value)
             -- Сохраняем абсолютную позицию верхнего левого угла
-            local oldScale = Settings.Scale
-            local oldPosition = Elements.MainFrame.Position
-            local oldAbsolutePosition = Vector2.new(
-                oldPosition.X.Offset * oldScale,
-                oldPosition.Y.Offset * oldScale
-            )
+            local oldAbsolutePosition = Elements.MainFrame.AbsolutePosition
 
             -- Устанавливаем новый масштаб
             Settings.Scale = value
 
             -- Сохраняем абсолютную позицию
-            State.LastPosition = UDim2.new(0, oldAbsolutePosition.X / value, 0, oldAbsolutePosition.Y / value)
+            State.LastPosition = UDim2.new(0, oldAbsolutePosition.X / Settings.Scale, 0, oldAbsolutePosition.Y / Settings.Scale)
 
             -- Обновление размеров и позиций всех элементов
             Elements.MainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), value)
@@ -653,8 +649,8 @@ function Init(ui, core, notification)
             if hudCorner then
                 hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * value)
             end
-            Elements.ImageBackground.Size = scaleUDim2(UDim2.new(0, Settings.ImageSize.X + 4, 0, Settings.ImageSize.Y + 4), value)
-            Elements.ImageBackground.Position = scaleUDim2(UDim2.new(0.5, -(Settings.ImageSize.X + 4) / 2, 0, 3), value)
+            Elements.ImageBackground.Size = scaleUDim2(UDim2.new(0, Settings.ImageBackgroundSize.X, 0, Settings.ImageBackgroundSize.Y), value)
+            Elements.ImageBackground.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageBackgroundSize.X / 2, 0, 0), value)
             local imageBackgroundCorner = Elements.ImageBackground:FindFirstChildOfClass("UICorner")
             if imageBackgroundCorner then
                 imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
