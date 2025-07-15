@@ -16,7 +16,7 @@ local Settings = {
     barSegments = 12,
     LineScale = 0.2,
     Scale = 0.8,
-    HudSize = Vector2.new(225, 90),
+    HudSize = Vector2.new(225, 90), -- Высота 90 для v2, будет переопределена для v1
     HudPosition = UDim2.new(0, 400, 0, 250),
     HudBackgroundColor = Color3.fromRGB(20, 30, 50),
     HudBackgroundTransparency = 0.3,
@@ -95,10 +95,10 @@ local function initElements()
     Elements.ScreenGui = screenGui
 
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, Settings.HudSize.X * Settings.Scale, 0, Settings.HudSize.Y * Settings.Scale)
+    mainFrame.Size = UDim2.new(0, Settings.HudSize.X * Settings.Scale, 0, (Settings.MenuStyle == "v1" and 30 or Settings.HudSize.Y) * Settings.Scale)
     mainFrame.Position = currentPosition
     mainFrame.BackgroundColor3 = Settings.HudBackgroundColor
-    mainFrame.BackgroundTransparency = Settings.HudBackgroundTransparency
+    mainFrame.BackgroundTransparency = Settings.MenuStyle == "v1" and 1 or Settings.HudBackgroundTransparency
     mainFrame.BorderSizePixel = 0
     mainFrame.Visible = Settings.Enabled
     mainFrame.Active = true
@@ -108,11 +108,13 @@ local function initElements()
     if Settings.MenuStyle == "v1" then
         local textLabel = Instance.new("TextLabel")
         textLabel.Size = UDim2.new(0, Settings.HudSize.X * Settings.Scale, 0, 30 * Settings.Scale)
-        textLabel.Position = UDim2.new(0, 0, 0, 10 * Settings.Scale)
+        textLabel.Position = UDim2.new(0, 0, 0, 0)
         textLabel.BackgroundTransparency = 1
         textLabel.Text = "NONE"
         textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
         textLabel.TextSize = Settings.TextSize * Settings.Scale
+        textLabel.TextScaled = true
+        textLabel.TextTruncate = Enum.TextTruncate.AtEnd
         textLabel.Font = Enum.Font.SourceSans
         textLabel.TextStrokeTransparency = 1
         textLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -354,13 +356,13 @@ end
 
 -- Обновление статусного индикатора
 local function updateStatusIndicator()
-    if not Elements.StatusIndicator or Settings.MenuStyle ~= "v2" then return end
+    if not Elements.StatusIndicator or Settings.MenuStyle != "v2" then return end
     Elements.StatusIndicator.BackgroundColor3 = (State.IsShieldActive or State.IsSecondShieldActive) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 end
 
 -- Обновление текста в стиле v1
 local function updateTextLabel()
-    if not Settings.Enabled or Settings.MenuStyle ~= "v1" or not Elements.TextLabel then return end
+    if not Settings.Enabled or Settings.MenuStyle != "v1" or not Elements.TextLabel then return end
     if State.IsShieldActive then
         Elements.TextLabel.Text = Players.LocalPlayer.Name .. " | " .. (Elements.TimerText and Elements.TimerText.Text or "-")
         Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
@@ -511,6 +513,11 @@ local function startVisualsInfo()
     if Elements.ScreenGui then
         Elements.ScreenGui.Enabled = true
     end
+    if Settings.MenuStyle == "v2" then
+        updateShieldBar(State.IsShieldActive and (tick() - (State.ShieldTimerConnection and State.ShieldTimerConnection.Connected and State.ShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+        updateSecondShieldBar(State.IsSecondShieldActive and (tick() - (State.SecondShieldTimerConnection and State.SecondShieldTimerConnection.Connected and State.SecondShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+        updateStatusIndicator()
+    end
     updateTextLabel()
 end
 
@@ -633,11 +640,18 @@ function Init(ui, core, notification)
         Options = {"v2", "v1"},
         Default = Settings.MenuStyle,
         MultiSelection = false,
+        required = true,
         Callback = function(value)
             Settings.MenuStyle = value
             initElements()
             setupDragging()
             Elements.MainFrame.Position = State.LastPosition
+            if Settings.MenuStyle == "v2" then
+                updateShieldBar(State.IsShieldActive and (tick() - (State.ShieldTimerConnection and State.ShieldTimerConnection.Connected and State.ShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+                updateSecondShieldBar(State.IsSecondShieldActive and (tick() - (State.SecondShieldTimerConnection and State.SecondShieldTimerConnection.Connected and State.SecondShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+                updateStatusIndicator()
+            end
+            updateTextLabel()
             notify("Shield Info", "Menu Style set to: " .. value, false)
         end
     }, "ShieldInfoMenuStyle")
@@ -648,12 +662,17 @@ function Init(ui, core, notification)
         Maximum = 20,
         Default = Settings.barSegments,
         Precision = 0,
-        Suffix = "", -- Убрано "segments"
+        Suffix = "",
         Callback = function(value)
             Settings.barSegments = value
             initElements()
             setupDragging()
             Elements.MainFrame.Position = State.LastPosition
+            if Settings.MenuStyle == "v2" then
+                updateShieldBar(State.IsShieldActive and (tick() - (State.ShieldTimerConnection and State.ShieldTimerConnection.Connected and State.ShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+                updateSecondShieldBar(State.IsSecondShieldActive and (tick() - (State.SecondShieldTimerConnection and State.SecondShieldTimerConnection.Connected and State.SecondShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+                updateStatusIndicator()
+            end
             notify("Shield Info", "Bar Segments set to: " .. value, false)
         end
     }, "ShieldInfoBarSegments")
@@ -670,6 +689,11 @@ function Init(ui, core, notification)
             initElements()
             setupDragging()
             Elements.MainFrame.Position = State.LastPosition
+            if Settings.MenuStyle == "v2" then
+                updateShieldBar(State.IsShieldActive and (tick() - (State.ShieldTimerConnection and State.ShieldTimerConnection.Connected and State.ShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+                updateSecondShieldBar(State.IsSecondShieldActive and (tick() - (State.SecondShieldTimerConnection and State.SecondShieldTimerConnection.Connected and State.SecondShieldTimerConnection.Time or tick())) / Settings.shieldDuration or 0)
+                updateStatusIndicator()
+            end
             notify("Shield Info", "Line Scale set to: " .. value, false)
         end
     }, "ShieldInfoLineScale")
@@ -683,7 +707,7 @@ function Init(ui, core, notification)
         Suffix = "",
         Callback = function(value)
             Settings.Scale = value
-            Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * value, 0, Settings.HudSize.Y * value)
+            Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * value, 0, (Settings.MenuStyle == "v1" and 30 or Settings.HudSize.Y) * value)
             Elements.MainFrame.Position = State.LastPosition
             local hudCorner = Elements.MainFrame:FindFirstChildOfClass("UICorner")
             if hudCorner then
@@ -692,7 +716,7 @@ function Init(ui, core, notification)
             if Settings.MenuStyle == "v1" then
                 if Elements.TextLabel then
                     Elements.TextLabel.Size = UDim2.new(0, Settings.HudSize.X * value, 0, 30 * value)
-                    Elements.TextLabel.Position = UDim2.new(0, 0, 0, 10 * value)
+                    Elements.TextLabel.Position = UDim2.new(0, 0, 0, 0)
                     Elements.TextLabel.TextSize = Settings.TextSize * value
                 end
             else
