@@ -11,7 +11,8 @@ local notify = nil
 
 -- Конфигурация VisualsInfo
 local Settings = {
-    Enabled = true,
+    Enabled = false, -- По умолчанию выключен
+    MenuStyle = "v2", -- Стиль меню по умолчанию
     barSegments = 12,
     LineScale = 0.2,
     Scale = 0.8,
@@ -55,7 +56,8 @@ local State = {
     DragStart = nil,
     StartPos = nil,
     LastPosition = Settings.HudPosition,
-    DragConnection = nil
+    DragConnection = nil,
+    CurrentPlayerName = "-"
 }
 
 -- Элементы интерфейса
@@ -103,210 +105,210 @@ local function initElements()
     mainFrame.Parent = screenGui
     Elements.MainFrame = mainFrame
 
-    local hudCorner = Instance.new("UICorner")
-    hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * Settings.Scale)
-    hudCorner.Parent = mainFrame
+    if Settings.MenuStyle == "v1" then
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(0, Settings.HudSize.X * Settings.Scale, 0, 30 * Settings.Scale)
+        textLabel.Position = UDim2.new(0, 0, 0, 10 * Settings.Scale)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = "NONE"
+        textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        textLabel.TextSize = Settings.TextSize * Settings.Scale
+        textLabel.Font = Enum.Font.SourceSans
+        textLabel.TextStrokeTransparency = 1
+        textLabel.TextXAlignment = Enum.TextXAlignment.Center
+        textLabel.Parent = mainFrame
+        Elements.TextLabel = textLabel
+    else
+        local hudCorner = Instance.new("UICorner")
+        hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * Settings.Scale)
+        hudCorner.Parent = mainFrame
 
-    local hudGradient = Instance.new("UIGradient")
-    hudGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Settings.HudGradientStart),
-        ColorSequenceKeypoint.new(1, Settings.HudGradientEnd)
-    })
-    hudGradient.Rotation = 45
-    hudGradient.Parent = mainFrame
+        local hudGradient = Instance.new("UIGradient")
+        hudGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Settings.HudGradientStart),
+            ColorSequenceKeypoint.new(1, Settings.HudGradientEnd)
+        })
+        hudGradient.Rotation = 45
+        hudGradient.Parent = mainFrame
 
-    local hudStroke = Instance.new("UIStroke")
-    hudStroke.Color = Color3.fromRGB(0, 0, 0)
-    hudStroke.Thickness = 2
-    hudStroke.Transparency = 0.5
-    hudStroke.Parent = mainFrame
+        local hudStroke = Instance.new("UIStroke")
+        hudStroke.Color = Color3.fromRGB(0, 0, 0)
+        hudStroke.Thickness = 2
+        hudStroke.Transparency = 0.5
+        hudStroke.Parent = mainFrame
 
-    local imageBackground = Instance.new("Frame")
-    imageBackground.Size = UDim2.new(0, Settings.ImageBackgroundSize.X * Settings.Scale, 0, Settings.ImageBackgroundSize.Y * Settings.Scale)
-    imageBackground.Position = UDim2.new(0.5, (-Settings.ImageBackgroundSize.X / 2) * Settings.Scale, 0, 0)
-    imageBackground.BackgroundColor3 = Settings.ImageBackgroundColor
-    imageBackground.BackgroundTransparency = Settings.ImageBackgroundTransparency
-    imageBackground.BorderSizePixel = 0
-    imageBackground.Parent = mainFrame
-    Elements.ImageBackground = imageBackground
+        local imageBackground = Instance.new("Frame")
+        imageBackground.Size = UDim2.new(0, Settings.ImageBackgroundSize.X * Settings.Scale, 0, Settings.ImageBackgroundSize.Y * Settings.Scale)
+        imageBackground.Position = UDim2.new(0.5, (-Settings.ImageBackgroundSize.X / 2) * Settings.Scale, 0, 0)
+        imageBackground.BackgroundColor3 = Settings.ImageBackgroundColor
+        imageBackground.BackgroundTransparency = Settings.ImageBackgroundTransparency
+        imageBackground.BorderSizePixel = 0
+        imageBackground.Parent = mainFrame
+        Elements.ImageBackground = imageBackground
 
-    local imageBackgroundCorner = Instance.new("UICorner")
-    imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
-    imageBackgroundCorner.Parent = imageBackground
+        local imageBackgroundCorner = Instance.new("UICorner")
+        imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
+        imageBackgroundCorner.Parent = imageBackground
 
-    local imageLabel = Instance.new("ImageLabel")
-    imageLabel.Size = UDim2.new(0, Settings.ImageSize.X * Settings.Scale, 0, Settings.ImageSize.Y * Settings.Scale)
-    imageLabel.Position = UDim2.new(0.5, (-Settings.ImageSize.X / 2) * Settings.Scale, 0, 5 * Settings.Scale)
-    imageLabel.BackgroundTransparency = 1
-    imageLabel.Image = Settings.ImageAssetId
-    imageLabel.ImageColor3 = Settings.TextColor
-    imageLabel.Parent = mainFrame
-    Elements.ImageLabel = imageLabel
+        local imageLabel = Instance.new("ImageLabel")
+        imageLabel.Size = UDim2.new(0, Settings.ImageSize.X * Settings.Scale, 0, Settings.ImageSize.Y * Settings.Scale)
+        imageLabel.Position = UDim2.new(0.5, (-Settings.ImageSize.X / 2) * Settings.Scale, 0, 5 * Settings.Scale)
+        imageLabel.BackgroundTransparency = 1
+        imageLabel.Image = Settings.ImageAssetId
+        imageLabel.ImageColor3 = Settings.TextColor
+        imageLabel.Parent = mainFrame
+        Elements.ImageLabel = imageLabel
 
-    local shieldBackground = Instance.new("Frame")
-    shieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * Settings.Scale, 0, Settings.ShieldBarSize.Y * Settings.Scale)
-    shieldBackground.Position = UDim2.new(0, Settings.ShieldBarPosition.X.Offset * Settings.Scale, 0, Settings.ShieldBarPosition.Y.Offset * Settings.Scale)
-    shieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    shieldBackground.BackgroundTransparency = 0.5
-    shieldBackground.BorderSizePixel = 0
-    shieldBackground.Parent = mainFrame
-    Elements.ShieldBackground = shieldBackground
+        local shieldBackground = Instance.new("Frame")
+        shieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * Settings.Scale, 0, Settings.ShieldBarSize.Y * Settings.Scale)
+        shieldBackground.Position = UDim2.new(0, Settings.ShieldBarPosition.X.Offset * Settings.Scale, 0, Settings.ShieldBarPosition.Y.Offset * Settings.Scale)
+        shieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        shieldBackground.BackgroundTransparency = 0.5
+        shieldBackground.BorderSizePixel = 0
+        shieldBackground.Parent = mainFrame
+        Elements.ShieldBackground = shieldBackground
 
-    local shieldBackgroundCorner = Instance.new("UICorner")
-    shieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
-    shieldBackgroundCorner.Parent = shieldBackground
+        local shieldBackgroundCorner = Instance.new("UICorner")
+        shieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
+        shieldBackgroundCorner.Parent = shieldBackground
 
-    local shieldBarContainer = Instance.new("Frame")
-    shieldBarContainer.Size = UDim2.new(1, 0, 1, 0)
-    shieldBarContainer.BackgroundTransparency = 1
-    shieldBarContainer.Parent = shieldBackground
-    Elements.ShieldBarContainer = shieldBarContainer
+        local shieldBarContainer = Instance.new("Frame")
+        shieldBarContainer.Size = UDim2.new(1, 0, 1, 0)
+        shieldBarContainer.BackgroundTransparency = 1
+        shieldBarContainer.Parent = shieldBackground
+        Elements.ShieldBarContainer = shieldBarContainer
 
-    local timerBackground = Instance.new("Frame")
-    timerBackground.Size = UDim2.new(0, Settings.TimerSize.X * Settings.Scale, 0, Settings.TimerSize.Y * Settings.Scale)
-    timerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * Settings.Scale, 0, 0)
-    timerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    timerBackground.BackgroundTransparency = 0.5
-    timerBackground.BorderSizePixel = 0
-    timerBackground.Parent = shieldBackground
-    Elements.TimerBackground = timerBackground
+        local timerBackground = Instance.new("Frame")
+        timerBackground.Size = UDim2.new(0, Settings.TimerSize.X * Settings.Scale, 0, Settings.TimerSize.Y * Settings.Scale)
+        timerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * Settings.Scale, 0, 0)
+        timerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        timerBackground.BackgroundTransparency = 0.5
+        timerBackground.BorderSizePixel = 0
+        timerBackground.Parent = shieldBackground
+        Elements.TimerBackground = timerBackground
 
-    local timerBackgroundCorner = Instance.new("UICorner")
-    timerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
-    timerBackgroundCorner.Parent = timerBackground
+        local timerBackgroundCorner = Instance.new("UICorner")
+        timerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
+        timerBackgroundCorner.Parent = timerBackground
 
-    local timerText = Instance.new("TextLabel")
-    timerText.Size = UDim2.new(1, 0, 1, 0)
-    timerText.BackgroundTransparency = 1
-    timerText.Text = "-"
-    timerText.TextColor3 = Settings.TextColor
-    timerText.TextSize = Settings.TextSize * Settings.Scale
-    timerText.Font = Enum.Font.SourceSans
-    timerText.TextStrokeTransparency = 1
-    timerText.Parent = timerBackground
-    Elements.TimerText = timerText
+        local timerText = Instance.new("TextLabel")
+        timerText.Size = UDim2.new(1, 0, 1, 0)
+        timerText.BackgroundTransparency = 1
+        timerText.Text = "-"
+        timerText.TextColor3 = Settings.TextColor
+        timerText.TextSize = Settings.TextSize * Settings.Scale
+        timerText.Font = Enum.Font.SourceSans
+        timerText.TextStrokeTransparency = 1
+        timerText.Parent = timerBackground
+        Elements.TimerText = timerText
 
-    local secondShieldBackground = Instance.new("Frame")
-    secondShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * Settings.Scale, 0, Settings.ShieldBarSize.Y * Settings.Scale)
-    secondShieldBackground.Position = UDim2.new(0, Settings.SecondShieldBarPosition.X.Offset * Settings.Scale, 0, Settings.SecondShieldBarPosition.Y.Offset * Settings.Scale)
-    secondShieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    secondShieldBackground.BackgroundTransparency = 0.5
-    secondShieldBackground.BorderSizePixel = 0
-    secondShieldBackground.Parent = mainFrame
-    Elements.SecondShieldBackground = secondShieldBackground
+        local secondShieldBackground = Instance.new("Frame")
+        secondShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * Settings.Scale, 0, Settings.ShieldBarSize.Y * Settings.Scale)
+        secondShieldBackground.Position = UDim2.new(0, Settings.SecondShieldBarPosition.X.Offset * Settings.Scale, 0, Settings.SecondShieldBarPosition.Y.Offset * Settings.Scale)
+        secondShieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        secondShieldBackground.BackgroundTransparency = 0.5
+        secondShieldBackground.BorderSizePixel = 0
+        secondShieldBackground.Parent = mainFrame
+        Elements.SecondShieldBackground = secondShieldBackground
 
-    local secondShieldBackgroundCorner = Instance.new("UICorner")
-    secondShieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
-    secondShieldBackgroundCorner.Parent = secondShieldBackground
+        local secondShieldBackgroundCorner = Instance.new("UICorner")
+        secondShieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
+        secondShieldBackgroundCorner.Parent = secondShieldBackground
 
-    local secondShieldBarContainer = Instance.new("Frame")
-    secondShieldBarContainer.Size = UDim2.new(1, 0, 1, 0)
-    secondShieldBarContainer.BackgroundTransparency = 1
-    secondShieldBarContainer.Parent = secondShieldBackground
-    Elements.SecondShieldBarContainer = secondShieldBarContainer
+        local secondShieldBarContainer = Instance.new("Frame")
+        secondShieldBarContainer.Size = UDim2.new(1, 0, 1, 0)
+        secondShieldBarContainer.BackgroundTransparency = 1
+        secondShieldBarContainer.Parent = secondShieldBackground
+        Elements.SecondShieldBarContainer = secondShieldBarContainer
 
-    local secondTimerBackground = Instance.new("Frame")
-    secondTimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * Settings.Scale, 0, Settings.TimerSize.Y * Settings.Scale)
-    secondTimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * Settings.Scale, 0, 0)
-    secondTimerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    secondTimerBackground.BackgroundTransparency = 0.5
-    secondTimerBackground.BorderSizePixel = 0
-    secondTimerBackground.Parent = secondShieldBackground
-    Elements.SecondTimerBackground = secondTimerBackground
+        local secondTimerBackground = Instance.new("Frame")
+        secondTimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * Settings.Scale, 0, Settings.TimerSize.Y * Settings.Scale)
+        secondTimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * Settings.Scale, 0, 0)
+        secondTimerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        secondTimerBackground.BackgroundTransparency = 0.5
+        secondTimerBackground.BorderSizePixel = 0
+        secondTimerBackground.Parent = secondShieldBackground
+        Elements.SecondTimerBackground = secondTimerBackground
 
-    local secondTimerBackgroundCorner = Instance.new("UICorner")
-    secondTimerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
-    secondTimerBackgroundCorner.Parent = secondTimerBackground
+        local secondTimerBackgroundCorner = Instance.new("UICorner")
+        secondTimerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
+        secondTimerBackgroundCorner.Parent = secondTimerBackground
 
-    local secondTimerText = Instance.new("TextLabel")
-    secondTimerText.Size = UDim2.new(1, 0, 1, 0)
-    secondTimerText.BackgroundTransparency = 1
-    secondTimerText.Text = "-"
-    secondTimerText.TextColor3 = Settings.TextColor
-    secondTimerText.TextSize = Settings.TextSize * Settings.Scale
-    secondTimerText.Font = Enum.Font.SourceSans
-    secondTimerText.TextStrokeTransparency = 1
-    secondTimerText.Parent = secondTimerBackground
-    Elements.SecondTimerText = secondTimerText
+        local secondTimerText = Instance.new("TextLabel")
+        secondTimerText.Size = UDim2.new(1, 0, 1, 0)
+        secondTimerText.BackgroundTransparency = 1
+        secondTimerText.Text = "-"
+        secondTimerText.TextColor3 = Settings.TextColor
+        secondTimerText.TextSize = Settings.TextSize * Settings.Scale
+        secondTimerText.Font = Enum.Font.SourceSans
+        secondTimerText.TextStrokeTransparency = 1
+        secondTimerText.Parent = secondTimerBackground
+        Elements.SecondTimerText = secondTimerText
 
-    local playerNameBackground = Instance.new("Frame")
-    playerNameBackground.Size = UDim2.new(0, Settings.PlayerNameSize.X * Settings.Scale, 0, Settings.PlayerNameSize.Y * Settings.Scale)
-    playerNameBackground.Position = UDim2.new(0, Settings.PlayerNamePosition.X.Offset * Settings.Scale, 0, Settings.PlayerNamePosition.Y.Offset * Settings.Scale)
-    playerNameBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    playerNameBackground.BackgroundTransparency = 0.5
-    playerNameBackground.BorderSizePixel = 0
-    playerNameBackground.Parent = mainFrame
-    Elements.PlayerNameBackground = playerNameBackground
+        local playerNameBackground = Instance.new("Frame")
+        playerNameBackground.Size = UDim2.new(0, Settings.PlayerNameSize.X * Settings.Scale, 0, Settings.PlayerNameSize.Y * Settings.Scale)
+        playerNameBackground.Position = UDim2.new(0, Settings.PlayerNamePosition.X.Offset * Settings.Scale, 0, Settings.PlayerNamePosition.Y.Offset * Settings.Scale)
+        playerNameBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        playerNameBackground.BackgroundTransparency = 0.5
+        playerNameBackground.BorderSizePixel = 0
+        playerNameBackground.Parent = mainFrame
+        Elements.PlayerNameBackground = playerNameBackground
 
-    local playerNameBackgroundCorner = Instance.new("UICorner")
-    playerNameBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
-    playerNameBackgroundCorner.Parent = playerNameBackground
+        local playerNameBackgroundCorner = Instance.new("UICorner")
+        playerNameBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
+        playerNameBackgroundCorner.Parent = playerNameBackground
 
-    local playerNameText = Instance.new("TextLabel")
-    playerNameText.Size = UDim2.new(1, 0, 1, 0)
-    playerNameText.BackgroundTransparency = 1
-    playerNameText.Text = "-"
-    playerNameText.TextColor3 = Settings.TextColor
-    playerNameText.TextSize = Settings.TextSize * Settings.Scale
-    playerNameText.Font = Enum.Font.SourceSans
-    playerNameText.TextStrokeTransparency = 1
-    playerNameText.Parent = playerNameBackground
-    Elements.PlayerNameText = playerNameText
+        local playerNameText = Instance.new("TextLabel")
+        playerNameText.Size = UDim2.new(1, 0, 1, 0)
+        playerNameText.BackgroundTransparency = 1
+        playerNameText.Text = State.CurrentPlayerName
+        playerNameText.TextColor3 = Settings.TextColor
+        playerNameText.TextSize = Settings.TextSize * Settings.Scale
+        playerNameText.Font = Enum.Font.SourceSans
+        playerNameText.TextStrokeTransparency = 1
+        playerNameText.Parent = playerNameBackground
+        Elements.PlayerNameText = playerNameText
 
-    local statusIndicator = Instance.new("Frame")
-    statusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * Settings.Scale, 0, Settings.StatusIndicatorSize.Y * Settings.Scale)
-    statusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * Settings.Scale, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * Settings.Scale)
-    statusIndicator.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    statusIndicator.BackgroundTransparency = 0
-    statusIndicator.BorderSizePixel = 0
-    statusIndicator.Parent = mainFrame
-    Elements.StatusIndicator = statusIndicator
+        local statusIndicator = Instance.new("Frame")
+        statusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * Settings.Scale, 0, Settings.StatusIndicatorSize.Y * Settings.Scale)
+        statusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * Settings.Scale, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * Settings.Scale)
+        statusIndicator.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        statusIndicator.BackgroundTransparency = 0
+        statusIndicator.BorderSizePixel = 0
+        statusIndicator.Parent = mainFrame
+        Elements.StatusIndicator = statusIndicator
 
-    local statusCorner = Instance.new("UICorner")
-    statusCorner.CornerRadius = UDim.new(1, 0)
-    statusCorner.Parent = statusIndicator
+        local statusCorner = Instance.new("UICorner")
+        statusCorner.CornerRadius = UDim.new(1, 0)
+        statusCorner.Parent = statusIndicator
 
-    Elements.ShieldBarLines = {}
-    Elements.SecondShieldBarLines = {}
-    local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
-    local lineWidth = 1 / numLines
-    for i = 1, numLines do
-        local line = Instance.new("Frame")
-        line.Size = UDim2.new(lineWidth, 0, 1, 0)
-        line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
-        line.BackgroundTransparency = 1
-        line.BorderSizePixel = 0
-        line.Parent = shieldBarContainer
-        table.insert(Elements.ShieldBarLines, line)
+        Elements.ShieldBarLines = {}
+        Elements.SecondShieldBarLines = {}
+        local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
+        local lineWidth = 1 / numLines
+        for i = 1, numLines do
+            local line = Instance.new("Frame")
+            line.Size = UDim2.new(lineWidth, 0, 1, 0)
+            line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
+            line.BackgroundTransparency = 1
+            line.BorderSizePixel = 0
+            line.Parent = shieldBarContainer
+            table.insert(Elements.ShieldBarLines, line)
 
-        local secondLine = Instance.new("Frame")
-        secondLine.Size = UDim2.new(lineWidth, 0, 1, 0)
-        secondLine.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
-        secondLine.BackgroundTransparency = 1
-        secondLine.BorderSizePixel = 0
-        secondLine.Parent = secondShieldBarContainer
-        table.insert(Elements.SecondShieldBarLines, secondLine)
+            local secondLine = Instance.new("Frame")
+            secondLine.Size = UDim2.new(lineWidth, 0, 1, 0)
+            secondLine.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
+            secondLine.BackgroundTransparency = 1
+            secondLine.BorderSizePixel = 0
+            secondLine.Parent = secondShieldBarContainer
+            table.insert(Elements.SecondShieldBarLines, secondLine)
+        end
     end
-end
-
--- Анимация появления (масштабирование из центра)
-local function animateAppearance()
-    if not Elements.MainFrame then return end
-    local scale = Settings.Scale
-    local centerX = State.LastPosition.X.Offset
-    local centerY = State.LastPosition.Y.Offset
-    Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * 0.1, 0, Settings.HudSize.Y * 0.1)
-    Elements.MainFrame.Position = UDim2.new(0, centerX - (Settings.HudSize.X * 0.1) / 2, 0, centerY - (Settings.HudSize.Y * 0.1) / 2)
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(Elements.MainFrame, tweenInfo, {
-        Size = UDim2.new(0, Settings.HudSize.X * scale, 0, Settings.HudSize.Y * scale),
-        Position = UDim2.new(0, centerX - (Settings.HudSize.X * scale) / 2, 0, centerY - (Settings.HudSize.Y * scale) / 2)
-    }):Play()
 end
 
 -- Обновление прогресс-бара первого щита
 local function updateShieldBar(progress)
-    if not Settings.Enabled or not State.IsShieldActive then
+    if not Settings.Enabled or not State.IsShieldActive or Settings.MenuStyle ~= "v2" then
         for _, line in ipairs(Elements.ShieldBarLines or {}) do
             line.BackgroundTransparency = 1
         end
@@ -329,7 +331,7 @@ end
 
 -- Обновление прогресс-бара второго щита
 local function updateSecondShieldBar(progress)
-    if not Settings.Enabled or not State.IsSecondShieldActive then
+    if not Settings.Enabled or not State.IsSecondShieldActive or Settings.MenuStyle ~= "v2" then
         for _, line in ipairs(Elements.SecondShieldBarLines or {}) do
             line.BackgroundTransparency = 1
         end
@@ -352,8 +354,23 @@ end
 
 -- Обновление статусного индикатора
 local function updateStatusIndicator()
-    if not Elements.StatusIndicator then return end
+    if not Elements.StatusIndicator or Settings.MenuStyle ~= "v2" then return end
     Elements.StatusIndicator.BackgroundColor3 = (State.IsShieldActive or State.IsSecondShieldActive) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end
+
+-- Обновление текста в стиле v1
+local function updateTextLabel()
+    if not Settings.Enabled or Settings.MenuStyle ~= "v1" or not Elements.TextLabel then return end
+    if State.IsShieldActive then
+        Elements.TextLabel.Text = Players.LocalPlayer.Name .. " | " .. (Elements.TimerText and Elements.TimerText.Text or "-")
+        Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    elseif State.IsSecondShieldActive then
+        Elements.TextLabel.Text = State.CurrentPlayerName .. " | " .. (Elements.SecondTimerText and Elements.SecondTimerText.Text or "-")
+        Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    else
+        Elements.TextLabel.Text = "NONE"
+        Elements.TextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+    end
 end
 
 -- Таймеры для щитов
@@ -378,9 +395,13 @@ local function startShieldTimer()
             if Elements.TimerText then
                 Elements.TimerText.Text = "-"
             end
-            if not State.IsSecondShieldActive and Elements.PlayerNameText then
-                Elements.PlayerNameText.Text = "-"
+            if not State.IsSecondShieldActive then
+                State.CurrentPlayerName = "-"
+                if Elements.PlayerNameText then
+                    Elements.PlayerNameText.Text = "-"
+                end
             end
+            updateTextLabel()
             return
         end
         local elapsed = tick() - startTime
@@ -402,13 +423,17 @@ local function startShieldTimer()
                 if Elements.TimerText then
                     Elements.TimerText.Text = "-"
                 end
-                if not State.IsSecondShieldActive and Elements.PlayerNameText then
-                    Elements.PlayerNameText.Text = "-"
+                if not State.IsSecondShieldActive then
+                    State.CurrentPlayerName = "-"
+                    if Elements.PlayerNameText then
+                        Elements.PlayerNameText.Text = "-"
+                    end
                 end
             end)
         end
         updateShieldBar(progress)
         updateStatusIndicator()
+        updateTextLabel()
     end)
 end
 
@@ -433,9 +458,13 @@ local function startSecondShieldTimer()
             if Elements.SecondTimerText then
                 Elements.SecondTimerText.Text = "-"
             end
-            if not State.IsShieldActive and Elements.PlayerNameText then
-                Elements.PlayerNameText.Text = "-"
+            if not State.IsShieldActive then
+                State.CurrentPlayerName = "-"
+                if Elements.PlayerNameText then
+                    Elements.PlayerNameText.Text = "-"
+                end
             end
+            updateTextLabel()
             return
         end
         local elapsed = tick() - startTime
@@ -457,13 +486,17 @@ local function startSecondShieldTimer()
                 if Elements.SecondTimerText then
                     Elements.SecondTimerText.Text = "-"
                 end
-                if not State.IsShieldActive and Elements.PlayerNameText then
-                    Elements.PlayerNameText.Text = "-"
+                if not State.IsShieldActive then
+                    State.CurrentPlayerName = "-"
+                    if Elements.PlayerNameText then
+                        Elements.PlayerNameText.Text = "-"
+                    end
                 end
             end)
         end
         updateSecondShieldBar(progress)
         updateStatusIndicator()
+        updateTextLabel()
     end)
 end
 
@@ -478,9 +511,10 @@ local function startVisualsInfo()
     if Elements.ScreenGui then
         Elements.ScreenGui.Enabled = true
     end
+    updateTextLabel()
 end
 
--- Перетаскивание интерфейса (как в TargetHud)
+-- Перетаскивание интерфейса
 local function setupDragging()
     local mainFrame = Elements.MainFrame
     if not mainFrame then return end
@@ -546,13 +580,17 @@ if Workspace:FindFirstChild("Entities") then
         if Settings.Enabled and child:IsA("Part") and child.Name == "ProtectionBubble" then
             if isLocalPlayerShield(child) then
                 startShieldTimer()
+                State.CurrentPlayerName = Players.LocalPlayer.Name
                 if Elements.PlayerNameText then
-                    Elements.PlayerNameText.Text = Players.LocalPlayer.Name
+                    Elements.PlayerNameText.Text = State.CurrentPlayerName
                 end
             else
                 local nearestPlayer = findNearestPlayerToShield(child.Position)
-                if nearestPlayer and Elements.PlayerNameText then
-                    Elements.PlayerNameText.Text = nearestPlayer.Name
+                if nearestPlayer then
+                    State.CurrentPlayerName = nearestPlayer.Name
+                    if Elements.PlayerNameText then
+                        Elements.PlayerNameText.Text = State.CurrentPlayerName
+                    end
                     startSecondShieldTimer()
                 end
             end
@@ -574,7 +612,6 @@ function Init(ui, core, notification)
 
     initElements()
     setupDragging()
-    animateAppearance()
 
     UI.Sections = UI.Sections or {}
     UI.Sections.ShieldInfo = UI.Tabs.Visuals:Section({ Name = "ShieldInfo", Side = "Left" })
@@ -591,19 +628,33 @@ function Init(ui, core, notification)
         end
     }, "ShieldInfoEnabled")
 
+    UI.Sections.ShieldInfo:Dropdown({
+        Name = "Menu Style",
+        Options = {"v2", "v1"},
+        Default = Settings.MenuStyle,
+        MultiSelection = false,
+        Callback = function(value)
+            Settings.MenuStyle = value
+            initElements()
+            setupDragging()
+            Elements.MainFrame.Position = State.LastPosition
+            notify("Shield Info", "Menu Style set to: " .. value, false)
+        end
+    }, "ShieldInfoMenuStyle")
+
     UI.Sections.ShieldInfo:Slider({
         Name = "Bar Segments",
         Minimum = 1,
         Maximum = 20,
         Default = Settings.barSegments,
         Precision = 0,
-        Suffix = "segments",
+        Suffix = "", -- Убрано "segments"
         Callback = function(value)
             Settings.barSegments = value
             initElements()
             setupDragging()
             Elements.MainFrame.Position = State.LastPosition
-            notify("Shield Info", "Bar Segments set to: " .. value .. " segments", false)
+            notify("Shield Info", "Bar Segments set to: " .. value, false)
         end
     }, "ShieldInfoBarSegments")
 
@@ -638,65 +689,73 @@ function Init(ui, core, notification)
             if hudCorner then
                 hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * value)
             end
-            Elements.ImageBackground.Size = UDim2.new(0, Settings.ImageBackgroundSize.X * value, 0, Settings.ImageBackgroundSize.Y * value)
-            Elements.ImageBackground.Position = UDim2.new(0.5, (-Settings.ImageBackgroundSize.X / 2) * value, 0, 0)
-            local imageBackgroundCorner = Elements.ImageBackground:FindFirstChildOfClass("UICorner")
-            if imageBackgroundCorner then
-                imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
-            end
-            Elements.ImageLabel.Size = UDim2.new(0, Settings.ImageSize.X * value, 0, Settings.ImageSize.Y * value)
-            Elements.ImageLabel.Position = UDim2.new(0.5, (-Settings.ImageSize.X / 2) * value, 0, 5 * value)
-            Elements.ShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * value, 0, Settings.ShieldBarSize.Y * value)
-            Elements.ShieldBackground.Position = UDim2.new(0, Settings.ShieldBarPosition.X.Offset * value, 0, Settings.ShieldBarPosition.Y.Offset * value)
-            local shieldBackgroundCorner = Elements.ShieldBackground:FindFirstChildOfClass("UICorner")
-            if shieldBackgroundCorner then
-                shieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
-            end
-            Elements.TimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * value, 0, Settings.TimerSize.Y * value)
-            Elements.TimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * value, 0, 0)
-            local timerBackgroundCorner = Elements.TimerBackground:FindFirstChildOfClass("UICorner")
-            if timerBackgroundCorner then
-                timerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
-            end
-            Elements.TimerText.TextSize = Settings.TextSize * value
-            Elements.SecondShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * value, 0, Settings.ShieldBarSize.Y * value)
-            Elements.SecondShieldBackground.Position = UDim2.new(0, Settings.SecondShieldBarPosition.X.Offset * value, 0, Settings.SecondShieldBarPosition.Y.Offset * value)
-            local secondShieldBackgroundCorner = Elements.SecondShieldBackground:FindFirstChildOfClass("UICorner")
-            if secondShieldBackgroundCorner then
-                secondShieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
-            end
-            Elements.SecondTimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * value, 0, Settings.TimerSize.Y * value)
-            Elements.SecondTimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * value, 0, 0)
-            local secondTimerBackgroundCorner = Elements.SecondTimerBackground:FindFirstChildOfClass("UICorner")
-            if secondTimerBackgroundCorner then
-                secondTimerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
-            end
-            Elements.SecondTimerText.TextSize = Settings.TextSize * value
-            Elements.PlayerNameBackground.Size = UDim2.new(0, Settings.PlayerNameSize.X * value, 0, Settings.PlayerNameSize.Y * value)
-            Elements.PlayerNameBackground.Position = UDim2.new(0, Settings.PlayerNamePosition.X.Offset * value, 0, Settings.PlayerNamePosition.Y.Offset * value)
-            local playerNameBackgroundCorner = Elements.PlayerNameBackground:FindFirstChildOfClass("UICorner")
-            if playerNameBackgroundCorner then
-                playerNameBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
-            end
-            Elements.PlayerNameText.TextSize = Settings.TextSize * value
-            Elements.StatusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * value, 0, Settings.StatusIndicatorSize.Y * value)
-            Elements.StatusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * value, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * value)
-            local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
-            local lineWidth = 1 / numLines
-            for i, line in ipairs(Elements.ShieldBarLines or {}) do
-                if i <= numLines then
-                    line.Size = UDim2.new(lineWidth, 0, 1, 0)
-                    line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
-                else
-                    line:Destroy()
+            if Settings.MenuStyle == "v1" then
+                if Elements.TextLabel then
+                    Elements.TextLabel.Size = UDim2.new(0, Settings.HudSize.X * value, 0, 30 * value)
+                    Elements.TextLabel.Position = UDim2.new(0, 0, 0, 10 * value)
+                    Elements.TextLabel.TextSize = Settings.TextSize * value
                 end
-            end
-            for i, line in ipairs(Elements.SecondShieldBarLines or {}) do
-                if i <= numLines then
-                    line.Size = UDim2.new(lineWidth, 0, 1, 0)
-                    line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
-                else
-                    line:Destroy()
+            else
+                Elements.ImageBackground.Size = UDim2.new(0, Settings.ImageBackgroundSize.X * value, 0, Settings.ImageBackgroundSize.Y * value)
+                Elements.ImageBackground.Position = UDim2.new(0.5, (-Settings.ImageBackgroundSize.X / 2) * value, 0, 0)
+                local imageBackgroundCorner = Elements.ImageBackground:FindFirstChildOfClass("UICorner")
+                if imageBackgroundCorner then
+                    imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
+                end
+                Elements.ImageLabel.Size = UDim2.new(0, Settings.ImageSize.X * value, 0, Settings.ImageSize.Y * value)
+                Elements.ImageLabel.Position = UDim2.new(0.5, (-Settings.ImageSize.X / 2) * value, 0, 5 * value)
+                Elements.ShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * value, 0, Settings.ShieldBarSize.Y * value)
+                Elements.ShieldBackground.Position = UDim2.new(0, Settings.ShieldBarPosition.X.Offset * value, 0, Settings.ShieldBarPosition.Y.Offset * value)
+                local shieldBackgroundCorner = Elements.ShieldBackground:FindFirstChildOfClass("UICorner")
+                if shieldBackgroundCorner then
+                    shieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
+                end
+                Elements.TimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * value, 0, Settings.TimerSize.Y * value)
+                Elements.TimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * value, 0, 0)
+                local timerBackgroundCorner = Elements.TimerBackground:FindFirstChildOfClass("UICorner")
+                if timerBackgroundCorner then
+                    timerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
+                end
+                Elements.TimerText.TextSize = Settings.TextSize * value
+                Elements.SecondShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * value, 0, Settings.ShieldBarSize.Y * value)
+                Elements.SecondShieldBackground.Position = UDim2.new(0, Settings.SecondShieldBarPosition.X.Offset * value, 0, Settings.SecondShieldBarPosition.Y.Offset * value)
+                local secondShieldBackgroundCorner = Elements.SecondShieldBackground:FindFirstChildOfClass("UICorner")
+                if secondShieldBackgroundCorner then
+                    secondShieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
+                end
+                Elements.SecondTimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * value, 0, Settings.TimerSize.Y * value)
+                Elements.SecondTimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * value, 0, 0)
+                local secondTimerBackgroundCorner = Elements.SecondTimerBackground:FindFirstChildOfClass("UICorner")
+                if secondTimerBackgroundCorner then
+                    secondTimerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
+                end
+                Elements.SecondTimerText.TextSize = Settings.TextSize * value
+                Elements.PlayerNameBackground.Size = UDim2.new(0, Settings.PlayerNameSize.X * value, 0, Settings.PlayerNameSize.Y * value)
+                Elements.PlayerNameBackground.Position = UDim2.new(0, Settings.PlayerNamePosition.X.Offset * value, 0, Settings.PlayerNamePosition.Y.Offset * value)
+                local playerNameBackgroundCorner = Elements.PlayerNameBackground:FindFirstChildOfClass("UICorner")
+                if playerNameBackgroundCorner then
+                    playerNameBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
+                end
+                Elements.PlayerNameText.TextSize = Settings.TextSize * value
+                Elements.StatusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * value, 0, Settings.StatusIndicatorSize.Y * value)
+                Elements.StatusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * value, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * value)
+                local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
+                local lineWidth = 1 / numLines
+                for i, line in ipairs(Elements.ShieldBarLines or {}) do
+                    if i <= numLines then
+                        line.Size = UDim2.new(lineWidth, 0, 1, 0)
+                        line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
+                    else
+                        line:Destroy()
+                    end
+                end
+                for i, line in ipairs(Elements.SecondShieldBarLines or {}) do
+                    if i <= numLines then
+                        line.Size = UDim2.new(lineWidth, 0, 1, 0)
+                        line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
+                    else
+                        line:Destroy()
+                    end
                 end
             end
             notify("Shield Info", "Scale set to: " .. value, false)
@@ -706,11 +765,12 @@ function Init(ui, core, notification)
     RunService.RenderStepped:Connect(function()
         startVisualsInfo()
         updateStatusIndicator()
+        updateTextLabel()
     end)
 
     startShieldTimer()
     if Elements.PlayerNameText then
-        Elements.PlayerNameText.Text = Players.LocalPlayer.Name
+        Elements.PlayerNameText.Text = State.CurrentPlayerName
     end
 end
 
