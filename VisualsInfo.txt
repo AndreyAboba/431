@@ -289,13 +289,18 @@ local function initElements()
     end
 end
 
--- Анимация появления
+-- Анимация появления (масштабирование от меньшего к большему)
 local function animateAppearance()
-    if not Elements.MainFrame then return end 
+    if not Elements.MainFrame then return end
     local scale = Settings.Scale
-    Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * scale, 0, (State.LastPosition.Y.Offset - 50) * scale)
+    -- Начальный размер: 10% от базового
+    Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * 0.1, 0, Settings.HudSize.Y * 0.1)
+    Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * scale, 0, State.LastPosition.Y.Offset * scale)
     local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(Elements.MainFrame, tweenInfo, {Position = UDim2.new(0, State.LastPosition.X.Offset * scale, 0, State.LastPosition.Y.Offset * scale)}):Play()
+    -- Анимация до полного размера
+    TweenService:Create(Elements.MainFrame, tweenInfo, {
+        Size = UDim2.new(0, Settings.HudSize.X * scale, 0, Settings.HudSize.Y * scale)
+    }):Play()
 end
 
 -- Обновление прогресс-бара первого щита
@@ -505,7 +510,7 @@ local function setupDragging()
             local mousePos = UserInputService:GetMouseLocation()
             local delta = mousePos - State.DragStart
             State.LastPosition = UDim2.new(0, State.StartPos.X.Offset + delta.X, 0, State.StartPos.Y.Offset + delta.Y)
-            mainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset, 0, State.LastPosition.Y.Offset)
+            mainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * Settings.Scale, 0, State.LastPosition.Y.Offset * Settings.Scale)
         end
     end)
 
@@ -615,7 +620,7 @@ function Init(ui, core, notification)
             Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * Settings.Scale, 0, State.LastPosition.Y.Offset * Settings.Scale)
             notify("Shield Info", "Line Scale set to: " .. value, false)
         end
-    }, "ShieldInfoLineScale")
+    }, "ShieldInfoScale")
 
     UI.Sections.ShieldInfo:Slider({
         Name = "Scale",
