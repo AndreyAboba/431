@@ -61,11 +61,6 @@ local State = {
 -- Элементы интерфейса
 local Elements = {}
 
--- Вспомогательная функция для масштабирования UDim2
-local function scaleUDim2(udim, scale)
-    return UDim2.new(udim.X.Scale, udim.X.Offset * scale, udim.Y.Scale, udim.Y.Offset * scale)
-end
-
 -- Вспомогательная функция для интерполяции цветов
 local function lerpColor(color1, color2, t)
     return Color3.new(
@@ -99,7 +94,7 @@ local function initElements()
 
     local mainFrame = Instance.new("Frame")
     mainFrame.Size = UDim2.new(0, Settings.HudSize.X * Settings.Scale, 0, Settings.HudSize.Y * Settings.Scale)
-    mainFrame.Position = scaleUDim2(currentPosition, Settings.Scale)
+    mainFrame.Position = UDim2.new(0, currentPosition.X.Offset * Settings.Scale, 0, currentPosition.Y.Offset * Settings.Scale)
     mainFrame.BackgroundColor3 = Settings.HudBackgroundColor
     mainFrame.BackgroundTransparency = Settings.HudBackgroundTransparency
     mainFrame.BorderSizePixel = 0
@@ -298,9 +293,9 @@ end
 local function animateAppearance()
     if not Elements.MainFrame then return end
     local scale = Settings.Scale
-    Elements.MainFrame.Position = scaleUDim2(State.LastPosition + UDim2.new(0, 0, 0, -50), scale)
+    Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * scale, 0, (State.LastPosition.Y.Offset - 50) * scale)
     local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(Elements.MainFrame, tweenInfo, {Position = scaleUDim2(State.LastPosition, scale)}):Play()
+    TweenService:Create(Elements.MainFrame, tweenInfo, {Position = UDim2.new(0, State.LastPosition.X.Offset * scale, 0, State.LastPosition.Y.Offset * scale)}):Play()
 end
 
 -- Обновление прогресс-бара первого щита
@@ -502,7 +497,7 @@ local function setupDragging()
             local mousePos = UserInputService:GetMouseLocation()
             local delta = mousePos - State.DragStart
             State.LastPosition = UDim2.new(0, State.StartPos.X + delta.X, 0, State.StartPos.Y + delta.Y)
-            mainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
+            mainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * Settings.Scale, 0, State.LastPosition.Y.Offset * Settings.Scale)
         end
     end)
 
@@ -593,7 +588,7 @@ function Init(ui, core, notification)
             Settings.barSegments = value
             initElements()
             setupDragging()
-            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
+            Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * Settings.Scale, 0, State.LastPosition.Y.Offset * Settings.Scale)
             notify("Shield Info", "Bar Segments set to: " .. value .. " segments", false)
         end
     }, "ShieldInfoBarSegments")
@@ -609,7 +604,7 @@ function Init(ui, core, notification)
             Settings.LineScale = value
             initElements()
             setupDragging()
-            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
+            Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * Settings.Scale, 0, State.LastPosition.Y.Offset * Settings.Scale)
             notify("Shield Info", "Line Scale set to: " .. value, false)
         end
     }, "ShieldInfoLineScale")
@@ -624,6 +619,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.Scale = value
             Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * value, 0, Settings.HudSize.Y * value)
+            Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * value, 0, State.LastPosition.Y.Offset * value)
             local hudCorner = Elements.MainFrame:FindFirstChildOfClass("UICorner")
             if hudCorner then
                 hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * value)
