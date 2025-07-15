@@ -25,14 +25,14 @@ local Settings = {
     ImageSize = Vector2.new(20, 20), -- Размер иконки
     ImageBackgroundColor = Color3.fromRGB(10, 20, 30), -- Цвет фона иконки
     ImageBackgroundTransparency = 0.5, -- Прозрачность фона иконки
-    ImageBackgroundSize = Vector2.new(225, 30), -- Размер фона иконки (ширина = HudSize.X, увеличенная высота)
+    ImageBackgroundSize = Vector2.new(225, 30), -- Размер фона иконки
     ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
-    ShieldBarPosition = UDim2.new(0, 10, 0, 30), -- Позиция первого прогресс-бара (сдвинута влево)
-    SecondShieldBarPosition = UDim2.new(0, 10, 0, 50), -- Позиция второго прогресс-бара (сдвинута влево)
+    ShieldBarPosition = UDim2.new(0, 10, 0, 30), -- Позиция первого прогресс-бара
+    SecondShieldBarPosition = UDim2.new(0, 10, 0, 50), -- Позиция второго прогресс-бара
     TimerSize = Vector2.new(35, 15), -- Размер таймера
-    TimerOffset = 0, -- Смещение таймера от прогресс-бара
+    TimerOffset = 5, -- Смещение таймера от прогресс-бара (выступ вправо)
     PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
-    PlayerNamePosition = UDim2.new(0, 10, 0, 70), -- Позиция текста имени (сдвинута влево)
+    PlayerNamePosition = UDim2.new(0, (225 - 150) / 2, 0, 70), -- Позиция текста имени (по центру)
     TextColor = Color3.fromRGB(200, 200, 200), -- Цвет текста (бело-серый)
     TextSize = 15, -- Размер текста
     StatusIndicatorSize = Vector2.new(10, 10), -- Размер статусного индикатора
@@ -42,7 +42,7 @@ local Settings = {
     positionTolerance = 5, -- Допуск расстояния для локального игрока
     detectionRadius = 150, -- Радиус детекции для других игроков
     cornerRadius = 10, -- Радиус закругления углов mainFrame
-    elementCornerRadius = 5 -- Радиус закругления углов для фонов таймеров и имени
+    elementCornerRadius = 5 -- Радиус закругления углов для фонов
 }
 
 -- Состояние модуля
@@ -107,6 +107,7 @@ local function initElements()
     mainFrame.BackgroundTransparency = Settings.HudBackgroundTransparency
     mainFrame.BorderSizePixel = 0
     mainFrame.Visible = Settings.Enabled
+    mainFrame.Active = true -- Для обработки событий мыши
     mainFrame.Parent = screenGui
     Elements.MainFrame = mainFrame
 
@@ -156,7 +157,7 @@ local function initElements()
     local shieldBackground = Instance.new("Frame")
     shieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), Settings.Scale)
     shieldBackground.Position = scaleUDim2(Settings.ShieldBarPosition, Settings.Scale)
-    shieldBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    shieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Более темный цвет
     shieldBackground.BackgroundTransparency = 0.5
     shieldBackground.BorderSizePixel = 0
     shieldBackground.Parent = mainFrame
@@ -176,7 +177,7 @@ local function initElements()
     local timerBackground = Instance.new("Frame")
     timerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), Settings.Scale)
     timerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), Settings.Scale)
-    timerBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    timerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Более темный цвет
     timerBackground.BackgroundTransparency = 0.5
     timerBackground.BorderSizePixel = 0
     timerBackground.Parent = shieldBackground
@@ -201,7 +202,7 @@ local function initElements()
     local secondShieldBackground = Instance.new("Frame")
     secondShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), Settings.Scale)
     secondShieldBackground.Position = scaleUDim2(Settings.SecondShieldBarPosition, Settings.Scale)
-    secondShieldBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    secondShieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Более темный цвет
     secondShieldBackground.BackgroundTransparency = 0.5
     secondShieldBackground.BorderSizePixel = 0
     secondShieldBackground.Parent = mainFrame
@@ -221,7 +222,7 @@ local function initElements()
     local secondTimerBackground = Instance.new("Frame")
     secondTimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), Settings.Scale)
     secondTimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), Settings.Scale)
-    secondTimerBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    secondTimerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Более темный цвет
     secondTimerBackground.BackgroundTransparency = 0.5
     secondTimerBackground.BorderSizePixel = 0
     secondTimerBackground.Parent = secondShieldBackground
@@ -246,7 +247,7 @@ local function initElements()
     local playerNameBackground = Instance.new("Frame")
     playerNameBackground.Size = scaleUDim2(UDim2.new(0, Settings.PlayerNameSize.X, 0, Settings.PlayerNameSize.Y), Settings.Scale)
     playerNameBackground.Position = scaleUDim2(Settings.PlayerNamePosition, Settings.Scale)
-    playerNameBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    playerNameBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Более темный цвет
     playerNameBackground.BackgroundTransparency = 0.5
     playerNameBackground.BorderSizePixel = 0
     playerNameBackground.Parent = mainFrame
@@ -491,37 +492,33 @@ local function startVisualsInfo()
 end
 
 -- Перетаскивание интерфейса
-UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local mousePos = UserInputService:GetMouseLocation()
-        local mainFrame = Elements.MainFrame
-        if mainFrame then
-            local pos = mainFrame.AbsolutePosition
-            local size = mainFrame.AbsoluteSize
-            if mousePos.X >= pos.X and mousePos.X <= pos.X + size.X and
-               mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y then
-                State.Dragging = true
-                State.DragStart = mousePos
-                State.StartPos = Vector2.new(State.LastPosition.X.Offset, State.LastPosition.Y.Offset)
-            end
+local function setupDragging()
+    local mainFrame = Elements.MainFrame
+    if not mainFrame then return end
+
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            State.Dragging = true
+            State.DragStart = UserInputService:GetMouseLocation()
+            State.StartPos = Vector2.new(State.LastPosition.X.Offset, State.LastPosition.Y.Offset)
         end
-    end
-end)
+    end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
-        local mousePos = UserInputService:GetMouseLocation()
-        local delta = mousePos - State.DragStart
-        State.LastPosition = UDim2.new(0, State.StartPos.X + delta.X, 0, State.StartPos.Y + delta.Y)
-        Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
-    end
-end)
+    mainFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
+            local mousePos = UserInputService:GetMouseLocation()
+            local delta = mousePos - State.DragStart
+            State.LastPosition = UDim2.new(0, State.StartPos.X + delta.X, 0, State.StartPos.Y + delta.Y)
+            mainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
+        end
+    end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        State.Dragging = false
-    end
-end)
+    mainFrame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            State.Dragging = false
+        end
+    end)
+end
 
 -- Детекция щитов
 local function isLocalPlayerShield(part)
@@ -575,6 +572,7 @@ function Init(ui, core, notification)
 
     -- Инициализация элементов
     initElements()
+    setupDragging()
     animateAppearance()
 
     -- Создание секции ShieldInfo
@@ -604,6 +602,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.barSegments = value
             initElements()
+            setupDragging()
             Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
             notify("Shield Info", "Bar Segments set to: " .. value .. " segments", false)
         end
@@ -619,6 +618,7 @@ function Init(ui, core, notification)
         Callback = function(value)
             Settings.LineScale = value
             initElements()
+            setupDragging()
             Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
             notify("Shield Info", "Line Scale set to: " .. value, false)
         end
@@ -632,16 +632,14 @@ function Init(ui, core, notification)
         Precision = 2,
         Suffix = "",
         Callback = function(value)
-            -- Сохраняем текущую позицию в пикселях
-            local currentPos = Elements.MainFrame.Position
-            local oldAbsoluteX = currentPos.X.Offset / Settings.Scale
-            local oldAbsoluteY = currentPos.Y.Offset / Settings.Scale
+            -- Сохраняем абсолютную позицию в пикселях
+            local absolutePos = Elements.MainFrame.AbsolutePosition
 
             -- Устанавливаем новый масштаб
             Settings.Scale = value
 
             -- Обновляем позицию, чтобы сохранить верхний левый угол
-            State.LastPosition = UDim2.new(0, oldAbsoluteX, 0, oldAbsoluteY)
+            State.LastPosition = UDim2.new(0, absolutePos.X, 0, absolutePos.Y)
             Elements.MainFrame.Position = scaleUDim2(State.LastPosition, value)
 
             -- Обновление размеров и позиций всех элементов
