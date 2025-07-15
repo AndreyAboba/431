@@ -48,8 +48,8 @@ local HudSettings = {
     OrbsEnabled = true,
     OrbCount = 6,
     OrbSize = Vector2.new(8, 8),
-    OrbGradientStart = Color3.fromRGB(0, 0, 255),
-    OrbGradientEnd = Color3.fromRGB(147, 112, 219),
+    OrbGradientStart = Color3.fromRGB(0, 0, 255), -- Будет обновляться из Core.GradientColors
+    OrbGradientEnd = Color3.fromRGB(147, 112, 219), -- Будет обновляться из Core.GradientColors
     OrbLifetime = 1.5,
     OrbFadeDuration = 0.9,
     OrbMoveDistance = 50,
@@ -162,8 +162,8 @@ healthStroke.Parent = healthLabel
 local healthBarBackground = Instance.new("Frame")
 healthBarBackground.Size = UDim2.new(0, HudSettings.HealthBarSize.X * HudSettings.Scale, 0, HudSettings.HealthBarSize.Y * HudSettings.Scale)
 healthBarBackground.Position = UDim2.new(0, HudSettings.HealthBarPosition.X.Offset * HudSettings.Scale, 0, HudSettings.HealthBarPosition.Y.Offset * HudSettings.Scale)
-healthBarBackground.BackgroundColor3 = HudSettings.HudBackgroundColor
-healthBarBackground.BackgroundTransparency = HudSettings.HudBackgroundTransparency
+healthBarBackground.BackgroundColor3 = HudSettings.HealthBarBackgroundColor
+healthBarBackground.BackgroundTransparency = HudSettings.HealthBarBackgroundTransparency
 healthBarBackground.BorderSizePixel = 0
 healthBarBackground.Visible = false
 healthBarBackground.Parent = hudFrame
@@ -621,7 +621,7 @@ function Init(ui, core, notification)
         return
     end
 
-    -- Установка начальных цветов градиента для орбов
+    -- Установка цветов градиента для орбов из Core
     HudSettings.OrbGradientStart = Core.GradientColors.Color1.Value
     HudSettings.OrbGradientEnd = Core.GradientColors.Color2.Value
 
@@ -932,28 +932,6 @@ function Init(ui, core, notification)
             notify("Target Hud", "Scale set to: " .. value, false)
         end
     }, "TargetHudScale")
-
-    UI.Sections.TargetHud:Colorpicker({
-        Name = "Orb Gradient Color 1",
-        Default = Core.GradientColors.Color1.Value,
-        Callback = function(value)
-            HudSettings.OrbGradientStart = value
-            Core.GradientColors.Color1.Value = value
-            Core.GlobalConfigs.GradientColors["Gradient Color 1"] = value
-            notify("Target Hud", "Orb Gradient Color 1 updated", false)
-        end
-    }, "TargetHudOrbGradientColor1")
-
-    UI.Sections.TargetHud:Colorpicker({
-        Name = "Orb Gradient Color 2",
-        Default = Core.GradientColors.Color2.Value,
-        Callback = function(value)
-            HudSettings.OrbGradientEnd = value
-            Core.GradientColors.Color2.Value = value
-            Core.GlobalConfigs.GradientColors["Gradient Color 2"] = value
-            notify("Target Hud", "Orb Gradient Color 2 updated", false)
-        end
-    }, "TargetHudOrbGradientColor2")
 
     -- Обновление трейсера и кругов каждый кадр
     RunService.RenderStepped:Connect(UpdateTracer)
