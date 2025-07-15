@@ -26,12 +26,12 @@ local Settings = {
     ImageBackgroundColor = Color3.fromRGB(10, 20, 30), -- Цвет фона иконки
     ImageBackgroundTransparency = 0.5, -- Прозрачность фона иконки
     ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
-    ShieldBarPosition = UDim2.new(0, 37.5, 0, 30), -- Позиция первого прогресс-бара
-    SecondShieldBarPosition = UDim2.new(0, 37.5, 0, 50), -- Позиция второго прогресс-бара
+    ShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 30), -- Позиция первого прогресс-бара (центрирована)
+    SecondShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 50), -- Позиция второго прогресс-бара (центрирована)
     TimerSize = Vector2.new(40, 15), -- Размер таймера
     TimerOffset = 3, -- Смещение таймера от прогресс-бара
     PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
-    PlayerNamePosition = UDim2.new(0, 37.5, 0, 70), -- Позиция текста имени
+    PlayerNamePosition = UDim2.new(0.5, -150 / 2, 0, 70), -- Позиция текста имени (центрирована)
     TextColor = Color3.fromRGB(200, 200, 255), -- Цвет текста
     TextSize = 15, -- Размер текста
     StatusIndicatorSize = Vector2.new(10, 10), -- Размер статусного индикатора
@@ -305,7 +305,7 @@ end
 local function animateAppearance()
     if not Elements.MainFrame then return end
     local scale = Settings.Scale
-    Elements.MainFrame.Position = scaleUDim2(Settings.HudPosition + UDim2.new(0, 0, 0, -50), scale)
+    Elements.MainFrame.Position = scaleUDim2(State.LastPosition + UDim2.new(0, 0, 0, -50), scale)
     local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     TweenService:Create(Elements.MainFrame, tweenInfo, {Position = scaleUDim2(State.LastPosition, scale)}):Play()
 end
@@ -506,13 +506,11 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
-        local scale = Settings.Scale
         local mousePos = UserInputService:GetMouseLocation()
         local delta = mousePos - State.DragStart
-        local scaledDelta = UDim2.new(0, delta.X, 0, delta.Y)
-        local newPosition = State.StartPos + scaledDelta
+        local newPosition = State.StartPos + UDim2.new(0, delta.X, 0, delta.Y)
         State.LastPosition = newPosition
-        Elements.MainFrame.Position = scaleUDim2(newPosition, scale)
+        Elements.MainFrame.Position = scaleUDim2(newPosition, Settings.Scale)
     end
 end)
 
@@ -631,7 +629,25 @@ function Init(ui, core, notification)
         Precision = 2,
         Suffix = "",
         Callback = function(value)
+            -- Сохраняем центр интерфейса в абсолютных пикселях
+            local oldScale = Settings.Scale
+            local oldPosition = Elements.MainFrame.Position
+            local oldAbsolutePosition = Vector2.new(
+                oldPosition.X.Offset * oldScale,
+                oldPosition.Y.Offset * oldScale
+            )
+            local oldCenter = oldAbsolutePosition + Vector2.new(Settings.HudSize.X * oldScale / 2, Settings.HudSize.Y * oldScale / 2)
+
+            -- Устанавливаем новый масштаб
             Settings.Scale = value
+
+            -- Вычисляем новую позицию, чтобы центр остался на месте
+            local newCenterOffset = Vector2.new(
+                oldCenter.X - Settings.HudSize.X * value / 2,
+                oldCenter.Y - Settings.HudSize.Y * value / 2
+            )
+            State.LastPosition = UDim2.new(0, newCenterOffset.X, 0, newCenterOffset.Y)
+
             -- Обновление размеров и позиций всех элементов
             Elements.MainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), value)
             Elements.MainFrame.Position = scaleUDim2(State.LastPosition, value)
