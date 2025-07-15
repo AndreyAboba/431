@@ -1,0 +1,672 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+
+local Core = nil
+local UI = nil
+local notify = nil
+
+-- Конфигурация VisualsInfo
+local Settings = {
+    Enabled = true, -- Включение/выключение интерфейса
+    barSegments = 12, -- Количество сегментов прогресс-бара
+    LineScale = 0.2, -- Масштаб линий прогресс-бара
+    GuiScale = 0.8, -- Масштаб интерфейса
+    HudSize = Vector2.new(225, 90), -- Базовый размер интерфейса
+    HudPosition = UDim2.new(0, 400, 0, 250), -- Начальная позиция
+    HudBackgroundColor = Color3.fromRGB(20, 30, 50), -- Цвет фона
+    HudBackgroundTransparency = 0.3, -- Прозрачность фона
+    HudGradientStart = Color3.fromRGB(20, 30, 50), -- Начало градиента фона
+    HudGradientEnd = Color3.fromRGB(40, 60, 100), -- Конец градиента фона
+    ImageAssetId = "rbxassetid://136264509365740", -- Asset ID для иконки щита
+    ImageSize = Vector2.new(20, 20), -- Размер иконки
+    ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
+    ShieldBarPosition = UDim2.new(0, 37.5, 0, 30), -- Позиция первого прогресс-бара
+    SecondShieldBarPosition = UDim2.new(0, 37.5, 0, 50), -- Позиция второго прогресс-бара
+    TimerSize = Vector2.new(40, 15), -- Размер таймера
+    TimerOffset = 6, -- Смещение таймера от прогресс-бара
+    PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
+    PlayerNamePosition = UDim2.new(0, 37.5, 0, 70), -- Позиция текста имени
+    TextColor = Color3.fromRGB(200, 200, 255), -- Цвет текста
+    TextStrokeColor = Color3.fromRGB(100, 100, 255), -- Цвет обводки текста
+    TextStrokeTransparency = 0.8, -- Прозрачность обводки текста
+    TextSize = 15, -- Размер текста
+    StatusIndicatorSize = Vector2.new(10, 10), -- Размер статусного индикатора
+    StatusIndicatorPosition = UDim2.new(1, -15, 1, -15), -- Позиция статусного индикатора
+    shieldDuration = 3.95, -- Длительность щита
+    DelayedPizda = 0, -- Задержка очистки
+    positionTolerance = 5, -- Допуск расстояния для локального игрока
+    detectionRadius = 150, -- Радиус детекции для других игроков
+    cornerRadius = 10 -- Радиус закругления углов
+}
+
+-- Состояние модуля
+local State = {
+    IsShieldActive = false,
+    IsSecondShieldActive = false,
+    ShieldTimerConnection = nil,
+    SecondShieldTimerConnection = nil,
+    Dragging = false,
+    DragStart = nil,
+    StartPos = nil,
+    LastPosition = Settings.HudPosition
+}
+
+-- Элементы интерфейса
+local Elements = {}
+
+-- Вспомогательная функция для масштабирования UDim2
+local function scaleUDim2(udim, scale)
+    return UDim2.new(udim.X.Scale, udim.X.Offset * scale, udim.Y.Scale, udim.Y.Offset * scale)
+end
+
+-- Вспомогательная функция для интерполяции цветов
+local function lerpColor(color1, color2, t)
+    return Color3.new(
+        color1.R + (color2.R - color1.R) * t,
+        color1.G + (color2.G - color1.G) * t,
+        color1.B + (color2.B - color1.B) * t
+    )
+end
+
+-- Инициализация элементов интерфейса
+local function initElements()
+    -- Очистка старых элементов
+    for _, element in pairs(Elements) do
+        if typeof(element) == "Instance" then
+            pcall(function() element:Destroy() end)
+        elseif type(element) == "table" then
+            for _, subElement in ipairs(element) do
+                pcall(function() subElement:Destroy() end)
+            end
+        end
+    end
+    table.clear(Elements)
+
+    -- Создание ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "VisualsInfoGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.Parent = CoreGui
+    Elements.ScreenGui = screenGui
+
+    -- Основной контейнер
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), Settings.GuiScale)
+    mainFrame.Position = scaleUDim2(Settings.HudPosition, Settings.GuiScale)
+    mainFrame.BackgroundColor3 = Settings.HudBackgroundColor
+    mainFrame.BackgroundTransparency = Settings.HudBackgroundTransparency
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Visible = Settings.Enabled
+    mainFrame.Parent = screenGui
+    Elements.MainFrame = mainFrame
+
+    local hudCorner = Instance.new("UICorner")
+    hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * Settings.GuiScale)
+    hudCorner.Parent = mainFrame
+
+    local hudGradient = Instance.new("UIGradient")
+    hudGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Settings.HudGradientStart),
+        ColorSequenceKeypoint.new(1, Settings.HudGradientEnd)
+    })
+    hudGradient.Rotation = 45
+    hudGradient.Parent = mainFrame
+
+    local hudStroke = Instance.new("UIStroke")
+    hudStroke.Color = Color3.fromRGB(0, 0, 0)
+    hudStroke.Thickness = 2
+    hudStroke.Transparency = 0.5
+    hudStroke.Parent = mainFrame
+
+    -- Иконка щита
+    local imageLabel = Instance.new("ImageLabel")
+    imageLabel.Size = scaleUDim2(UDim2.new(0, Settings.ImageSize.X, 0, Settings.ImageSize.Y), Settings.GuiScale)
+    imageLabel.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageSize.X / 2, 0, 5), Settings.GuiScale)
+    imageLabel.BackgroundTransparency = 1
+    imageLabel.Image = Settings.ImageAssetId
+    imageLabel.ImageColor3 = Settings.TextColor
+    imageLabel.Parent = mainFrame
+    Elements.ImageLabel = imageLabel
+
+    -- Прогресс-бар первого щита
+    local shieldBackground = Instance.new("Frame")
+    shieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), Settings.GuiScale)
+    shieldBackground.Position = scaleUDim2(Settings.ShieldBarPosition, Settings.GuiScale)
+    shieldBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    shieldBackground.BackgroundTransparency = 0.5
+    shieldBackground.BorderSizePixel = 0
+    shieldBackground.Parent = mainFrame
+    Elements.ShieldBackground = shieldBackground
+
+    local shieldBarContainer = Instance.new("Frame")
+    shieldBarContainer.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.GuiScale)
+    shieldBarContainer.BackgroundTransparency = 1
+    shieldBarContainer.Parent = shieldBackground
+    Elements.ShieldBarContainer = shieldBarContainer
+
+    -- Таймер первого щита
+    local timerBackground = Instance.new("Frame")
+    timerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), Settings.GuiScale)
+    timerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), Settings.GuiScale)
+    timerBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    timerBackground.BackgroundTransparency = 0.5
+    timerBackground.BorderSizePixel = 0
+    timerBackground.Parent = shieldBackground
+    Elements.TimerBackground = timerBackground
+
+    local timerText = Instance.new("TextLabel")
+    timerText.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.GuiScale)
+    timerText.BackgroundTransparency = 1
+    timerText.Text = "-"
+    timerText.TextColor3 = Settings.TextColor
+    timerText.TextSize = Settings.TextSize * Settings.GuiScale
+    timerText.Font = Enum.Font.SourceSans
+    timerText.TextStrokeTransparency = Settings.TextStrokeTransparency
+    timerText.TextStrokeColor3 = Settings.TextStrokeColor
+    timerText.Parent = timerBackground
+    Elements.TimerText = timerText
+
+    -- Прогресс-бар второго щита
+    local secondShieldBackground = Instance.new("Frame")
+    secondShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), Settings.GuiScale)
+    secondShieldBackground.Position = scaleUDim2(Settings.SecondShieldBarPosition, Settings.GuiScale)
+    secondShieldBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    secondShieldBackground.BackgroundTransparency = 0.5
+    secondShieldBackground.BorderSizePixel = 0
+    secondShieldBackground.Parent = mainFrame
+    Elements.SecondShieldBackground = secondShieldBackground
+
+    local secondShieldBarContainer = Instance.new("Frame")
+    secondShieldBarContainer.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.GuiScale)
+    secondShieldBarContainer.BackgroundTransparency = 1
+    secondShieldBarContainer.Parent = secondShieldBackground
+    Elements.SecondShieldBarContainer = secondShieldBarContainer
+
+    -- Таймер второго щита
+    local secondTimerBackground = Instance.new("Frame")
+    secondTimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), Settings.GuiScale)
+    secondTimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), Settings.GuiScale)
+    secondTimerBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    secondTimerBackground.BackgroundTransparency = 0.5
+    secondTimerBackground.BorderSizePixel = 0
+    secondTimerBackground.Parent = secondShieldBackground
+    Elements.SecondTimerBackground = secondTimerBackground
+
+    local secondTimerText = Instance.new("TextLabel")
+    secondTimerText.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.GuiScale)
+    secondTimerText.BackgroundTransparency = 1
+    secondTimerText.Text = "-"
+    secondTimerText.TextColor3 = Settings.TextColor
+    secondTimerText.TextSize = Settings.TextSize * Settings.GuiScale
+    secondTimerText.Font = Enum.Font.SourceSans
+    secondTimerText.TextStrokeTransparency = Settings.TextStrokeTransparency
+    secondTimerText.TextStrokeColor3 = Settings.TextStrokeColor
+    secondTimerText.Parent = secondTimerBackground
+    Elements.SecondTimerText = secondTimerText
+
+    -- Имя игрока
+    local playerNameBackground = Instance.new("Frame")
+    playerNameBackground.Size = scaleUDim2(UDim2.new(0, Settings.PlayerNameSize.X, 0, Settings.PlayerNameSize.Y), Settings.GuiScale)
+    playerNameBackground.Position = scaleUDim2(Settings.PlayerNamePosition, Settings.GuiScale)
+    playerNameBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    playerNameBackground.BackgroundTransparency = 0.5
+    playerNameBackground.BorderSizePixel = 0
+    playerNameBackground.Parent = mainFrame
+    Elements.PlayerNameBackground = playerNameBackground
+
+    local playerNameText = Instance.new("TextLabel")
+    playerNameText.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.GuiScale)
+    playerNameText.BackgroundTransparency = 1
+    playerNameText.Text = "-"
+    playerNameText.TextColor3 = Settings.TextColor
+    playerNameText.TextSize = Settings.TextSize * Settings.GuiScale
+    playerNameText.Font = Enum.Font.SourceSans
+    playerNameText.TextStrokeTransparency = Settings.TextStrokeTransparency
+    playerNameText.TextStrokeColor3 = Settings.TextStrokeColor
+    playerNameText.Parent = playerNameBackground
+    Elements.PlayerNameText = playerNameText
+
+    -- Статусный индикатор
+    local statusIndicator = Instance.new("Frame")
+    statusIndicator.Size = scaleUDim2(UDim2.new(0, Settings.StatusIndicatorSize.X, 0, Settings.StatusIndicatorSize.Y), Settings.GuiScale)
+    statusIndicator.Position = scaleUDim2(Settings.StatusIndicatorPosition, Settings.GuiScale)
+    statusIndicator.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    statusIndicator.BackgroundTransparency = 0
+    statusIndicator.BorderSizePixel = 0
+    statusIndicator.Parent = mainFrame
+    Elements.StatusIndicator = statusIndicator
+
+    local statusCorner = Instance.new("UICorner")
+    statusCorner.CornerRadius = UDim.new(1, 0)
+    statusCorner.Parent = statusIndicator
+
+    -- Создание линий прогресс-баров
+    Elements.ShieldBarLines = {}
+    Elements.SecondShieldBarLines = {}
+    local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
+    for i = 1, numLines do
+        local line = Instance.new("Frame")
+        line.Size = scaleUDim2(UDim2.new(Settings.LineScale / Settings.barSegments, 0, 1, 0), Settings.GuiScale)
+        line.Position = scaleUDim2(UDim2.new((i - 1) * Settings.LineScale / Settings.barSegments, 0, 0, 0), Settings.GuiScale)
+        line.BackgroundTransparency = 1
+        line.BorderSizePixel = 0
+        line.Parent = shieldBarContainer
+        table.insert(Elements.ShieldBarLines, line)
+
+        local secondLine = Instance.new("Frame")
+        secondLine.Size = scaleUDim2(UDim2.new(Settings.LineScale / Settings.barSegments, 0, 1, 0), Settings.GuiScale)
+        secondLine.Position = scaleUDim2(UDim2.new((i - 1) * Settings.LineScale / Settings.barSegments, 0, 0, 0), Settings.GuiScale)
+        secondLine.BackgroundTransparency = 1
+        secondLine.BorderSizePixel = 0
+        secondLine.Parent = secondShieldBarContainer
+        table.insert(Elements.SecondShieldBarLines, secondLine)
+    end
+end
+
+-- Анимация появления
+local function animateAppearance()
+    if not Elements.MainFrame then return end
+    local scale = Settings.GuiScale
+    Elements.MainFrame.Position = scaleUDim2(Settings.HudPosition + UDim2.new(0, 0, 0, -50), scale)
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(Elements.MainFrame, tweenInfo, {Position = scaleUDim2(Settings.HudPosition, scale)}):Play()
+end
+
+-- Обновление прогресс-бара первого щита
+local function updateShieldBar(progress)
+    if not Settings.Enabled or not State.IsShieldActive then
+        for _, line in ipairs(Elements.ShieldBarLines or {}) do
+            line.BackgroundTransparency = 1
+        end
+        return
+    end
+    for i, line in ipairs(Elements.ShieldBarLines or {}) do
+        local t = (i - 1) * Settings.LineScale / Settings.barSegments
+        if t <= progress then
+            line.BackgroundTransparency = 0
+            local colorProgress = (progress + t) % 1
+            local color1 = Core and Core.GradientColors and Core.GradientColors.Color1.Value or Color3.fromRGB(0, 0, 255)
+            local color2 = Core and Core.GradientColors and Core.GradientColors.Color2.Value or Color3.fromRGB(173, 216, 230)
+            line.BackgroundColor3 = colorProgress < 0.5 and lerpColor(color1, color2, colorProgress * 2) or lerpColor(color2, color1, (colorProgress - 0.5) * 2)
+        else
+            line.BackgroundTransparency = 1
+        end
+    end
+end
+
+-- Обновление прогресс-бара второго щита
+local function updateSecondShieldBar(progress)
+    if not Settings.Enabled or not State.IsSecondShieldActive then
+        for _, line in ipairs(Elements.SecondShieldBarLines or {}) do
+            line.BackgroundTransparency = 1
+        end
+        return
+    end
+    for i, line in ipairs(Elements.SecondShieldBarLines or {}) do
+        local t = (i - 1) * Settings.LineScale / Settings.barSegments
+        if t <= progress then
+            line.BackgroundTransparency = 0
+            local colorProgress = (progress + t) % 1
+            local color1 = Core and Core.GradientColors and Core.GradientColors.Color1.Value or Color3.fromRGB(0, 0, 255)
+            local color2 = Core and Core.GradientColors and Core.GradientColors.Color2.Value or Color3.fromRGB(173, 216, 230)
+            line.BackgroundColor3 = colorProgress < 0.5 and lerpColor(color1, color2, colorProgress * 2) or lerpColor(color2, color1, (colorProgress - 0.5) * 2)
+        else
+            line.BackgroundTransparency = 1
+        end
+    end
+end
+
+-- Обновление статусного индикатора
+local function updateStatusIndicator()
+    if not Elements.StatusIndicator then return end
+    Elements.StatusIndicator.BackgroundColor3 = State.IsShieldActive or State.IsSecondShieldActive and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end
+
+-- Таймеры для щитов
+local function startShieldTimer()
+    if not Settings.Enabled then return end
+    if State.ShieldTimerConnection then
+        State.ShieldTimerConnection:Disconnect()
+        State.ShieldTimerConnection = nil
+    end
+    local startTime = tick()
+    State.IsShieldActive = true
+    State.ShieldTimerConnection = RunService.RenderStepped:Connect(function()
+        if not Settings.Enabled then
+            if State.ShieldTimerConnection then
+                State.ShieldTimerConnection:Disconnect()
+                State.ShieldTimerConnection = nil
+            end
+            State.IsShieldActive = false
+            for _, line in ipairs(Elements.ShieldBarLines or {}) do
+                line.BackgroundTransparency = 1
+            end
+            if Elements.TimerText then
+                Elements.TimerText.Text = "-"
+            end
+            if not State.IsSecondShieldActive and Elements.PlayerNameText then
+                Elements.PlayerNameText.Text = "-"
+            end
+            return
+        end
+        local elapsed = tick() - startTime
+        local progress = elapsed / Settings.shieldDuration
+        if Elements.TimerText then
+            Elements.TimerText.Text = string.format("%.2f", math.max(0, Settings.shieldDuration - elapsed))
+        end
+        if progress >= 1 then
+            progress = 1
+            if State.ShieldTimerConnection then
+                State.ShieldTimerConnection:Disconnect()
+                State.ShieldTimerConnection = nil
+            end
+            State.IsShieldActive = false
+            delay(Settings.DelayedPizda, function()
+                for _, line in ipairs(Elements.ShieldBarLines or {}) do
+                    line.BackgroundTransparency = 1
+                end
+                if Elements.TimerText then
+                    Elements.TimerText.Text = "-"
+                end
+                if not State.IsSecondShieldActive and Elements.PlayerNameText then
+                    Elements.PlayerNameText.Text = "-"
+                end
+            end)
+        end
+        updateShieldBar(progress)
+        updateStatusIndicator()
+    end)
+end
+
+local function startSecondShieldTimer()
+    if not Settings.Enabled then return end
+    if State.SecondShieldTimerConnection then
+        State.SecondShieldTimerConnection:Disconnect()
+        State.SecondShieldTimerConnection = nil
+    end
+    local startTime = tick()
+    State.IsSecondShieldActive = true
+    State.SecondShieldTimerConnection = RunService.RenderStepped:Connect(function()
+        if not Settings.Enabled then
+            if State.SecondShieldTimerConnection then
+                State.SecondShieldTimerConnection:Disconnect()
+                State.SecondShieldTimerConnection = nil
+            end
+            State.IsSecondShieldActive = false
+            for _, line in ipairs(Elements.SecondShieldBarLines or {}) do
+                line.BackgroundTransparency = 1
+            end
+            if Elements.SecondTimerText then
+                Elements.SecondTimerText.Text = "-"
+            end
+            if not State.IsShieldActive and Elements.PlayerNameText then
+                Elements.PlayerNameText.Text = "-"
+            end
+            return
+        end
+        local elapsed = tick() - startTime
+        local progress = elapsed / Settings.shieldDuration
+        if Elements.SecondTimerText then
+            Elements.SecondTimerText.Text = string.format("%.2f", math.max(0, Settings.shieldDuration - elapsed))
+        end
+        if progress >= 1 then
+            progress = 1
+            if State.SecondShieldTimerConnection then
+                State.SecondShieldTimerConnection:Disconnect()
+                State.SecondShieldTimerConnection = nil
+            end
+            State.IsSecondShieldActive = false
+            delay(Settings.DelayedPizda, function()
+                for _, line in ipairs(Elements.SecondShieldBarLines or {}) do
+                    line.BackgroundTransparency = 1
+                end
+                if Elements.SecondTimerText then
+                    Elements.SecondTimerText.Text = "-"
+                end
+                if not State.IsShieldActive and Elements.PlayerNameText then
+                    Elements.PlayerNameText.Text = "-"
+                end
+            end)
+        end
+        updateSecondShieldBar(progress)
+        updateStatusIndicator()
+    end)
+end
+
+-- Управление видимостью
+local function startVisualsInfo()
+    if not Settings.Enabled then
+        if Elements.ScreenGui then
+            Elements.ScreenGui.Enabled = false
+        end
+        return
+    end
+    if Elements.ScreenGui then
+        Elements.ScreenGui.Enabled = true
+    end
+end
+
+-- Перетаскивание интерфейса
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = UserInputService:GetMouseLocation()
+        local mainFrame = Elements.MainFrame
+        if mainFrame then
+            local pos = mainFrame.AbsolutePosition
+            local size = mainFrame.AbsoluteSize
+            if mousePos.X >= pos.X and mousePos.X <= pos.X + size.X and
+               mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y then
+                State.Dragging = true
+                State.DragStart = mousePos
+                State.StartPos = State.LastPosition
+            end
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
+        local scale = Settings.GuiScale
+        local mousePos = UserInputService:GetMouseLocation()
+        local delta = mousePos - State.DragStart
+        local scaledDelta = UDim2.new(0, delta.X / scale, 0, delta.Y / scale)
+        local newPosition = State.StartPos + scaledDelta
+        State.LastPosition = newPosition
+        Elements.MainFrame.Position = scaleUDim2(newPosition, scale)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        State.Dragging = false
+    end
+end)
+
+-- Детекция щитов
+local function isLocalPlayerShield(part)
+    local playerPos = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and Players.LocalPlayer.Character.HumanoidRootPart.Position
+    return playerPos and (playerPos - part.Position).Magnitude <= Settings.positionTolerance
+end
+
+local function findNearestPlayerToShield(shieldPos)
+    local nearestPlayer, nearestDistance = nil, Settings.detectionRadius
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local distance = (shieldPos - player.Character.HumanoidRootPart.Position).Magnitude
+            if distance < nearestDistance then
+                nearestPlayer, nearestDistance = player, distance
+            end
+        end
+    end
+    return nearestPlayer
+end
+
+if Workspace:FindFirstChild("Entities") then
+    Workspace.Entities.ChildAdded:Connect(function(child)
+        if Settings.Enabled and child:IsA("Part") and child.Name == "ProtectionBubble" then
+            if isLocalPlayerShield(child) then
+                startShieldTimer()
+                if Elements.PlayerNameText then
+                    Elements.PlayerNameText.Text = Players.LocalPlayer.Name
+                end
+            else
+                local nearestPlayer = findNearestPlayerToShield(child.Position)
+                if nearestPlayer and Elements.PlayerNameText then
+                    Elements.PlayerNameText.Text = nearestPlayer.Name
+                    startSecondShieldTimer()
+                end
+            end
+        end
+    end)
+else
+    warn("[VisualsInfo] Workspace.Entities not found. Shield detection disabled.")
+end
+
+-- Инициализация модуля
+function Init(ui, core, notification)
+    UI = ui
+    Core = core
+    notify = notification
+
+    if not UI or not Core or not notify then
+        return
+    end
+
+    -- Инициализация элементов
+    initElements()
+    animateAppearance()
+
+    -- Создание секции ShieldInfo
+    UI.Sections = UI.Sections or {}
+    UI.Sections.ShieldInfo = UI.Tabs.Visuals:Section({ Name = "ShieldInfo", Side = "Left" })
+
+    -- UI элементы для ShieldInfo
+    UI.Sections.ShieldInfo:Header({ Name = "Shield Info" })
+
+    UI.Sections.ShieldInfo:Toggle({
+        Name = "Enabled",
+        Default = Settings.Enabled,
+        Callback = function(value)
+            Settings.Enabled = value
+            startVisualsInfo()
+            notify("Shield Info", "Toggled " .. (value and "ON" or "OFF"), false)
+        end
+    }, "ShieldInfoEnabled")
+
+    UI.Sections.ShieldInfo:Slider({
+        Name = "Bar Segments",
+        Minimum = 1,
+        Maximum = 20,
+        Default = Settings.barSegments,
+        Precision = 0,
+        Suffix = "segments",
+        Callback = function(value)
+            Settings.barSegments = value
+            initElements() -- Пересоздаем элементы для обновления линий
+            notify("Shield Info", "Bar Segments set to: " .. value .. " segments", false)
+        end
+    }, "ShieldInfoBarSegments")
+
+    UI.Sections.ShieldInfo:Slider({
+        Name = "Line Scale",
+        Minimum = 0.05,
+        Maximum = 0.5,
+        Default = Settings.LineScale,
+        Precision = 2,
+        Suffix = "",
+        Callback = function(value)
+            Settings.LineScale = value
+            initElements() -- Пересоздаем элементы для обновления линий
+            notify("Shield Info", "Line Scale set to: " .. value, false)
+        end
+    }, "ShieldInfoLineScale")
+
+    UI.Sections.ShieldInfo:Slider({
+        Name = "Gui Scale",
+        Minimum = 0.5,
+        Maximum = 2,
+        Default = Settings.GuiScale,
+        Precision = 2,
+        Suffix = "",
+        Callback = function(value)
+            Settings.GuiScale = value
+            -- Обновление размеров и позиций всех элементов
+            Elements.MainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), value)
+            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, value)
+            local hudCorner = Elements.MainFrame:FindFirstChildOfClass("UICorner")
+            if hudCorner then
+                hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * value)
+            end
+            Elements.ImageLabel.Size = scaleUDim2(UDim2.new(0, Settings.ImageSize.X, 0, Settings.ImageSize.Y), value)
+            Elements.ImageLabel.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageSize.X / 2, 0, 5), value)
+            Elements.ShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), value)
+            Elements.ShieldBackground.Position = scaleUDim2(Settings.ShieldBarPosition, value)
+            Elements.TimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), value)
+            Elements.TimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), value)
+            Elements.TimerText.TextSize = Settings.TextSize * value
+            Elements.SecondShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), value)
+            Elements.SecondShieldBackground.Position = scaleUDim2(Settings.SecondShieldBarPosition, value)
+            Elements.SecondTimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), value)
+            Elements.SecondTimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), value)
+            Elements.SecondTimerText.TextSize = Settings.TextSize * value
+            Elements.PlayerNameBackground.Size = scaleUDim2(UDim2.new(0, Settings.PlayerNameSize.X, 0, Settings.PlayerNameSize.Y), value)
+            Elements.PlayerNameBackground.Position = scaleUDim2(Settings.PlayerNamePosition, value)
+            Elements.PlayerNameText.TextSize = Settings.TextSize * value
+            Elements.StatusIndicator.Size = scaleUDim2(UDim2.new(0, Settings.StatusIndicatorSize.X, 0, Settings.StatusIndicatorSize.Y), value)
+            Elements.StatusIndicator.Position = scaleUDim2(Settings.StatusIndicatorPosition, value)
+            -- Обновление линий прогресс-баров
+            local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
+            for i, line in ipairs(Elements.ShieldBarLines or {}) do
+                if i <= numLines then
+                    line.Size = scaleUDim2(UDim2.new(Settings.LineScale / Settings.barSegments, 0, 1, 0), value)
+                    line.Position = scaleUDim2(UDim2.new((i - 1) * Settings.LineScale / Settings.barSegments, 0, 0, 0), value)
+                else
+                    line:Destroy()
+                end
+            end
+            for i, line in ipairs(Elements.SecondShieldBarLines or {}) do
+                if i <= numLines then
+                    line.Size = scaleUDim2(UDim2.new(Settings.LineScale / Settings.barSegments, 0, 1, 0), value)
+                    line.Position = scaleUDim2(UDim2.new((i - 1) * Settings.LineScale / Settings.barSegments, 0, 0, 0), value)
+                else
+                    line:Destroy()
+                end
+            end
+            notify("Shield Info", "Gui Scale set to: " .. value, false)
+        end
+    }, "ShieldInfoGuiScale")
+
+    -- Обновление интерфейса каждый кадр
+    RunService.RenderStepped:Connect(function()
+        startVisualsInfo()
+        updateStatusIndicator()
+    end)
+
+    -- Тестовая активация щита
+    startShieldTimer()
+    if Elements.PlayerNameText then
+        Elements.PlayerNameText.Text = Players.LocalPlayer.Name
+    end
+end
+
+-- Очистка при телепортации
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
+    if Elements.ScreenGui then
+        Elements.ScreenGui:Destroy()
+    end
+    if State.ShieldTimerConnection then
+        State.ShieldTimerConnection:Disconnect()
+    end
+    if State.SecondShieldTimerConnection then
+        State.SecondShieldTimerConnection:Disconnect()
+    end
+end)
+
+return {
+    Init = Init
+}
