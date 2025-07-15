@@ -291,7 +291,7 @@ end
 
 -- Анимация появления
 local function animateAppearance()
-    if not Elements.MainFrame then return end
+    if not Elements.MainFrame then return end 
     local scale = Settings.Scale
     Elements.MainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * scale, 0, (State.LastPosition.Y.Offset - 50) * scale)
     local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -474,7 +474,7 @@ local function startVisualsInfo()
     end
 end
 
--- Перетаскивание интерфейса
+-- Перетаскивание интерфейса (как в TargetHud)
 local function setupDragging()
     local mainFrame = Elements.MainFrame
     if not mainFrame then return end
@@ -484,11 +484,19 @@ local function setupDragging()
         State.DragConnection = nil
     end
 
-    mainFrame.InputBegan:Connect(function(input)
+    UserInputService.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            State.Dragging = true
-            State.DragStart = UserInputService:GetMouseLocation()
-            State.StartPos = Vector2.new(State.LastPosition.X.Offset, State.LastPosition.Y.Offset)
+            local mousePos = UserInputService:GetMouseLocation()
+            local framePos = mainFrame.Position
+            local frameSize = mainFrame.Size
+            local posX, posY = framePos.X.Offset, framePos.Y.Offset
+            local sizeX, sizeY = frameSize.X.Offset, frameSize.Y.Offset
+            if mousePos.X >= posX and mousePos.X <= posX + sizeX and
+               mousePos.Y >= posY and mousePos.Y <= posY + sizeY then
+                State.Dragging = true
+                State.DragStart = mousePos
+                State.StartPos = framePos
+            end
         end
     end)
 
@@ -496,8 +504,8 @@ local function setupDragging()
         if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
             local mousePos = UserInputService:GetMouseLocation()
             local delta = mousePos - State.DragStart
-            State.LastPosition = UDim2.new(0, State.StartPos.X + delta.X, 0, State.StartPos.Y + delta.Y)
-            mainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset * Settings.Scale, 0, State.LastPosition.Y.Offset * Settings.Scale)
+            State.LastPosition = UDim2.new(0, State.StartPos.X.Offset + delta.X, 0, State.StartPos.Y.Offset + delta.Y)
+            mainFrame.Position = UDim2.new(0, State.LastPosition.X.Offset, 0, State.LastPosition.Y.Offset)
         end
     end)
 
