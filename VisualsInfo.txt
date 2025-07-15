@@ -289,15 +289,18 @@ local function initElements()
     end
 end
 
--- Анимация появления (масштабирование от меньшего к большему)
+-- Анимация появления (масштабирование из центра)
 local function animateAppearance()
     if not Elements.MainFrame then return end
     local scale = Settings.Scale
+    local centerX = State.LastPosition.X.Offset
+    local centerY = State.LastPosition.Y.Offset
     Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * 0.1, 0, Settings.HudSize.Y * 0.1)
-    Elements.MainFrame.Position = State.LastPosition
+    Elements.MainFrame.Position = UDim2.new(0, centerX - (Settings.HudSize.X * 0.1) / 2, 0, centerY - (Settings.HudSize.Y * 0.1) / 2)
     local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     TweenService:Create(Elements.MainFrame, tweenInfo, {
-        Size = UDim2.new(0, Settings.HudSize.X * scale, 0, Settings.HudSize.Y * scale)
+        Size = UDim2.new(0, Settings.HudSize.X * scale, 0, Settings.HudSize.Y * scale),
+        Position = UDim2.new(0, centerX - (Settings.HudSize.X * scale) / 2, 0, centerY - (Settings.HudSize.Y * scale) / 2)
     }):Play()
 end
 
