@@ -11,38 +11,38 @@ local notify = nil
 
 -- Конфигурация VisualsInfo
 local Settings = {
-    Enabled = true, -- Включение/выключение интерфейса
-    barSegments = 12, -- Количество сегментов прогресс-бара
-    LineScale = 0.2, -- Масштаб линий прогресс-бара
-    Scale = 0.8, -- Масштаб интерфейса
-    HudSize = Vector2.new(225, 90), -- Базовый размер интерфейса
-    HudPosition = UDim2.new(0, 400, 0, 250), -- Начальная позиция
-    HudBackgroundColor = Color3.fromRGB(20, 30, 50), -- Цвет фона
-    HudBackgroundTransparency = 0.3, -- Прозрачность фона
-    HudGradientStart = Color3.fromRGB(20, 30, 50), -- Начало градиента фона
-    HudGradientEnd = Color3.fromRGB(40, 60, 100), -- Конец градиента фона
-    ImageAssetId = "rbxassetid://2030338156", -- Asset ID для иконки щита
-    ImageSize = Vector2.new(20, 20), -- Размер иконки
-    ImageBackgroundColor = Color3.fromRGB(10, 20, 30), -- Цвет фона иконки
-    ImageBackgroundTransparency = 0.5, -- Прозрачность фона иконки
-    ImageBackgroundSize = Vector2.new(225, 30), -- Размер фона иконки
-    ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
-    ShieldBarPosition = UDim2.new(0, 10, 0, 30), -- Позиция первого прогресс-бара
-    SecondShieldBarPosition = UDim2.new(0, 10, 0, 50), -- Позиция второго прогресс-бара
-    TimerSize = Vector2.new(35, 15), -- Размер таймера
-    TimerOffset = 5, -- Смещение таймера от прогресс-бара
-    PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
-    PlayerNamePosition = UDim2.new(0, (225 - 150) / 2, 0, 70), -- Позиция текста имени (центрировано)
-    TextColor = Color3.fromRGB(200, 200, 200), -- Цвет текста
-    TextSize = 15, -- Размер текста
-    StatusIndicatorSize = Vector2.new(10, 10), -- Размер статусного индикатора
-    StatusIndicatorPosition = UDim2.new(1, -15, 1, -15), -- Позиция статусного индикатора
-    shieldDuration = 3.95, -- Длительность щита
-    DelayedPizda = 0, -- Задержка очистки
-    positionTolerance = 5, -- Допуск расстояния для локального игрока
-    detectionRadius = 150, -- Радиус детекции для других игроков
-    cornerRadius = 10, -- Радиус закругления углов mainFrame
-    elementCornerRadius = 5 -- Радиус закругления углов для фонов
+    Enabled = true,
+    barSegments = 12,
+    LineScale = 0.2,
+    Scale = 0.8,
+    HudSize = Vector2.new(225, 90),
+    HudPosition = UDim2.new(0, 400, 0, 250),
+    HudBackgroundColor = Color3.fromRGB(20, 30, 50),
+    HudBackgroundTransparency = 0.3,
+    HudGradientStart = Color3.fromRGB(20, 30, 50),
+    HudGradientEnd = Color3.fromRGB(40, 60, 100),
+    ImageAssetId = "rbxassetid://2030338156",
+    ImageSize = Vector2.new(20, 20),
+    ImageBackgroundColor = Color3.fromRGB(10, 20, 30),
+    ImageBackgroundTransparency = 0.5,
+    ImageBackgroundSize = Vector2.new(225, 30),
+    ShieldBarSize = Vector2.new(150, 15),
+    ShieldBarPosition = UDim2.new(0, 10, 0, 30),
+    SecondShieldBarPosition = UDim2.new(0, 10, 0, 50),
+    TimerSize = Vector2.new(35, 15),
+    TimerOffset = 5,
+    PlayerNameSize = Vector2.new(150, 15),
+    PlayerNamePosition = UDim2.new(0, (225 - 150) / 2, 0, 70),
+    TextColor = Color3.fromRGB(200, 200, 200),
+    TextSize = 15,
+    StatusIndicatorSize = Vector2.new(10, 10),
+    StatusIndicatorPosition = UDim2.new(1, -15, 1, -15),
+    shieldDuration = 3.95,
+    DelayedPizda = 0,
+    positionTolerance = 5,
+    detectionRadius = 150,
+    cornerRadius = 10,
+    elementCornerRadius = 5
 }
 
 -- Состояние модуля
@@ -54,8 +54,8 @@ local State = {
     Dragging = false,
     DragStart = nil,
     StartPos = nil,
-    LastPosition = Settings.HudPosition, -- Хранит позицию в пиксельных координатах
-    DragConnection = nil -- Для хранения соединения InputChanged
+    LastPosition = Settings.HudPosition,
+    DragConnection = nil
 }
 
 -- Элементы интерфейса
@@ -77,10 +77,8 @@ end
 
 -- Инициализация элементов интерфейса
 local function initElements()
-    -- Сохраняем текущую позицию
     local currentPosition = State.LastPosition
 
-    -- Очистка старых элементов
     for _, element in pairs(Elements) do
         if typeof(element) == "Instance" then
             pcall(function() element:Destroy() end)
@@ -92,7 +90,6 @@ local function initElements()
     end
     table.clear(Elements)
 
-    -- Создание ScreenGui
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "VisualsInfoGui"
     screenGui.ResetOnSpawn = false
@@ -100,15 +97,14 @@ local function initElements()
     screenGui.Parent = CoreGui
     Elements.ScreenGui = screenGui
 
-    -- Основной контейнер
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), Settings.Scale)
+    mainFrame.Size = UDim2.new(0, Settings.HudSize.X * Settings.Scale, 0, Settings.HudSize.Y * Settings.Scale)
     mainFrame.Position = scaleUDim2(currentPosition, Settings.Scale)
     mainFrame.BackgroundColor3 = Settings.HudBackgroundColor
     mainFrame.BackgroundTransparency = Settings.HudBackgroundTransparency
     mainFrame.BorderSizePixel = 0
     mainFrame.Visible = Settings.Enabled
-    mainFrame.Active = true -- Для обработки событий мыши
+    mainFrame.Active = true
     mainFrame.Parent = screenGui
     Elements.MainFrame = mainFrame
 
@@ -130,10 +126,9 @@ local function initElements()
     hudStroke.Transparency = 0.5
     hudStroke.Parent = mainFrame
 
-    -- Фон иконки щита
     local imageBackground = Instance.new("Frame")
-    imageBackground.Size = scaleUDim2(UDim2.new(0, Settings.ImageBackgroundSize.X, 0, Settings.ImageBackgroundSize.Y), Settings.Scale)
-    imageBackground.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageBackgroundSize.X / 2, 0, 0), Settings.Scale)
+    imageBackground.Size = UDim2.new(0, Settings.ImageBackgroundSize.X * Settings.Scale, 0, Settings.ImageBackgroundSize.Y * Settings.Scale)
+    imageBackground.Position = UDim2.new(0.5, (-Settings.ImageBackgroundSize.X / 2) * Settings.Scale, 0, 0)
     imageBackground.BackgroundColor3 = Settings.ImageBackgroundColor
     imageBackground.BackgroundTransparency = Settings.ImageBackgroundTransparency
     imageBackground.BorderSizePixel = 0
@@ -144,20 +139,18 @@ local function initElements()
     imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * Settings.Scale)
     imageBackgroundCorner.Parent = imageBackground
 
-    -- Иконка щита
     local imageLabel = Instance.new("ImageLabel")
-    imageLabel.Size = scaleUDim2(UDim2.new(0, Settings.ImageSize.X, 0, Settings.ImageSize.Y), Settings.Scale)
-    imageLabel.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageSize.X / 2, 0, 5), Settings.Scale)
+    imageLabel.Size = UDim2.new(0, Settings.ImageSize.X * Settings.Scale, 0, Settings.ImageSize.Y * Settings.Scale)
+    imageLabel.Position = UDim2.new(0.5, (-Settings.ImageSize.X / 2) * Settings.Scale, 0, 5 * Settings.Scale)
     imageLabel.BackgroundTransparency = 1
     imageLabel.Image = Settings.ImageAssetId
     imageLabel.ImageColor3 = Settings.TextColor
     imageLabel.Parent = mainFrame
     Elements.ImageLabel = imageLabel
 
-    -- Прогресс-бар первого щита
     local shieldBackground = Instance.new("Frame")
-    shieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), Settings.Scale)
-    shieldBackground.Position = scaleUDim2(Settings.ShieldBarPosition, Settings.Scale)
+    shieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * Settings.Scale, 0, Settings.ShieldBarSize.Y * Settings.Scale)
+    shieldBackground.Position = UDim2.new(0, Settings.ShieldBarPosition.X.Offset * Settings.Scale, 0, Settings.ShieldBarPosition.Y.Offset * Settings.Scale)
     shieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     shieldBackground.BackgroundTransparency = 0.5
     shieldBackground.BorderSizePixel = 0
@@ -169,15 +162,14 @@ local function initElements()
     shieldBackgroundCorner.Parent = shieldBackground
 
     local shieldBarContainer = Instance.new("Frame")
-    shieldBarContainer.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.Scale)
+    shieldBarContainer.Size = UDim2.new(1, 0, 1, 0)
     shieldBarContainer.BackgroundTransparency = 1
     shieldBarContainer.Parent = shieldBackground
     Elements.ShieldBarContainer = shieldBarContainer
 
-    -- Таймер первого щита
     local timerBackground = Instance.new("Frame")
-    timerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), Settings.Scale)
-    timerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), Settings.Scale)
+    timerBackground.Size = UDim2.new(0, Settings.TimerSize.X * Settings.Scale, 0, Settings.TimerSize.Y * Settings.Scale)
+    timerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * Settings.Scale, 0, 0)
     timerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     timerBackground.BackgroundTransparency = 0.5
     timerBackground.BorderSizePixel = 0
@@ -189,7 +181,7 @@ local function initElements()
     timerBackgroundCorner.Parent = timerBackground
 
     local timerText = Instance.new("TextLabel")
-    timerText.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.Scale)
+    timerText.Size = UDim2.new(1, 0, 1, 0)
     timerText.BackgroundTransparency = 1
     timerText.Text = "-"
     timerText.TextColor3 = Settings.TextColor
@@ -199,10 +191,9 @@ local function initElements()
     timerText.Parent = timerBackground
     Elements.TimerText = timerText
 
-    -- Прогресс-бар второго щита
     local secondShieldBackground = Instance.new("Frame")
-    secondShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), Settings.Scale)
-    secondShieldBackground.Position = scaleUDim2(Settings.SecondShieldBarPosition, Settings.Scale)
+    secondShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * Settings.Scale, 0, Settings.ShieldBarSize.Y * Settings.Scale)
+    secondShieldBackground.Position = UDim2.new(0, Settings.SecondShieldBarPosition.X.Offset * Settings.Scale, 0, Settings.SecondShieldBarPosition.Y.Offset * Settings.Scale)
     secondShieldBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     secondShieldBackground.BackgroundTransparency = 0.5
     secondShieldBackground.BorderSizePixel = 0
@@ -214,15 +205,14 @@ local function initElements()
     secondShieldBackgroundCorner.Parent = secondShieldBackground
 
     local secondShieldBarContainer = Instance.new("Frame")
-    secondShieldBarContainer.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.Scale)
+    secondShieldBarContainer.Size = UDim2.new(1, 0, 1, 0)
     secondShieldBarContainer.BackgroundTransparency = 1
     secondShieldBarContainer.Parent = secondShieldBackground
     Elements.SecondShieldBarContainer = secondShieldBarContainer
 
-    -- Таймер второго щита
     local secondTimerBackground = Instance.new("Frame")
-    secondTimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), Settings.Scale)
-    secondTimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), Settings.Scale)
+    secondTimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * Settings.Scale, 0, Settings.TimerSize.Y * Settings.Scale)
+    secondTimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * Settings.Scale, 0, 0)
     secondTimerBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     secondTimerBackground.BackgroundTransparency = 0.5
     secondTimerBackground.BorderSizePixel = 0
@@ -234,7 +224,7 @@ local function initElements()
     secondTimerBackgroundCorner.Parent = secondTimerBackground
 
     local secondTimerText = Instance.new("TextLabel")
-    secondTimerText.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.Scale)
+    secondTimerText.Size = UDim2.new(1, 0, 1, 0)
     secondTimerText.BackgroundTransparency = 1
     secondTimerText.Text = "-"
     secondTimerText.TextColor3 = Settings.TextColor
@@ -244,10 +234,9 @@ local function initElements()
     secondTimerText.Parent = secondTimerBackground
     Elements.SecondTimerText = secondTimerText
 
-    -- Имя игрока
     local playerNameBackground = Instance.new("Frame")
-    playerNameBackground.Size = scaleUDim2(UDim2.new(0, Settings.PlayerNameSize.X, 0, Settings.PlayerNameSize.Y), Settings.Scale)
-    playerNameBackground.Position = scaleUDim2(Settings.PlayerNamePosition, Settings.Scale)
+    playerNameBackground.Size = UDim2.new(0, Settings.PlayerNameSize.X * Settings.Scale, 0, Settings.PlayerNameSize.Y * Settings.Scale)
+    playerNameBackground.Position = UDim2.new(0, Settings.PlayerNamePosition.X.Offset * Settings.Scale, 0, Settings.PlayerNamePosition.Y.Offset * Settings.Scale)
     playerNameBackground.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     playerNameBackground.BackgroundTransparency = 0.5
     playerNameBackground.BorderSizePixel = 0
@@ -259,7 +248,7 @@ local function initElements()
     playerNameBackgroundCorner.Parent = playerNameBackground
 
     local playerNameText = Instance.new("TextLabel")
-    playerNameText.Size = scaleUDim2(UDim2.new(1, 0, 1, 0), Settings.Scale)
+    playerNameText.Size = UDim2.new(1, 0, 1, 0)
     playerNameText.BackgroundTransparency = 1
     playerNameText.Text = "-"
     playerNameText.TextColor3 = Settings.TextColor
@@ -269,10 +258,9 @@ local function initElements()
     playerNameText.Parent = playerNameBackground
     Elements.PlayerNameText = playerNameText
 
-    -- Статусный индикатор
     local statusIndicator = Instance.new("Frame")
-    statusIndicator.Size = scaleUDim2(UDim2.new(0, Settings.StatusIndicatorSize.X, 0, Settings.StatusIndicatorSize.Y), Settings.Scale)
-    statusIndicator.Position = scaleUDim2(Settings.StatusIndicatorPosition, Settings.Scale)
+    statusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * Settings.Scale, 0, Settings.StatusIndicatorSize.Y * Settings.Scale)
+    statusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * Settings.Scale, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * Settings.Scale)
     statusIndicator.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
     statusIndicator.BackgroundTransparency = 0
     statusIndicator.BorderSizePixel = 0
@@ -283,23 +271,22 @@ local function initElements()
     statusCorner.CornerRadius = UDim.new(1, 0)
     statusCorner.Parent = statusIndicator
 
-    -- Создание линий прогресс-баров
     Elements.ShieldBarLines = {}
     Elements.SecondShieldBarLines = {}
     local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
     local lineWidth = 1 / numLines
     for i = 1, numLines do
         local line = Instance.new("Frame")
-        line.Size = scaleUDim2(UDim2.new(lineWidth, 0, 1, 0), Settings.Scale)
-        line.Position = scaleUDim2(UDim2.new((i - 1) * lineWidth, 0, 0, 0), Settings.Scale)
+        line.Size = UDim2.new(lineWidth, 0, 1, 0)
+        line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
         line.BackgroundTransparency = 1
         line.BorderSizePixel = 0
         line.Parent = shieldBarContainer
         table.insert(Elements.ShieldBarLines, line)
 
         local secondLine = Instance.new("Frame")
-        secondLine.Size = scaleUDim2(UDim2.new(lineWidth, 0, 1, 0), Settings.Scale)
-        secondLine.Position = scaleUDim2(UDim2.new((i - 1) * lineWidth, 0, 0, 0), Settings.Scale)
+        secondLine.Size = UDim2.new(lineWidth, 0, 1, 0)
+        secondLine.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
         secondLine.BackgroundTransparency = 1
         secondLine.BorderSizePixel = 0
         secondLine.Parent = secondShieldBarContainer
@@ -497,7 +484,6 @@ local function setupDragging()
     local mainFrame = Elements.MainFrame
     if not mainFrame then return end
 
-    -- Отключить предыдущее соединение InputChanged, если оно существует
     if State.DragConnection then
         State.DragConnection:Disconnect()
         State.DragConnection = nil
@@ -577,16 +563,13 @@ function Init(ui, core, notification)
         return
     end
 
-    -- Инициализация элементов
     initElements()
     setupDragging()
     animateAppearance()
 
-    -- Создание секции ShieldInfo
     UI.Sections = UI.Sections or {}
     UI.Sections.ShieldInfo = UI.Tabs.Visuals:Section({ Name = "ShieldInfo", Side = "Left" })
 
-    -- UI элементы для ShieldInfo
     UI.Sections.ShieldInfo:Header({ Name = "Shield Info" })
 
     UI.Sections.ShieldInfo:Toggle({
@@ -639,83 +622,69 @@ function Init(ui, core, notification)
         Precision = 2,
         Suffix = "",
         Callback = function(value)
-            -- Сохраняем абсолютную позицию в пикселях
-            local absolutePos = Elements.MainFrame.AbsolutePosition
-            local oldScale = Settings.Scale
-
-            -- Устанавливаем новый масштаб
             Settings.Scale = value
-
-            -- Обновляем размеры, сохраняя позицию
-            Elements.MainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), value)
-            Elements.MainFrame.Position = UDim2.new(0, absolutePos.X, 0, absolutePos.Y)
-
-            -- Обновляем State.LastPosition для последующего перетаскивания
-            State.LastPosition = UDim2.new(0, absolutePos.X / value, 0, absolutePos.Y / value)
-
-            -- Обновление размеров и позиций всех элементов
+            Elements.MainFrame.Size = UDim2.new(0, Settings.HudSize.X * value, 0, Settings.HudSize.Y * value)
             local hudCorner = Elements.MainFrame:FindFirstChildOfClass("UICorner")
             if hudCorner then
                 hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * value)
             end
-            Elements.ImageBackground.Size = scaleUDim2(UDim2.new(0, Settings.ImageBackgroundSize.X, 0, Settings.ImageBackgroundSize.Y), value)
-            Elements.ImageBackground.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageBackgroundSize.X / 2, 0, 0), value)
+            Elements.ImageBackground.Size = UDim2.new(0, Settings.ImageBackgroundSize.X * value, 0, Settings.ImageBackgroundSize.Y * value)
+            Elements.ImageBackground.Position = UDim2.new(0.5, (-Settings.ImageBackgroundSize.X / 2) * value, 0, 0)
             local imageBackgroundCorner = Elements.ImageBackground:FindFirstChildOfClass("UICorner")
             if imageBackgroundCorner then
                 imageBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
             end
-            Elements.ImageLabel.Size = scaleUDim2(UDim2.new(0, Settings.ImageSize.X, 0, Settings.ImageSize.Y), value)
-            Elements.ImageLabel.Position = scaleUDim2(UDim2.new(0.5, -Settings.ImageSize.X / 2, 0, 5), value)
-            Elements.ShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), value)
-            Elements.ShieldBackground.Position = scaleUDim2(Settings.ShieldBarPosition, value)
+            Elements.ImageLabel.Size = UDim2.new(0, Settings.ImageSize.X * value, 0, Settings.ImageSize.Y * value)
+            Elements.ImageLabel.Position = UDim2.new(0.5, (-Settings.ImageSize.X / 2) * value, 0, 5 * value)
+            Elements.ShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * value, 0, Settings.ShieldBarSize.Y * value)
+            Elements.ShieldBackground.Position = UDim2.new(0, Settings.ShieldBarPosition.X.Offset * value, 0, Settings.ShieldBarPosition.Y.Offset * value)
             local shieldBackgroundCorner = Elements.ShieldBackground:FindFirstChildOfClass("UICorner")
             if shieldBackgroundCorner then
                 shieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
             end
-            Elements.TimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), value)
-            Elements.TimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), value)
+            Elements.TimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * value, 0, Settings.TimerSize.Y * value)
+            Elements.TimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * value, 0, 0)
             local timerBackgroundCorner = Elements.TimerBackground:FindFirstChildOfClass("UICorner")
             if timerBackgroundCorner then
                 timerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
             end
             Elements.TimerText.TextSize = Settings.TextSize * value
-            Elements.SecondShieldBackground.Size = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X, 0, Settings.ShieldBarSize.Y), value)
-            Elements.SecondShieldBackground.Position = scaleUDim2(Settings.SecondShieldBarPosition, value)
+            Elements.SecondShieldBackground.Size = UDim2.new(0, Settings.ShieldBarSize.X * value, 0, Settings.ShieldBarSize.Y * value)
+            Elements.SecondShieldBackground.Position = UDim2.new(0, Settings.SecondShieldBarPosition.X.Offset * value, 0, Settings.SecondShieldBarPosition.Y.Offset * value)
             local secondShieldBackgroundCorner = Elements.SecondShieldBackground:FindFirstChildOfClass("UICorner")
             if secondShieldBackgroundCorner then
                 secondShieldBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
             end
-            Elements.SecondTimerBackground.Size = scaleUDim2(UDim2.new(0, Settings.TimerSize.X, 0, Settings.TimerSize.Y), value)
-            Elements.SecondTimerBackground.Position = scaleUDim2(UDim2.new(0, Settings.ShieldBarSize.X + Settings.TimerOffset, 0, 0), value)
+            Elements.SecondTimerBackground.Size = UDim2.new(0, Settings.TimerSize.X * value, 0, Settings.TimerSize.Y * value)
+            Elements.SecondTimerBackground.Position = UDim2.new(0, (Settings.ShieldBarSize.X + Settings.TimerOffset) * value, 0, 0)
             local secondTimerBackgroundCorner = Elements.SecondTimerBackground:FindFirstChildOfClass("UICorner")
             if secondTimerBackgroundCorner then
                 secondTimerBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
             end
             Elements.SecondTimerText.TextSize = Settings.TextSize * value
-            Elements.PlayerNameBackground.Size = scaleUDim2(UDim2.new(0, Settings.PlayerNameSize.X, 0, Settings.PlayerNameSize.Y), value)
-            Elements.PlayerNameBackground.Position = scaleUDim2(Settings.PlayerNamePosition, value)
+            Elements.PlayerNameBackground.Size = UDim2.new(0, Settings.PlayerNameSize.X * value, 0, Settings.PlayerNameSize.Y * value)
+            Elements.PlayerNameBackground.Position = UDim2.new(0, Settings.PlayerNamePosition.X.Offset * value, 0, Settings.PlayerNamePosition.Y.Offset * value)
             local playerNameBackgroundCorner = Elements.PlayerNameBackground:FindFirstChildOfClass("UICorner")
             if playerNameBackgroundCorner then
                 playerNameBackgroundCorner.CornerRadius = UDim.new(0, Settings.elementCornerRadius * value)
             end
             Elements.PlayerNameText.TextSize = Settings.TextSize * value
-            Elements.StatusIndicator.Size = scaleUDim2(UDim2.new(0, Settings.StatusIndicatorSize.X, 0, Settings.StatusIndicatorSize.Y), value)
-            Elements.StatusIndicator.Position = scaleUDim2(Settings.StatusIndicatorPosition, value)
-            -- Обновление линий прогресс-баров
+            Elements.StatusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * value, 0, Settings.StatusIndicatorSize.Y * value)
+            Elements.StatusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * value, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * value)
             local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
             local lineWidth = 1 / numLines
             for i, line in ipairs(Elements.ShieldBarLines or {}) do
                 if i <= numLines then
-                    line.Size = scaleUDim2(UDim2.new(lineWidth, 0, 1, 0), value)
-                    line.Position = scaleUDim2(UDim2.new((i - 1) * lineWidth, 0, 0, 0), value)
+                    line.Size = UDim2.new(lineWidth, 0, 1, 0)
+                    line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
                 else
                     line:Destroy()
                 end
             end
             for i, line in ipairs(Elements.SecondShieldBarLines or {}) do
                 if i <= numLines then
-                    line.Size = scaleUDim2(UDim2.new(lineWidth, 0, 1, 0), value)
-                    line.Position = scaleUDim2(UDim2.new((i - 1) * lineWidth, 0, 0, 0), value)
+                    line.Size = UDim2.new(lineWidth, 0, 1, 0)
+                    line.Position = UDim2.new((i - 1) * lineWidth, 0, 0, 0)
                 else
                     line:Destroy()
                 end
@@ -724,13 +693,11 @@ function Init(ui, core, notification)
         end
     }, "ShieldInfoScale")
 
-    -- Обновление интерфейса каждый кадр
     RunService.RenderStepped:Connect(function()
         startVisualsInfo()
         updateStatusIndicator()
     end)
 
-    -- Тестовая активация щита
     startShieldTimer()
     if Elements.PlayerNameText then
         Elements.PlayerNameText.Text = Players.LocalPlayer.Name
