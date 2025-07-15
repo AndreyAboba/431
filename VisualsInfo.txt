@@ -356,13 +356,13 @@ end
 
 -- Обновление статусного индикатора
 local function updateStatusIndicator()
-    if not Elements.StatusIndicator or Settings.MenuStyle != "v2" then return end
+    if not Elements.StatusIndicator or Settings.MenuStyle ~= "v2" then return end
     Elements.StatusIndicator.BackgroundColor3 = (State.IsShieldActive or State.IsSecondShieldActive) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 end
 
 -- Обновление текста в стиле v1
 local function updateTextLabel()
-    if not Settings.Enabled or Settings.MenuStyle != "v1" or not Elements.TextLabel then return end
+    if not Settings.Enabled or Settings.MenuStyle ~= "v1" or not Elements.TextLabel then return end
     if State.IsShieldActive then
         Elements.TextLabel.Text = Players.LocalPlayer.Name .. " | " .. (Elements.TimerText and Elements.TimerText.Text or "-")
         Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
