@@ -27,12 +27,12 @@ local Settings = {
     ImageBackgroundTransparency = 0.5, -- Прозрачность фона иконки
     ImageBackgroundSize = Vector2.new(225, 30), -- Размер фона иконки (ширина = HudSize.X, увеличенная высота)
     ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
-    ShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 30), -- Позиция первого прогресс-бара (центрирована)
-    SecondShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 50), -- Позиция второго прогресс-бара (центрирована)
+    ShieldBarPosition = UDim2.new(0, 10, 0, 30), -- Позиция первого прогресс-бара (сдвинута влево)
+    SecondShieldBarPosition = UDim2.new(0, 10, 0, 50), -- Позиция второго прогресс-бара (сдвинута влево)
     TimerSize = Vector2.new(35, 15), -- Размер таймера
-    TimerOffset = 0, -- Смещение таймера от прогресс-бара (уменьшено с 3 до 0)
+    TimerOffset = 0, -- Смещение таймера от прогресс-бара
     PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
-    PlayerNamePosition = UDim2.new(0.5, -150 / 2, 0, 70), -- Позиция текста имени (центрирована)
+    PlayerNamePosition = UDim2.new(0, 10, 0, 70), -- Позиция текста имени (сдвинута влево)
     TextColor = Color3.fromRGB(200, 200, 200), -- Цвет текста (бело-серый)
     TextSize = 15, -- Размер текста
     StatusIndicatorSize = Vector2.new(10, 10), -- Размер статусного индикатора
@@ -54,7 +54,7 @@ local State = {
     Dragging = false,
     DragStart = nil,
     StartPos = nil,
-    LastPosition = Settings.HudPosition
+    LastPosition = Settings.HudPosition -- Хранит позицию в пиксельных координатах
 }
 
 -- Элементы интерфейса
@@ -502,7 +502,7 @@ UserInputService.InputBegan:Connect(function(input)
                mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y then
                 State.Dragging = true
                 State.DragStart = mousePos
-                State.StartPos = mainFrame.AbsolutePosition
+                State.StartPos = Vector2.new(State.LastPosition.X.Offset, State.LastPosition.Y.Offset)
             end
         end
     end
@@ -512,8 +512,7 @@ UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
         local mousePos = UserInputService:GetMouseLocation()
         local delta = mousePos - State.DragStart
-        local newAbsolutePos = State.StartPos + delta
-        State.LastPosition = UDim2.new(0, newAbsolutePos.X / Settings.Scale, 0, newAbsolutePos.Y / Settings.Scale)
+        State.LastPosition = UDim2.new(0, State.StartPos.X + delta.X, 0, State.StartPos.Y + delta.Y)
         Elements.MainFrame.Position = scaleUDim2(State.LastPosition, Settings.Scale)
     end
 end)
@@ -633,18 +632,20 @@ function Init(ui, core, notification)
         Precision = 2,
         Suffix = "",
         Callback = function(value)
-            -- Сохраняем абсолютную позицию верхнего левого угла
-            local oldAbsolutePosition = Elements.MainFrame.AbsolutePosition
+            -- Сохраняем текущую позицию в пикселях
+            local currentPos = Elements.MainFrame.Position
+            local oldAbsoluteX = currentPos.X.Offset / Settings.Scale
+            local oldAbsoluteY = currentPos.Y.Offset / Settings.Scale
 
             -- Устанавливаем новый масштаб
             Settings.Scale = value
 
-            -- Сохраняем абсолютную позицию
-            State.LastPosition = UDim2.new(0, oldAbsolutePosition.X / Settings.Scale, 0, oldAbsolutePosition.Y / Settings.Scale)
+            -- Обновляем позицию, чтобы сохранить верхний левый угол
+            State.LastPosition = UDim2.new(0, oldAbsoluteX, 0, oldAbsoluteY)
+            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, value)
 
             -- Обновление размеров и позиций всех элементов
             Elements.MainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), value)
-            Elements.MainFrame.Position = scaleUDim2(State.LastPosition, value)
             local hudCorner = Elements.MainFrame:FindFirstChildOfClass("UICorner")
             if hudCorner then
                 hudCorner.CornerRadius = UDim.new(0, Settings.cornerRadius * value)
