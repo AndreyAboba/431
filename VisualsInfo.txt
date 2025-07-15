@@ -28,11 +28,11 @@ local Settings = {
     ShieldBarSize = Vector2.new(150, 15), -- Размер прогресс-бара щита
     ShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 30), -- Позиция первого прогресс-бара (центрирована)
     SecondShieldBarPosition = UDim2.new(0.5, -150 / 2, 0, 50), -- Позиция второго прогресс-бара (центрирована)
-    TimerSize = Vector2.new(40, 15), -- Размер таймера
+    TimerSize = Vector2.new(35, 15), -- Размер таймера (уменьшен с 40 до 35)
     TimerOffset = 3, -- Смещение таймера от прогресс-бара
     PlayerNameSize = Vector2.new(150, 15), -- Размер текста имени
     PlayerNamePosition = UDim2.new(0.5, -150 / 2, 0, 70), -- Позиция текста имени (центрирована)
-    TextColor = Color3.fromRGB(200, 200, 255), -- Цвет текста
+    TextColor = Color3.fromRGB(200, 200, 200), -- Цвет текста (бело-серый)
     TextSize = 15, -- Размер текста
     StatusIndicatorSize = Vector2.new(10, 10), -- Размер статусного индикатора
     StatusIndicatorPosition = UDim2.new(1, -15, 1, -15), -- Позиция статусного индикатора
@@ -192,6 +192,7 @@ local function initElements()
     timerText.TextColor3 = Settings.TextColor
     timerText.TextSize = Settings.TextSize * Settings.Scale
     timerText.Font = Enum.Font.SourceSans
+    timerText.TextStrokeTransparency = 1
     timerText.Parent = timerBackground
     Elements.TimerText = timerText
 
@@ -236,6 +237,7 @@ local function initElements()
     secondTimerText.TextColor3 = Settings.TextColor
     secondTimerText.TextSize = Settings.TextSize * Settings.Scale
     secondTimerText.Font = Enum.Font.SourceSans
+    secondTimerText.TextStrokeTransparency = 1
     secondTimerText.Parent = secondTimerBackground
     Elements.SecondTimerText = secondTimerText
 
@@ -260,6 +262,7 @@ local function initElements()
     playerNameText.TextColor3 = Settings.TextColor
     playerNameText.TextSize = Settings.TextSize * Settings.Scale
     playerNameText.Font = Enum.Font.SourceSans
+    playerNameText.TextStrokeTransparency = 1
     playerNameText.Parent = playerNameBackground
     Elements.PlayerNameText = playerNameText
 
@@ -498,7 +501,7 @@ UserInputService.InputBegan:Connect(function(input)
                mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y then
                 State.Dragging = true
                 State.DragStart = mousePos
-                State.StartPos = State.LastPosition
+                State.StartPos = mainFrame.Position -- Сохраняем текущую позицию в масштабированных координатах
             end
         end
     end
@@ -508,7 +511,7 @@ UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement and State.Dragging then
         local mousePos = UserInputService:GetMouseLocation()
         local delta = mousePos - State.DragStart
-        local newPosition = State.StartPos + UDim2.new(0, delta.X, 0, delta.Y)
+        local newPosition = State.StartPos + UDim2.new(0, delta.X / Settings.Scale, 0, delta.Y / Settings.Scale)
         State.LastPosition = newPosition
         Elements.MainFrame.Position = scaleUDim2(newPosition, Settings.Scale)
     end
@@ -629,24 +632,19 @@ function Init(ui, core, notification)
         Precision = 2,
         Suffix = "",
         Callback = function(value)
-            -- Сохраняем центр интерфейса в абсолютных пикселях
+            -- Сохраняем абсолютную позицию верхнего левого угла
             local oldScale = Settings.Scale
             local oldPosition = Elements.MainFrame.Position
             local oldAbsolutePosition = Vector2.new(
                 oldPosition.X.Offset * oldScale,
                 oldPosition.Y.Offset * oldScale
             )
-            local oldCenter = oldAbsolutePosition + Vector2.new(Settings.HudSize.X * oldScale / 2, Settings.HudSize.Y * oldScale / 2)
 
             -- Устанавливаем новый масштаб
             Settings.Scale = value
 
-            -- Вычисляем новую позицию, чтобы центр остался на месте
-            local newCenterOffset = Vector2.new(
-                oldCenter.X - Settings.HudSize.X * value / 2,
-                oldCenter.Y - Settings.HudSize.Y * value / 2
-            )
-            State.LastPosition = UDim2.new(0, newCenterOffset.X, 0, newCenterOffset.Y)
+            -- Сохраняем абсолютную позицию
+            State.LastPosition = UDim2.new(0, oldAbsolutePosition.X / value, 0, oldAbsolutePosition.Y / value)
 
             -- Обновление размеров и позиций всех элементов
             Elements.MainFrame.Size = scaleUDim2(UDim2.new(0, Settings.HudSize.X, 0, Settings.HudSize.Y), value)
