@@ -34,8 +34,8 @@ local HudSettings = {
     HudSize = Vector2.new(220, 90), -- Базовый размер HUD
     Scale = 1, -- Масштаб HUD
     HudPosition = UDim2.new(0, 500, 0, 50),
-    HudBackgroundColor = Color3.fromRGB(20, 30, 50),
-    HudBackgroundTransparency = 0.3,
+    HudBackgroundColor = Color3.fromRGB(20, 30, 50), -- Цвет фона HUD
+    HudBackgroundTransparency = 0.3, -- Прозрачность фона HUD
     HudGradientStart = Color3.fromRGB(20, 30, 50),
     HudGradientEnd = Color3.fromRGB(40, 60, 100),
     AvatarSize = Vector2.new(40, 40),
@@ -433,6 +433,12 @@ end
 
 -- Обновление HUD
 local function UpdateHud()
+    -- Обновление цветов градиента орбов из Core.GradientColors
+    if Core and Core.GradientColors then
+        HudSettings.OrbGradientStart = Core.GradientColors.Color1.Value
+        HudSettings.OrbGradientEnd = Core.GradientColors.Color2.Value
+    end
+
     if not HudSettings.Enabled or not Core or not Core.GunSilentTarget or not Core.GunSilentTarget.CurrentTarget then
         hudFrame.Visible = false
         playerIcon.Visible = false
@@ -621,7 +627,7 @@ function Init(ui, core, notification)
         return
     end
 
-    -- Установка цветов градиента для орбов из Core
+    -- Установка начальных цветов градиента для орбов из Core
     HudSettings.OrbGradientStart = Core.GradientColors.Color1.Value
     HudSettings.OrbGradientEnd = Core.GradientColors.Color2.Value
 
