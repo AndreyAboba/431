@@ -1,0 +1,406 @@
+local LocalPlayer = {}
+local Services = nil
+local PlayerData = nil
+local notify = nil
+local LocalPlayerObj = nil
+local core = nil
+
+LocalPlayer.Config = {
+    Timer = {
+        Enabled = false,
+        Speed = 2.5,
+        ToggleKey = nil
+    },
+    Disabler = {
+        Enabled = false,
+        ToggleKey = nil
+    },
+    AutoSprint = {
+        Enabled = false,
+        Speed = 40,
+        ToggleKey = nil
+    }
+}
+
+local TimerStatus = {
+    Running = false,
+    Connection = nil,
+    Speed = LocalPlayer.Config.Timer.Speed,
+    Key = LocalPlayer.Config.Timer.ToggleKey,
+    Enabled = LocalPlayer.Config.Timer.Enabled
+}
+
+local DisablerStatus = {
+    Running = false,
+    Connection = nil,
+    Key = LocalPlayer.Config.Disabler.ToggleKey,
+    Enabled = LocalPlayer.Config.Disabler.Enabled
+}
+
+local AutoSprintStatus = {
+    Running = false,
+    Connection = nil,
+    Key = LocalPlayer.Config.AutoSprint.ToggleKey,
+    Enabled = LocalPlayer.Config.AutoSprint.Enabled,
+    Speed = LocalPlayer.Config.AutoSprint.Speed
+}
+
+local function getCharacterData()
+    local character = LocalPlayerObj and LocalPlayerObj.Character
+    if not character then return nil, nil end
+    local humanoid = character:FindFirstChild("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    return humanoid, rootPart
+end
+
+local function isCharacterValid(humanoid, rootPart)
+    return humanoid and rootPart and humanoid.Health > 0
+end
+
+local function isInputFocused()
+    return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
+end
+
+-- Timer Functions
+local Timer = {}
+Timer.Start = function()
+    if TimerStatus.Running or not Services then return end
+    local success = pcall(function()
+        setfflag("SimEnableStepPhysics", "True")
+        setfflag("SimEnableStepPhysicsSelective", "True")
+    end)
+    if not success then
+        warn("Timer: Failed to enable physics flags")
+        notify("Timer", "Failed to enable physics simulation.", true)
+        return
+    end
+    TimerStatus.Running = true
+    TimerStatus.Connection = Services.RunService.RenderStepped:Connect(function(dt)
+        if not TimerStatus.Enabled or TimerStatus.Speed <= 1 then return end
+        local humanoid, rootPart = getCharacterData()
+        if not isCharacterValid(humanoid, rootPart) then return end
+        local success, err = pcall(function()
+            Services.RunService:Pause()
+            Services.Workspace:StepPhysics(dt * (TimerStatus.Speed - 1), {rootPart})
+            Services.RunService:Run()
+        end)
+        if not success then
+            warn("Timer physics step failed: " .. tostring(err))
+            Timer.Stop()
+            notify("Timer", "Physics step failed. Timer stopped.", true)
+        end
+    end)
+    notify("Timer", "Started with speed: " .. TimerStatus.Speed, true)
+end
+
+Timer.Stop = function()
+    if TimerStatus.Connection then
+        TimerStatus.Connection:Disconnect()
+        TimerStatus.Connection = nil
+    end
+    TimerStatus.Running = false
+    notify("Timer", "Stopped", true)
+end
+
+Timer.SetSpeed = function(newSpeed)
+    TimerStatus.Speed = math.clamp(newSpeed, 1, 15)
+    LocalPlayer.Config.Timer.Speed = TimerStatus.Speed
+    notify("Timer", "Speed set to: " .. TimerStatus.Speed, false)
+end
+
+-- Disabler Functions
+local Disabler = {}
+Disabler.DisableSignals = function(character)
+    if not character then return end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    for _, connection in ipairs(getconnections(rootPart:GetPropertyChangedSignal("CFrame"))) do
+        pcall(function() hookfunction(connection.Function, function() end) end)
+    end
+    for _, connection in ipairs(getconnections(rootPart:GetPropertyChangedSignal("Velocity"))) do
+        pcall(function() hookfunction(connection.Function, function() end) end)
+    end
+end
+
+Disabler.Start = function()
+    if DisablerStatus.Running or not LocalPlayerObj then return end
+    DisablerStatus.Running = true
+    DisablerStatus.Connection = LocalPlayerObj.CharacterAdded:Connect(Disabler.DisableSignals)
+    if LocalPlayerObj.Character then
+        Disabler.DisableSignals(LocalPlayerObj.Character)
+    end
+    notify("Disabler", "Started", true)
+end
+
+Disabler.Stop = function()
+    if DisablerStatus.Connection then
+        DisablerStatus.Connection:Disconnect()
+        DisablerStatus.Connection = nil
+    end
+    DisablerStatus.Running = false
+    notify("Disabler", "Stopped", true)
+end
+
+-- AutoSprint Functions
+local AutoSprint = {}
+AutoSprint.Start = function()
+    if AutoSprintStatus.Running or not Services then return end
+    local character = LocalPlayerObj and LocalPlayerObj.Character
+    if not character then return end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+
+    AutoSprintStatus.Running = true
+
+    -- Перехват GetAttribute
+    local mt = getrawmetatable(game)
+    local oldIndex = mt.__index
+    setreadonly(mt, false)
+    mt.__index = function(self, key)
+        if self == character and key == "GetAttribute" then
+            return function(_, attr)
+                if attr == "Sprinting" then
+                    return true
+                end
+                if attr == "CombatFatigue" or attr == "AimingDown" or attr == "Iced" or
+                   attr == "Mounted" or attr == "Poisoned" or attr == "Limp" or
+                   attr == "Consuming" or attr == "Crouched" or attr == "Blocking" or
+                   attr == "WalkCast" or attr == "NoSprint" then
+                    return nil
+                end
+                return character:GetAttribute(attr)
+            end
+        end
+        return oldIndex(self, key)
+    end
+    setreadonly(mt, true)
+
+    -- Установить начальные значения
+    humanoid.WalkSpeed = AutoSprintStatus.Speed
+    character:SetAttribute("Sprinting", true)
+
+    -- Постоянный спринт
+    AutoSprintStatus.Connection = Services.RunService.Heartbeat:Connect(function()
+        if not AutoSprintStatus.Enabled then
+            AutoSprint.Stop()
+            return
+        end
+        local humanoid, _ = getCharacterData()
+        if not isCharacterValid(humanoid, nil) then return end
+        humanoid.WalkSpeed = AutoSprintStatus.Speed
+        character:SetAttribute("Sprinting", true)
+    end)
+
+    notify("AutoSprint", "Started with speed: " .. AutoSprintStatus.Speed, true)
+end
+
+AutoSprint.Stop = function()
+    if AutoSprintStatus.Connection then
+        AutoSprintStatus.Connection:Disconnect()
+        AutoSprintStatus.Connection = nil
+    end
+    AutoSprintStatus.Running = false
+
+    -- Восстановить метатаблицу
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    mt.__index = rawget(mt, "__index") or function(self, key) return rawget(self, key) end
+    setreadonly(mt, true)
+
+    -- Восстановить стандартную скорость
+    local humanoid, _ = getCharacterData()
+    if humanoid then
+        humanoid.WalkSpeed = 16
+    end
+    local character = LocalPlayerObj and LocalPlayerObj.Character
+    if character then
+        character:SetAttribute("Sprinting", false)
+    end
+
+    notify("AutoSprint", "Stopped", true)
+end
+
+AutoSprint.SetSpeed = function(newSpeed)
+    AutoSprintStatus.Speed = math.clamp(newSpeed, 33, 100)
+    LocalPlayer.Config.AutoSprint.Speed = AutoSprintStatus.Speed
+    local humanoid, _ = getCharacterData()
+    if humanoid and AutoSprintStatus.Running then
+        humanoid.WalkSpeed = AutoSprintStatus.Speed
+    end
+    notify("AutoSprint", "Speed set to: " .. AutoSprintStatus.Speed, false)
+end
+
+-- UI Setup
+local function SetupUI(UI)
+    local uiElements = {}
+
+    if UI.Sections.Timer then
+        UI.Sections.Timer:Header({ Name = "Timer" })
+        uiElements.TimerEnabled = UI.Sections.Timer:Toggle({
+            Name = "Enabled",
+            Default = LocalPlayer.Config.Timer.Enabled,
+            Callback = function(value)
+                TimerStatus.Enabled = value
+                LocalPlayer.Config.Timer.Enabled = value
+                if value then Timer.Start() else Timer.Stop() end
+            end
+        }, "TimerEnabled")
+        uiElements.TimerSpeed = UI.Sections.Timer:Slider({
+            Name = "Speed",
+            Minimum = 1,
+            Maximum = 15,
+            Default = LocalPlayer.Config.Timer.Speed,
+            Precision = 1,
+            Callback = function(value)
+                Timer.SetSpeed(value)
+            end
+        }, "TimerSpeed")
+        uiElements.TimerKey = UI.Sections.Timer:Keybind({
+            Name = "Toggle Key",
+            Default = LocalPlayer.Config.Timer.ToggleKey,
+            Callback = function(value)
+                TimerStatus.Key = value
+                LocalPlayer.Config.Timer.ToggleKey = value
+                if isInputFocused() then return end
+                if TimerStatus.Enabled then
+                    if TimerStatus.Running then Timer.Stop() else Timer.Start() end
+                else
+                    notify("Timer", "Enable Timer to use keybind.", true)
+                end
+            end
+        }, "TimerKey")
+    end
+
+    if UI.Sections.Disabler then
+        UI.Sections.Disabler:Header({ Name = "Disabler" })
+        uiElements.DisablerEnabled = UI.Sections.Disabler:Toggle({
+            Name = "Enabled",
+            Default = LocalPlayer.Config.Disabler.Enabled,
+            Callback = function(value)
+                DisablerStatus.Enabled = value
+                LocalPlayer.Config.Disabler.Enabled = value
+                if value then Disabler.Start() else Disabler.Stop() end
+            end
+        }, "DisablerEnabled")
+        uiElements.DisablerKey = UI.Sections.Disabler:Keybind({
+            Name = "Toggle Key",
+            Default = LocalPlayer.Config.Disabler.ToggleKey,
+            Callback = function(value)
+                DisablerStatus.Key = value
+                LocalPlayer.Config.Disabler.ToggleKey = value
+                if isInputFocused() then return end
+                if DisablerStatus.Enabled then
+                    if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
+                else
+                    notify("Disabler", "Enable Disabler to use keybind.", true)
+                end
+            end
+        }, "DisablerKey")
+    end
+
+    if UI.Sections.Speed then
+        UI.Sections.Speed:Header({ Name = "AutoSprint" })
+        uiElements.AutoSprintEnabled = UI.Sections.Speed:Toggle({
+            Name = "Enabled",
+            Default = LocalPlayer.Config.AutoSprint.Enabled,
+            Callback = function(value)
+                AutoSprintStatus.Enabled = value
+                LocalPlayer.Config.AutoSprint.Enabled = value
+                if value then AutoSprint.Start() else AutoSprint.Stop() end
+            end
+        }, "AutoSprintEnabled")
+        uiElements.AutoSprintSpeed = UI.Sections.Speed:Slider({
+            Name = "Speed Value",
+            Minimum = 33,
+            Maximum = 100,
+            Default = LocalPlayer.Config.AutoSprint.Speed,
+            Precision = 1,
+            Callback = function(value)
+                AutoSprint.SetSpeed(value)
+            end
+        }, "AutoSprintSpeed")
+        uiElements.AutoSprintKey = UI.Sections.Speed:Keybind({
+            Name = "Toggle Key",
+            Default = LocalPlayer.Config.AutoSprint.ToggleKey,
+            Callback = function(value)
+                AutoSprintStatus.Key = value
+                LocalPlayer.Config.AutoSprint.ToggleKey = value
+                if isInputFocused() then return end
+                if AutoSprintStatus.Enabled then
+                    if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
+                else
+                    notify("AutoSprint", "Enable AutoSprint to use keybind.", true)
+                end
+            end
+        }, "AutoSprintKey")
+    end
+
+    local localconfigSection = UI.Tabs.Config:Section({ Name = "Local Player Sync", Side = "Right" })
+    localconfigSection:Header({ Name = "LocalPlayer Settings Sync" })
+    localconfigSection:Button({
+        Name = "Sync Config",
+        Callback = function()
+            LocalPlayer.Config.Timer.Enabled = uiElements.TimerEnabled:GetState()
+            LocalPlayer.Config.Timer.Speed = uiElements.TimerSpeed:GetValue()
+            LocalPlayer.Config.Timer.ToggleKey = uiElements.TimerKey:GetBind()
+
+            LocalPlayer.Config.Disabler.Enabled = uiElements.DisablerEnabled:GetState()
+            LocalPlayer.Config.Disabler.ToggleKey = uiElements.DisablerKey:GetBind()
+
+            LocalPlayer.Config.AutoSprint.Enabled = uiElements.AutoSprintEnabled:GetState()
+            LocalPlayer.Config.AutoSprint.Speed = uiElements.AutoSprintSpeed:GetValue()
+            LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetBind()
+
+            TimerStatus.Enabled = LocalPlayer.Config.Timer.Enabled
+            TimerStatus.Speed = LocalPlayer.Config.Timer.Speed
+            TimerStatus.Key = LocalPlayer.Config.Timer.ToggleKey
+            if TimerStatus.Enabled then
+                if not TimerStatus.Running then Timer.Start() end
+            else
+                if TimerStatus.Running then Timer.Stop() end
+            end
+
+            DisablerStatus.Enabled = LocalPlayer.Config.Disabler.Enabled
+            DisablerStatus.Key = LocalPlayer.Config.Disabler.ToggleKey
+            if DisablerStatus.Enabled then
+                if not DisablerStatus.Running then Disabler.Start() end
+            else
+                if DisablerStatus.Running then Disabler.Stop() end
+            end
+
+            AutoSprintStatus.Enabled = LocalPlayer.Config.AutoSprint.Enabled
+            AutoSprintStatus.Speed = LocalPlayer.Config.AutoSprint.Speed
+            AutoSprintStatus.Key = LocalPlayer.Config.AutoSprint.ToggleKey
+            if AutoSprintStatus.Enabled then
+                if not AutoSprintStatus.Running then AutoSprint.Start() end
+            else
+                if AutoSprintStatus.Running then AutoSprint.Stop() end
+            end
+
+            notify("LocalPlayer", "Config synchronized!", true)
+        end
+    })
+end
+
+function LocalPlayer.Init(UI, coreParam, notifyFunc)
+    core = coreParam
+    Services = core.Services
+    PlayerData = core.PlayerData
+    notify = notifyFunc
+    LocalPlayerObj = PlayerData.LocalPlayer
+
+    _G.setTimerSpeed = Timer.SetSpeed
+    _G.setAutoSprintSpeed = AutoSprint.SetSpeed
+
+    if LocalPlayerObj then
+        LocalPlayerObj.CharacterAdded:Connect(function(newChar)
+            if AutoSprintStatus.Enabled then
+                AutoSprint.Start()
+            end
+        end)
+    end
+
+    SetupUI(UI)
+end
+
+return LocalPlayer
