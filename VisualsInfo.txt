@@ -57,7 +57,9 @@ local State = {
     StartPos = nil,
     LastPosition = Settings.HudPosition,
     DragConnection = nil,
-    CurrentPlayerName = "-"
+    CurrentPlayerName = "-",
+    ShieldTimeRemaining = 0,
+    SecondShieldTimeRemaining = 0
 }
 
 -- Элементы интерфейса
@@ -362,16 +364,18 @@ end
 
 -- Обновление текста в стиле v1
 local function updateTextLabel()
-    if not Settings.Enabled or Settings.MenuStyle ~= "v1" or not Elements.TextLabel then return end
-    if State.IsShieldActive then
-        Elements.TextLabel.Text = Players.LocalPlayer.Name .. " | " .. (Elements.TimerText and Elements.TimerText.Text or "-")
-        Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-    elseif State.IsSecondShieldActive then
-        Elements.TextLabel.Text = State.CurrentPlayerName .. " | " .. (Elements.SecondTimerText and Elements.SecondTimerText.Text or "-")
-        Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-    else
-        Elements.TextLabel.Text = "NONE"
-        Elements.TextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+    if not Settings.Enabled or not Elements.TextLabel then return end
+    if Settings.MenuStyle == "v1" then
+        if State.IsShieldActive then
+            Elements.TextLabel.Text = Players.LocalPlayer.Name .. " | " .. string.format("%.2f", State.ShieldTimeRemaining)
+            Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+        elseif State.IsSecondShieldActive then
+            Elements.TextLabel.Text = State.CurrentPlayerName .. " | " .. string.format("%.2f", State.SecondShieldTimeRemaining)
+            Elements.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+        else
+            Elements.TextLabel.Text = "NONE"
+            Elements.TextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        end
     end
 end
 
@@ -391,6 +395,7 @@ local function startShieldTimer()
                 State.ShieldTimerConnection = nil
             end
             State.IsShieldActive = false
+            State.ShieldTimeRemaining = 0
             for _, line in ipairs(Elements.ShieldBarLines or {}) do
                 line.BackgroundTransparency = 1
             end
@@ -408,8 +413,9 @@ local function startShieldTimer()
         end
         local elapsed = tick() - startTime
         local progress = elapsed / Settings.shieldDuration
+        State.ShieldTimeRemaining = math.max(0, Settings.shieldDuration - elapsed)
         if Elements.TimerText then
-            Elements.TimerText.Text = string.format("%.2f", math.max(0, Settings.shieldDuration - elapsed))
+            Elements.TimerText.Text = string.format("%.2f", State.ShieldTimeRemaining)
         end
         if progress >= 1 then
             progress = 1
@@ -418,6 +424,7 @@ local function startShieldTimer()
                 State.ShieldTimerConnection = nil
             end
             State.IsShieldActive = false
+            State.ShieldTimeRemaining = 0
             delay(Settings.DelayedPizda, function()
                 for _, line in ipairs(Elements.ShieldBarLines or {}) do
                     line.BackgroundTransparency = 1
@@ -454,6 +461,7 @@ local function startSecondShieldTimer()
                 State.SecondShieldTimerConnection = nil
             end
             State.IsSecondShieldActive = false
+            State.SecondShieldTimeRemaining = 0
             for _, line in ipairs(Elements.SecondShieldBarLines or {}) do
                 line.BackgroundTransparency = 1
             end
@@ -471,8 +479,9 @@ local function startSecondShieldTimer()
         end
         local elapsed = tick() - startTime
         local progress = elapsed / Settings.shieldDuration
+        State.SecondShieldTimeRemaining = math.max(0, Settings.shieldDuration - elapsed)
         if Elements.SecondTimerText then
-            Elements.SecondTimerText.Text = string.format("%.2f", math.max(0, Settings.shieldDuration - elapsed))
+            Elements.SecondTimerText.Text = string.format("%.2f", State.SecondShieldTimeRemaining)
         end
         if progress >= 1 then
             progress = 1
@@ -481,6 +490,7 @@ local function startSecondShieldTimer()
                 State.SecondShieldTimerConnection = nil
             end
             State.IsSecondShieldActive = false
+            State.SecondShieldTimeRemaining = 0
             delay(Settings.DelayedPizda, function()
                 for _, line in ipairs(Elements.SecondShieldBarLines or {}) do
                     line.BackgroundTransparency = 1
@@ -764,7 +774,6 @@ function Init(ui, core, notification)
                 Elements.StatusIndicator.Size = UDim2.new(0, Settings.StatusIndicatorSize.X * value, 0, Settings.StatusIndicatorSize.Y * value)
                 Elements.StatusIndicator.Position = UDim2.new(Settings.StatusIndicatorPosition.X.Scale, Settings.StatusIndicatorPosition.X.Offset * value, Settings.StatusIndicatorPosition.Y.Scale, Settings.StatusIndicatorPosition.Y.Offset * value)
                 local numLines = math.ceil(Settings.barSegments / Settings.LineScale)
-                local lineWidth = 1 / numLines
                 for i, line in ipairs(Elements.ShieldBarLines or {}) do
                     if i <= numLines then
                         line.Size = UDim2.new(lineWidth, 0, 1, 0)
