@@ -8,17 +8,17 @@ local core = nil
 LocalPlayer.Config = {
     Timer = {
         Enabled = false,
-        Speed = 2.5,
-        ToggleKey = nil
+        Speed = 2.5
     },
     Disabler = {
-        Enabled = false,
-        ToggleKey = nil
+        Enabled = false
     },
     AutoSprint = {
         Enabled = false,
-        Speed = 40,
-        ToggleKey = nil
+        Speed = 40
+    },
+    AntiRagdoll = {
+        Enabled = false
     }
 }
 
@@ -26,23 +26,28 @@ local TimerStatus = {
     Running = false,
     Connection = nil,
     Speed = LocalPlayer.Config.Timer.Speed,
-    Key = LocalPlayer.Config.Timer.ToggleKey,
     Enabled = LocalPlayer.Config.Timer.Enabled
 }
 
 local DisablerStatus = {
     Running = false,
     Connection = nil,
-    Key = LocalPlayer.Config.Disabler.ToggleKey,
     Enabled = LocalPlayer.Config.Disabler.Enabled
 }
 
 local AutoSprintStatus = {
     Running = false,
     Connection = nil,
-    Key = LocalPlayer.Config.AutoSprint.ToggleKey,
     Enabled = LocalPlayer.Config.AutoSprint.Enabled,
-    Speed = LocalPlayer.Config.AutoSprint.Speed
+    Speed = LocalPlayer.Config.AutoSprint.Speed,
+    MetatableHooked = false
+}
+
+local AntiRagdollStatus = {
+    Running = false,
+    Connection = nil,
+    MetatableHooked = false,
+    Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
 }
 
 local function getCharacterData()
@@ -143,16 +148,8 @@ end
 
 -- AutoSprint Functions
 local AutoSprint = {}
-AutoSprint.Start = function()
-    if AutoSprintStatus.Running or not Services then return end
-    local character = LocalPlayerObj and LocalPlayerObj.Character
-    if not character then return end
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid then return end
-
-    AutoSprintStatus.Running = true
-
-    -- Перехват GetAttribute
+AutoSprint.HookMetatable = function(character)
+    if AutoSprintStatus.MetatableHooked then return end
     local mt = getrawmetatable(game)
     local oldIndex = mt.__index
     setreadonly(mt, false)
@@ -174,6 +171,18 @@ AutoSprint.Start = function()
         return oldIndex(self, key)
     end
     setreadonly(mt, true)
+    AutoSprintStatus.MetatableHooked = true
+end
+
+AutoSprint.Start = function()
+    if AutoSprintStatus.Running or not Services then return end
+    local character = LocalPlayerObj and LocalPlayerObj.Character
+    if not character then return end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+
+    AutoSprintStatus.Running = true
+    AutoSprint.HookMetatable(character)
 
     -- Установить начальные значения
     humanoid.WalkSpeed = AutoSprintStatus.Speed
@@ -200,6 +209,7 @@ AutoSprint.Stop = function()
         AutoSprintStatus.Connection = nil
     end
     AutoSprintStatus.Running = false
+    AutoSprintStatus.MetatableHooked = false
 
     -- Восстановить метатаблицу
     local mt = getrawmetatable(game)
@@ -230,6 +240,76 @@ AutoSprint.SetSpeed = function(newSpeed)
     notify("AutoSprint", "Speed set to: " .. AutoSprintStatus.Speed, false)
 end
 
+-- AntiRagdoll Functions
+local AntiRagdoll = {}
+AntiRagdoll.HookMetatable = function(character)
+    if AntiRagdollStatus.MetatableHooked then return end
+    local mt = getrawmetatable(game)
+    local oldIndex = mt.__index
+    setreadonly(mt, false)
+    mt.__index = function(self, key)
+        if self == character and key == "GetAttribute" then
+            return function(_, attr)
+                if attr == "Ragdoll" then
+                    return false
+                end
+                return character:GetAttribute(attr)
+            end
+        elseif self:IsA("Humanoid") and key == "PlatformStand" then
+            return false
+        end
+        return oldIndex(self, key)
+    end
+    setreadonly(mt, true)
+    AntiRagdollStatus.MetatableHooked = true
+end
+
+AntiRagdoll.Start = function()
+    if AntiRagdollStatus.Running or not Services then return end
+    local character = LocalPlayerObj and LocalPlayerObj.Character
+    if not character then return end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+
+    AntiRagdollStatus.Running = true
+    AntiRagdoll.HookMetatable(character)
+
+    -- Установить начальные значения
+    character:SetAttribute("Ragdoll", false)
+    humanoid.PlatformStand = false
+    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+
+    -- Отслеживание смерти и восстановление
+    AntiRagdollStatus.Connection = humanoid.Died:Connect(function()
+        if not AntiRagdollStatus.Enabled then return end
+        local newChar = LocalPlayerObj.Character or LocalPlayerObj.CharacterAdded:Wait()
+        local newHumanoid = newChar:WaitForChild("Humanoid")
+        AntiRagdoll.HookMetatable(newChar)
+        newChar:SetAttribute("Ragdoll", false)
+        newHumanoid.PlatformStand = false
+        newHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end)
+
+    notify("AntiRagdoll", "Started", true)
+end
+
+AntiRagdoll.Stop = function()
+    if AntiRagdollStatus.Connection then
+        AntiRagdollStatus.Connection:Disconnect()
+        AntiRagdollStatus.Connection = nil
+    end
+    AntiRagdollStatus.Running = false
+    AntiRagdollStatus.MetatableHooked = false
+
+    -- Восстановить метатаблицу
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    mt.__index = rawget(mt, "__index") or function(self, key) return rawget(self, key) end
+    setreadonly(mt, true)
+
+    notify("AntiRagdoll", "Stopped", true)
+end
+
 -- UI Setup
 local function SetupUI(UI)
     local uiElements = {}
@@ -255,20 +335,6 @@ local function SetupUI(UI)
                 Timer.SetSpeed(value)
             end
         }, "TimerSpeed")
-        uiElements.TimerKey = UI.Sections.Timer:Keybind({
-            Name = "Toggle Key",
-            Default = LocalPlayer.Config.Timer.ToggleKey,
-            Callback = function(value)
-                TimerStatus.Key = value
-                LocalPlayer.Config.Timer.ToggleKey = value
-                if isInputFocused() then return end
-                if TimerStatus.Enabled then
-                    if TimerStatus.Running then Timer.Stop() else Timer.Start() end
-                else
-                    notify("Timer", "Enable Timer to use keybind.", true)
-                end
-            end
-        }, "TimerKey")
     end
 
     if UI.Sections.Disabler then
@@ -282,20 +348,6 @@ local function SetupUI(UI)
                 if value then Disabler.Start() else Disabler.Stop() end
             end
         }, "DisablerEnabled")
-        uiElements.DisablerKey = UI.Sections.Disabler:Keybind({
-            Name = "Toggle Key",
-            Default = LocalPlayer.Config.Disabler.ToggleKey,
-            Callback = function(value)
-                DisablerStatus.Key = value
-                LocalPlayer.Config.Disabler.ToggleKey = value
-                if isInputFocused() then return end
-                if DisablerStatus.Enabled then
-                    if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
-                else
-                    notify("Disabler", "Enable Disabler to use keybind.", true)
-                end
-            end
-        }, "DisablerKey")
     end
 
     if UI.Sections.Speed then
@@ -319,20 +371,19 @@ local function SetupUI(UI)
                 AutoSprint.SetSpeed(value)
             end
         }, "AutoSprintSpeed")
-        uiElements.AutoSprintKey = UI.Sections.Speed:Keybind({
-            Name = "Toggle Key",
-            Default = LocalPlayer.Config.AutoSprint.ToggleKey,
+    end
+
+    if UI.Sections.AntiRagdoll then
+        UI.Sections.AntiRagdoll:Header({ Name = "AntiRagdoll" })
+        uiElements.AntiRagdollEnabled = UI.Sections.AntiRagdoll:Toggle({
+            Name = "Enabled",
+            Default = LocalPlayer.Config.AntiRagdoll.Enabled,
             Callback = function(value)
-                AutoSprintStatus.Key = value
-                LocalPlayer.Config.AutoSprint.ToggleKey = value
-                if isInputFocused() then return end
-                if AutoSprintStatus.Enabled then
-                    if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
-                else
-                    notify("AutoSprint", "Enable AutoSprint to use keybind.", true)
-                end
+                AntiRagdollStatus.Enabled = value
+                LocalPlayer.Config.AntiRagdoll.Enabled = value
+                if value then AntiRagdoll.Start() else AntiRagdoll.Stop() end
             end
-        }, "AutoSprintKey")
+        }, "AntiRagdollEnabled")
     end
 
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Local Player Sync", Side = "Right" })
@@ -348,9 +399,10 @@ local function SetupUI(UI)
             LocalPlayer.Config.AutoSprint.Enabled = uiElements.AutoSprintEnabled:GetState()
             LocalPlayer.Config.AutoSprint.Speed = uiElements.AutoSprintSpeed:GetValue()
 
+            LocalPlayer.Config.AntiRagdoll.Enabled = uiElements.AntiRagdollEnabled:GetState()
+
             TimerStatus.Enabled = LocalPlayer.Config.Timer.Enabled
             TimerStatus.Speed = LocalPlayer.Config.Timer.Speed
-            TimerStatus.Key = LocalPlayer.Config.Timer.ToggleKey
             if TimerStatus.Enabled then
                 if not TimerStatus.Running then Timer.Start() end
             else
@@ -358,7 +410,6 @@ local function SetupUI(UI)
             end
 
             DisablerStatus.Enabled = LocalPlayer.Config.Disabler.Enabled
-            DisablerStatus.Key = LocalPlayer.Config.Disabler.ToggleKey
             if DisablerStatus.Enabled then
                 if not DisablerStatus.Running then Disabler.Start() end
             else
@@ -367,11 +418,17 @@ local function SetupUI(UI)
 
             AutoSprintStatus.Enabled = LocalPlayer.Config.AutoSprint.Enabled
             AutoSprintStatus.Speed = LocalPlayer.Config.AutoSprint.Speed
-            AutoSprintStatus.Key = LocalPlayer.Config.AutoSprint.ToggleKey
             if AutoSprintStatus.Enabled then
                 if not AutoSprintStatus.Running then AutoSprint.Start() end
             else
                 if AutoSprintStatus.Running then AutoSprint.Stop() end
+            end
+
+            AntiRagdollStatus.Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
+            if AntiRagdollStatus.Enabled then
+                if not AntiRagdollStatus.Running then AntiRagdoll.Start() end
+            else
+                if AntiRagdollStatus.Running then AntiRagdoll.Stop() end
             end
 
             notify("LocalPlayer", "Config synchronized!", true)
@@ -392,7 +449,12 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
     if LocalPlayerObj then
         LocalPlayerObj.CharacterAdded:Connect(function(newChar)
             if AutoSprintStatus.Enabled then
+                AutoSprintStatus.MetatableHooked = false
                 AutoSprint.Start()
+            end
+            if AntiRagdollStatus.Enabled then
+                AntiRagdollStatus.MetatableHooked = false
+                AntiRagdoll.Start()
             end
         end)
     end
