@@ -342,14 +342,11 @@ local function SetupUI(UI)
         Callback = function()
             LocalPlayer.Config.Timer.Enabled = uiElements.TimerEnabled:GetState()
             LocalPlayer.Config.Timer.Speed = uiElements.TimerSpeed:GetValue()
-            LocalPlayer.Config.Timer.ToggleKey = uiElements.TimerKey:GetBind()
 
             LocalPlayer.Config.Disabler.Enabled = uiElements.DisablerEnabled:GetState()
-            LocalPlayer.Config.Disabler.ToggleKey = uiElements.DisablerKey:GetBind()
 
             LocalPlayer.Config.AutoSprint.Enabled = uiElements.AutoSprintEnabled:GetState()
             LocalPlayer.Config.AutoSprint.Speed = uiElements.AutoSprintSpeed:GetValue()
-            LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetBind()
 
             TimerStatus.Enabled = LocalPlayer.Config.Timer.Enabled
             TimerStatus.Speed = LocalPlayer.Config.Timer.Speed
