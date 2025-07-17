@@ -4,10 +4,7 @@ local PlayerData = nil
 local notify = nil
 local LocalPlayerObj = nil
 local core = nil
-local RagdollClient = game:GetService("ReplicatedStorage"):FindFirstChild("Modules") and
-                      game:GetService("ReplicatedStorage").Modules:FindFirstChild("Client") and
-                      game:GetService("ReplicatedStorage").Modules.Client:FindFirstChild("Char") and
-                      game:GetService("ReplicatedStorage").Modules.Client.Char:FindFirstChild("RagdollClient")
+local RagdollClient = game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollClient
 
 LocalPlayer.Config = {
     Timer = {
@@ -424,8 +421,8 @@ local function SetupUI(UI)
         }, "AutoSprintKey")
     end
 
-    -- Создание секции AntiRagdoll слева
-    local antiRagdollSection = UI.Tabs.Main:Section({ Name = "AntiRagdoll", Side = "Left" })
+    -- Создание секции AntiRagdoll слева в табе LocalPlayer
+    local antiRagdollSection = UI.Tabs.LocalPlayer:Section({ Name = "AntiRagdoll", Side = "Left" })
     if antiRagdollSection then
         antiRagdollSection:Header({ Name = "AntiRagdoll" })
         uiElements.AntiRagdollEnabled = antiRagdollSection:Toggle({
