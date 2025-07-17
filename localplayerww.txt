@@ -4,7 +4,7 @@ local PlayerData = nil
 local notify = nil
 local LocalPlayerObj = nil
 local core = nil
-local RagdollJoints = game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollClient
+local RagdollJoints = game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollJoints
 
 LocalPlayer.Config = {
     Timer = {
@@ -44,6 +44,8 @@ local DisablerStatus = {
 local AutoSprintStatus = {
     Running = false,
     Connection = nil,
+    WalkSpeedConnection = nil,
+    SprintingConnection = nil,
     Key = LocalPlayer.Config.AutoSprint.ToggleKey,
     Enabled = LocalPlayer.Config.AutoSprint.Enabled,
     Speed = LocalPlayer.Config.AutoSprint.Speed
@@ -201,6 +203,20 @@ AutoSprint.Start = function()
         character:SetAttribute("Sprinting", true)
     end)
 
+    -- Перехват изменения WalkSpeed
+    AutoSprintStatus.WalkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+        if AutoSprintStatus.Enabled and humanoid.WalkSpeed ~= AutoSprintStatus.Speed then
+            humanoid.WalkSpeed = AutoSprintStatus.Speed
+        end
+    end)
+
+    -- Перехват изменения атрибута Sprinting
+    AutoSprintStatus.SprintingConnection = character:GetAttributeChangedSignal("Sprinting"):Connect(function()
+        if AutoSprintStatus.Enabled and not character:GetAttribute("Sprinting") then
+            character:SetAttribute("Sprinting", true)
+        end
+    end)
+
     notify("AutoSprint", "Started with speed: " .. AutoSprintStatus.Speed, true)
 end
 
@@ -208,6 +224,14 @@ AutoSprint.Stop = function()
     if AutoSprintStatus.Connection then
         AutoSprintStatus.Connection:Disconnect()
         AutoSprintStatus.Connection = nil
+    end
+    if AutoSprintStatus.WalkSpeedConnection then
+        AutoSprintStatus.WalkSpeedConnection:Disconnect()
+        AutoSprintStatus.WalkSpeedConnection = nil
+    end
+    if AutoSprintStatus.SprintingConnection then
+        AutoSprintStatus.SprintingConnection:Disconnect()
+        AutoSprintStatus.SprintingConnection = nil
     end
     AutoSprintStatus.Running = false
 
@@ -252,7 +276,7 @@ AntiRagdoll.Start = function()
     AntiRagdollStatus.Running = true
     AntiRagdollStatus.Connection = character:GetAttributeChangedSignal("Ragdoll"):Connect(function()
         if AntiRagdollStatus.Enabled and character:GetAttribute("Ragdoll") then
-            local ragdollModule = require(game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollJoints)
+            local ragdollModule = require(RagdollJoints)
             ragdollModule.ToggleRagdoll(character, false)
             character:SetAttribute("Ragdoll", false)
             humanoid.PlatformStand = false
@@ -262,7 +286,7 @@ AntiRagdoll.Start = function()
 
     -- Установить начальное состояние
     if character:GetAttribute("Ragdoll") then
-        local ragdollModule = require(game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollJoints)
+        local ragdollModule = require(RagdollJoints)
         ragdollModule.ToggleRagdoll(character, false)
         character:SetAttribute("Ragdoll", false)
         humanoid.PlatformStand = false
@@ -386,9 +410,11 @@ local function SetupUI(UI)
         }, "AutoSprintKey")
     end
 
-    if UI.Sections.AntiRagdoll then
-        UI.Sections.AntiRagdoll:Header({ Name = "AntiRagdoll" })
-        uiElements.AntiRagdollEnabled = UI.Sections.AntiRagdoll:Toggle({
+    -- Создание секции AntiRagdoll слева
+    local antiRagdollSection = UI.Tabs.Main:Section({ Name = "AntiRagdoll", Side = "Left" })
+    if antiRagdollSection then
+        antiRagdollSection:Header({ Name = "AntiRagdoll" })
+        uiElements.AntiRagdollEnabled = antiRagdollSection:Toggle({
             Name = "Enabled",
             Default = LocalPlayer.Config.AntiRagdoll.Enabled,
             Callback = function(value)
@@ -461,6 +487,7 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
 
     if LocalPlayerObj then
         LocalPlayerObj.CharacterAdded:Connect(function(newChar)
+            task.wait(1) -- Задержка для надёжной инициализации
             if AutoSprintStatus.Enabled then
                 AutoSprint.Start()
             end
@@ -470,8 +497,13 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
         end)
     end
 
-    if LocalPlayerObj.Character and AntiRagdollStatus.Enabled then
-        AntiRagdoll.Start()
+    if LocalPlayerObj.Character then
+        if AntiRagdollStatus.Enabled then
+            AntiRagdoll.Start()
+        end
+        if AutoSprintStatus.Enabled then
+            AutoSprint.Start()
+        end
     end
 
     SetupUI(UI)
