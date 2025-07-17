@@ -4,7 +4,10 @@ local PlayerData = nil
 local notify = nil
 local LocalPlayerObj = nil
 local core = nil
-local RagdollJoints = game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollJoints
+local RagdollClient = game:GetService("ReplicatedStorage"):FindFirstChild("Modules") and
+                      game:GetService("ReplicatedStorage").Modules:FindFirstChild("Client") and
+                      game:GetService("ReplicatedStorage").Modules.Client:FindFirstChild("Char") and
+                      game:GetService("ReplicatedStorage").Modules.Client.Char:FindFirstChild("RagdollClient")
 
 LocalPlayer.Config = {
     Timer = {
@@ -177,7 +180,8 @@ AutoSprint.Start = function()
                 if attr == "CombatFatigue" or attr == "AimingDown" or attr == "Iced" or
                    attr == "Mounted" or attr == "Poisoned" or attr == "Limp" or
                    attr == "Consuming" or attr == "Crouched" or attr == "Blocking" or
-                   attr == "WalkCast" or attr == "NoSprint" then
+                   attr == "WalkCast" or attr == "NoSprint" or attr == "Attacking" or
+                   attr == "Casting" then
                     return nil
                 end
                 return character:GetAttribute(attr)
@@ -191,7 +195,7 @@ AutoSprint.Start = function()
     humanoid.WalkSpeed = AutoSprintStatus.Speed
     character:SetAttribute("Sprinting", true)
 
-    -- Постоянный спринт
+    -- Постоянный спринт с усиленной проверкой
     AutoSprintStatus.Connection = Services.RunService.Heartbeat:Connect(function()
         if not AutoSprintStatus.Enabled then
             AutoSprint.Stop()
@@ -199,8 +203,12 @@ AutoSprint.Start = function()
         end
         local humanoid, _ = getCharacterData()
         if not isCharacterValid(humanoid, nil) then return end
-        humanoid.WalkSpeed = AutoSprintStatus.Speed
-        character:SetAttribute("Sprinting", true)
+        if humanoid.WalkSpeed ~= AutoSprintStatus.Speed then
+            humanoid.WalkSpeed = AutoSprintStatus.Speed
+        end
+        if not character:GetAttribute("Sprinting") then
+            character:SetAttribute("Sprinting", true)
+        end
     end)
 
     -- Перехват изменения WalkSpeed
@@ -267,7 +275,13 @@ end
 -- AntiRagdoll Functions
 local AntiRagdoll = {}
 AntiRagdoll.Start = function()
-    if AntiRagdollStatus.Running or not LocalPlayerObj or not Services then return end
+    if AntiRagdollStatus.Running or not LocalPlayerObj or not Services or not RagdollClient then
+        if not RagdollClient then
+            warn("AntiRagdoll: RagdollClient module not found")
+            notify("AntiRagdoll", "Failed to start: RagdollClient module not found.", true)
+        end
+        return
+    end
     local character = LocalPlayerObj.Character
     if not character then return end
     local humanoid = character:FindFirstChild("Humanoid")
@@ -276,7 +290,7 @@ AntiRagdoll.Start = function()
     AntiRagdollStatus.Running = true
     AntiRagdollStatus.Connection = character:GetAttributeChangedSignal("Ragdoll"):Connect(function()
         if AntiRagdollStatus.Enabled and character:GetAttribute("Ragdoll") then
-            local ragdollModule = require(RagdollJoints)
+            local ragdollModule = require(RagdollClient)
             ragdollModule.ToggleRagdoll(character, false)
             character:SetAttribute("Ragdoll", false)
             humanoid.PlatformStand = false
@@ -286,7 +300,7 @@ AntiRagdoll.Start = function()
 
     -- Установить начальное состояние
     if character:GetAttribute("Ragdoll") then
-        local ragdollModule = require(RagdollJoints)
+        local ragdollModule = require(RagdollClient)
         ragdollModule.ToggleRagdoll(character, false)
         character:SetAttribute("Ragdoll", false)
         humanoid.PlatformStand = false
