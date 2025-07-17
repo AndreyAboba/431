@@ -59,7 +59,8 @@ local AutoSprintStatus = {
 
 local AntiRagdollStatus = {
     Running = false,
-    Connection = nil,
+    StateConnection = nil,
+    AttributeConnection = nil,
     Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
 }
 
@@ -108,7 +109,7 @@ Timer.Start = function()
             notify("Timer", "Physics step failed. Timer stopped.", true)
         end
     end)
-    notify("Timer", "Started with speed: " .. TimerStatus.Speed, true)
+    notify("Timer", "Started with speed: " .. tostring(TimerStatus.Speed), true)
 end
 
 Timer.Stop = function()
@@ -123,7 +124,7 @@ end
 Timer.SetSpeed = function(newSpeed)
     TimerStatus.Speed = math.clamp(newSpeed, 1, 15)
     LocalPlayer.Config.Timer.Speed = TimerStatus.Speed
-    notify("Timer", "Speed set to: " .. TimerStatus.Speed, false)
+    notify("Timer", "Speed set to: " .. tostring(TimerStatus.Speed), false)
 end
 
 -- Disabler Functions
@@ -198,6 +199,7 @@ AutoSprint.Start = function()
     local effectiveSpeed = AutoSprintStatus.Speed
     if AutoSprintStatus.Legit and (character:GetAttribute("Attacking") or character:GetAttribute("Casting")) then
         effectiveSpeed = AutoSprintStatus.Speed / AutoSprintStatus.Slowdown
+        notify("AutoSprint", "Legit mode: Speed reduced to " .. tostring(effectiveSpeed) .. " due to Attacking/Casting", false)
     end
     humanoid.WalkSpeed = effectiveSpeed
     character:SetAttribute("Sprinting", true)
@@ -248,6 +250,9 @@ AutoSprint.Start = function()
             local effectiveSpeed = AutoSprintStatus.Speed
             if character:GetAttribute("Attacking") or character:GetAttribute("Casting") then
                 effectiveSpeed = AutoSprintStatus.Speed / AutoSprintStatus.Slowdown
+                notify("AutoSprint", "Legit mode: Speed reduced to " .. tostring(effectiveSpeed) .. " due to Attacking", false)
+            else
+                notify("AutoSprint", "Legit mode: Speed restored to " .. tostring(AutoSprintStatus.Speed), false)
             end
             humanoid.WalkSpeed = effectiveSpeed
         end
@@ -259,12 +264,15 @@ AutoSprint.Start = function()
             local effectiveSpeed = AutoSprintStatus.Speed
             if character:GetAttribute("Attacking") or character:GetAttribute("Casting") then
                 effectiveSpeed = AutoSprintStatus.Speed / AutoSprintStatus.Slowdown
+                notify("AutoSprint", "Legit mode: Speed reduced to " .. tostring(effectiveSpeed) .. " due to Casting", false)
+            else
+                notify("AutoSprint", "Legit mode: Speed restored to " .. tostring(AutoSprintStatus.Speed), false)
             end
             humanoid.WalkSpeed = effectiveSpeed
         end
     end)
 
-    notify("AutoSprint", "Started with speed: " .. AutoSprintStatus.Speed .. (AutoSprintStatus.Legit and " (Legit mode enabled)" or ""), true)
+    notify("AutoSprint", "Started with speed: " .. tostring(AutoSprintStatus.Speed) .. (AutoSprintStatus.Legit and " (Legit mode enabled)" or ""), true)
 end
 
 AutoSprint.Stop = function()
@@ -312,7 +320,7 @@ end
 AutoSprint.SetSpeed = function(newSpeed)
     AutoSprintStatus.Speed = math.clamp(newSpeed, 33, 100)
     LocalPlayer.Config.AutoSprint.Speed = AutoSprintStatus.Speed
-    local humanoid, _ = getCharacterData()
+    local humanoid, character = getCharacterData()
     if humanoid and AutoSprintStatus.Running then
         local effectiveSpeed = AutoSprintStatus.Speed
         if AutoSprintStatus.Legit and (character:GetAttribute("Attacking") or character:GetAttribute("Casting")) then
@@ -320,7 +328,7 @@ AutoSprint.SetSpeed = function(newSpeed)
         end
         humanoid.WalkSpeed = effectiveSpeed
     end
-    notify("AutoSprint", "Speed set to: " .. AutoSprintStatus.Speed, false)
+    notify("AutoSprint", "Speed set to: " .. tostring(AutoSprintStatus.Speed), false)
 end
 
 AutoSprint.SetSlowdown = function(newSlowdown)
@@ -330,7 +338,7 @@ AutoSprint.SetSlowdown = function(newSlowdown)
     if humanoid and AutoSprintStatus.Running and AutoSprintStatus.Legit and (character:GetAttribute("Attacking") or character:GetAttribute("Casting")) then
         humanoid.WalkSpeed = AutoSprintStatus.Speed / AutoSprintStatus.Slowdown
     end
-    notify("AutoSprint", "Slowdown set to: " .. AutoSprintStatus.Slowdown, false)
+    notify("AutoSprint", "Slowdown set to: " .. tostring(AutoSprintStatus.Slowdown), false)
 end
 
 -- AntiRagdoll Functions
@@ -346,35 +354,58 @@ AntiRagdoll.Start = function()
     local character = LocalPlayerObj.Character
     if not character then return end
     local humanoid = character:WaitForChild("Humanoid", 5)
-    if not humanoid then return end
+    if not humanoid then
+        notify("AntiRagdoll", "Failed to start: Humanoid not found.", true)
+        return
+    end
 
     AntiRagdollStatus.Running = true
-    AntiRagdollStatus.Connection = humanoid:GetStateChangedSignal():Connect(function(oldState, newState)
+
+    -- Перехват изменения состояния Humanoid
+    AntiRagdollStatus.StateConnection = humanoid:GetStateChangedSignal():Connect(function(oldState, newState)
         if AntiRagdollStatus.Enabled and newState == Enum.HumanoidStateType.Physics then
             local ragdollModule = require(RagdollClient)
             ragdollModule.ToggleRagdoll(character, false)
             character:SetAttribute("Ragdoll", false)
             humanoid.PlatformStand = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            notify("AntiRagdoll", "Prevented ragdoll (Physics state detected)", false)
         end
     end)
 
-    -- Установить начальное состояние
-    if humanoid:GetState() == Enum.HumanoidStateType.Physics or character:GetAttribute("Ragdoll") then
-        local ragdollModule = require(RagdollClient)
+    -- Перехват изменения атрибута Ragdoll (запасной вариант)
+    AntiRagdollStatus.AttributeConnection = character:GetAttributeChangedSignal("Ragdoll"):Connect(function()
+        if AntiRagdollStatus.Enabled and character:GetAttribute("Ragdoll") then
+            local ragdollModule = require(RagdollClient)
+            ragdollModule.ToggleRagdoll(character, false)
+            character:SetAttribute("Ragdoll", false)
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            notify("AntiRagdoll", "Prevented ragdoll (Ragdoll attribute detected)", false)
+        end
+    end)
+
+    -- Проверка начального состояния
+    local ragdollModule = require(RagdollClient)
+    if humanoid:GetState() == Enum.HumanoidStateType.Physics or character:GetAttribute("Ragdoll") or humanoid.PlatformStand then
         ragdollModule.ToggleRagdoll(character, false)
         character:SetAttribute("Ragdoll", false)
         humanoid.PlatformStand = false
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        notify("AntiRagdoll", "Initial ragdoll state cleared", false)
     end
 
     notify("AntiRagdoll", "Started", true)
 end
 
 AntiRagdoll.Stop = function()
-    if AntiRagdollStatus.Connection then
-        AntiRagdollStatus.Connection:Disconnect()
-        AntiRagdollStatus.Connection = nil
+    if AntiRagdollStatus.StateConnection then
+        AntiRagdollStatus.StateConnection:Disconnect()
+        AntiRagdollStatus.StateConnection = nil
+    end
+    if AntiRagdollStatus.AttributeConnection then
+        AntiRagdollStatus.AttributeConnection:Disconnect()
+        AntiRagdollStatus.AttributeConnection = nil
     end
     AntiRagdollStatus.Running = false
     notify("AntiRagdoll", "Stopped", true)
@@ -478,8 +509,10 @@ local function SetupUI(UI)
                 local humanoid, character = getCharacterData()
                 if humanoid and AutoSprintStatus.Running and AutoSprintStatus.Legit and (character:GetAttribute("Attacking") or character:GetAttribute("Casting")) then
                     humanoid.WalkSpeed = AutoSprintStatus.Speed / AutoSprintStatus.Slowdown
+                    notify("AutoSprint", "Legit mode: Speed reduced to " .. tostring(AutoSprintStatus.Speed / AutoSprintStatus.Slowdown), false)
                 elseif humanoid and AutoSprintStatus.Running then
                     humanoid.WalkSpeed = AutoSprintStatus.Speed
+                    notify("AutoSprint", "Legit mode: Speed restored to " .. tostring(AutoSprintStatus.Speed), false)
                 end
                 notify("AutoSprint", "Legit mode " .. (value and "enabled" or "disabled"), false)
             end
