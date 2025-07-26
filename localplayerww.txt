@@ -32,11 +32,11 @@ LocalPlayer.Config = {
         ReverseY = 350,
         Velocity = 200,
         Multiplier = 7,
-        ToggleKey = "" -- Изменено с nil на пустую строку
+        ToggleKey = nil
     },
     AntiSpeed = {
         Enabled = false,
-        Method = "Hook" -- Только "Hook"
+        Method = "Hook"
     }
 }
 
@@ -468,6 +468,7 @@ AntiSpeed.Stop = function()
         setreadonly(mt, false)
         mt.__index = AntiSpeedStatus.OriginalIndex
         setreadonly(mt, true)
+        AntiSpeedStatus.OriginalIndex = nil
     end
     AntiSpeedStatus.Running = false
     notify("AntiSpeed", "Stopped", true)
@@ -488,6 +489,7 @@ local function SetupUI(UI)
 
     if UI.Sections.Timer then
         UI.Sections.Timer:Header({ Name = "Timer" })
+        UI.Sections.Timer.Side = "Left"
         uiElements.TimerEnabled = UI.Sections.Timer:Toggle({
             Name = "Enabled",
             Default = LocalPlayer.Config.Timer.Enabled,
@@ -512,12 +514,8 @@ local function SetupUI(UI)
             Name = "Toggle Key",
             Default = LocalPlayer.Config.Timer.ToggleKey or "",
             Callback = function(value)
-                TimerStatus.Key = value
-                LocalPlayer.Config.Timer.ToggleKey = value
-                if value == "" then
-                    notify("Timer", "Toggle Key cleared. Set a key to use.", false)
-                    return
-                end
+                TimerStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.Timer.ToggleKey = TimerStatus.Key
                 if isInputFocused() then return end
                 if TimerStatus.Enabled then
                     if TimerStatus.Running then Timer.Stop() else Timer.Start() end
@@ -530,6 +528,7 @@ local function SetupUI(UI)
 
     if UI.Sections.Disabler then
         UI.Sections.Disabler:Header({ Name = "Disabler" })
+        UI.Sections.Disabler.Side = "Left"
         uiElements.DisablerEnabled = UI.Sections.Disabler:Toggle({
             Name = "Enabled",
             Default = LocalPlayer.Config.Disabler.Enabled,
@@ -543,12 +542,8 @@ local function SetupUI(UI)
             Name = "Toggle Key",
             Default = LocalPlayer.Config.Disabler.ToggleKey or "",
             Callback = function(value)
-                DisablerStatus.Key = value
-                LocalPlayer.Config.Disabler.ToggleKey = value
-                if value == "" then
-                    notify("Disabler", "Toggle Key cleared. Set a key to use.", false)
-                    return
-                end
+                DisablerStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.Disabler.ToggleKey = DisablerStatus.Key
                 if isInputFocused() then return end
                 if DisablerStatus.Enabled then
                     if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
@@ -560,7 +555,8 @@ local function SetupUI(UI)
     end
 
     if UI.Sections.Speed then
-        UI.Sections.Speed:Header({ Name = "AutoSprint", Side = "Right" })
+        UI.Sections.Speed:Header({ Name = "AutoSprint" })
+        UI.Sections.Speed.Side = "Right"
         uiElements.AutoSprintEnabled = UI.Sections.Speed:Toggle({
             Name = "Enabled",
             Default = LocalPlayer.Config.AutoSprint.Enabled,
@@ -585,12 +581,8 @@ local function SetupUI(UI)
             Name = "Toggle Key",
             Default = LocalPlayer.Config.AutoSprint.ToggleKey or "",
             Callback = function(value)
-                AutoSprintStatus.Key = value
-                LocalPlayer.Config.AutoSprint.ToggleKey = value
-                if value == "" then
-                    notify("AutoSprint", "Toggle Key cleared. Set a key to use.", false)
-                    return
-                end
+                AutoSprintStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.AutoSprint.ToggleKey = AutoSprintStatus.Key
                 if isInputFocused() then return end
                 if AutoSprintStatus.Enabled then
                     if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
@@ -601,7 +593,7 @@ local function SetupUI(UI)
         }, "AutoSprintKey")
     end
 
-    -- Секция Desync на правой части
+    -- Секция Desync на правой стороне
     local desyncSection = UI.Tabs.LocalPlayer:Section({ Name = "Desync", Side = "Right" })
     if desyncSection then
         desyncSection:Header({ Name = "Desync" })
@@ -660,12 +652,8 @@ local function SetupUI(UI)
             Name = "Toggle Key",
             Default = LocalPlayer.Config.Desync.ToggleKey or "",
             Callback = function(value)
-                DesyncStatus.Key = value
-                LocalPlayer.Config.Desync.ToggleKey = value
-                if value == "" then
-                    notify("Desync", "Toggle Key cleared. Set a key to use.", false)
-                    return
-                end
+                DesyncStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.Desync.ToggleKey = DesyncStatus.Key
                 if isInputFocused() then return end
                 if DesyncStatus.Enabled then
                     if DesyncStatus.Running then Desync.Stop() else Desync.Start() end
@@ -676,7 +664,7 @@ local function SetupUI(UI)
         }, "DesyncKey")
     end
 
-    -- Секция AntiSpeed на правой части
+    -- Секция AntiSpeed на правой стороне
     local antiSpeedSection = UI.Tabs.LocalPlayer:Section({ Name = "AntiSpeed", Side = "Right" })
     if antiSpeedSection then
         antiSpeedSection:Header({ Name = "AntiSpeed" })
@@ -785,7 +773,7 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
     if LocalPlayerObj then
         LocalPlayerObj.CharacterAdded:Connect(function(newChar)
             newChar:WaitForChild("Humanoid", 5)
-            newChar:WaitForChild("Human一半
+            newChar:WaitForChild("HumanoidRootPart", 5)
             if AutoSprintStatus.Enabled then
                 AutoSprint.Start()
             end
