@@ -1,3 +1,4 @@
+print('1')
 local LocalPlayer = {}
 local Services = nil
 local PlayerData = nil
@@ -61,6 +62,7 @@ local AntiRagdollStatus = {
     Running = false,
     StateConnection = nil,
     AttributeConnection = nil,
+    PlatformStandConnection = nil,
     Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
 }
 
@@ -78,6 +80,17 @@ end
 
 local function isInputFocused()
     return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
+end
+
+-- Восстановление Motor6D
+local function restoreMotor6D(character)
+    if not character then return end
+    for _, motor in ipairs(character:GetDescendants()) do
+        if motor:IsA("Motor6D") and not motor.Enabled then
+            motor.Enabled = true
+            notify("AntiRagdoll", "Restored Motor6D: " .. motor.Name, false)
+        end
+    end
 end
 
 -- Timer Functions
@@ -332,6 +345,7 @@ AutoSprint.SetSpeed = function(newSpeed)
 end
 
 AutoSprint.SetSlowdown = function(newSlowdown)
+    newSlowdown = tonumber(newSlowdown) or AutoSprintStatus.Slowdown
     AutoSprintStatus.Slowdown = math.clamp(newSlowdown, 2, 10)
     LocalPlayer.Config.AutoSprint.Slowdown = AutoSprintStatus.Slowdown
     local humanoid, character = getCharacterData()
@@ -369,11 +383,12 @@ AntiRagdoll.Start = function()
             character:SetAttribute("Ragdoll", false)
             humanoid.PlatformStand = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            restoreMotor6D(character)
             notify("AntiRagdoll", "Prevented ragdoll (Physics state detected)", false)
         end
     end)
 
-    -- Перехват изменения атрибута Ragdoll (запасной вариант)
+    -- Перехват изменения атрибута Ragdoll
     AntiRagdollStatus.AttributeConnection = character:GetAttributeChangedSignal("Ragdoll"):Connect(function()
         if AntiRagdollStatus.Enabled and character:GetAttribute("Ragdoll") then
             local ragdollModule = require(RagdollClient)
@@ -381,7 +396,21 @@ AntiRagdoll.Start = function()
             character:SetAttribute("Ragdoll", false)
             humanoid.PlatformStand = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            restoreMotor6D(character)
             notify("AntiRagdoll", "Prevented ragdoll (Ragdoll attribute detected)", false)
+        end
+    end)
+
+    -- Перехват изменения PlatformStand
+    AntiRagdollStatus.PlatformStandConnection = humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
+        if AntiRagdollStatus.Enabled and humanoid.PlatformStand then
+            local ragdollModule = require(RagdollClient)
+            ragdollModule.ToggleRagdoll(character, false)
+            character:SetAttribute("Ragdoll", false)
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            restoreMotor6D(character)
+            notify("AntiRagdoll", "Prevented ragdoll (PlatformStand detected)", false)
         end
     end)
 
@@ -392,6 +421,7 @@ AntiRagdoll.Start = function()
         character:SetAttribute("Ragdoll", false)
         humanoid.PlatformStand = false
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        restoreMotor6D(character)
         notify("AntiRagdoll", "Initial ragdoll state cleared", false)
     end
 
@@ -406,6 +436,10 @@ AntiRagdoll.Stop = function()
     if AntiRagdollStatus.AttributeConnection then
         AntiRagdollStatus.AttributeConnection:Disconnect()
         AntiRagdollStatus.AttributeConnection = nil
+    end
+    if AntiRagdollStatus.PlatformStandConnection then
+        AntiRagdollStatus.PlatformStandConnection:Disconnect()
+        AntiRagdollStatus.PlatformStandConnection = nil
     end
     AntiRagdollStatus.Running = false
     notify("AntiRagdoll", "Stopped", true)
@@ -497,6 +531,7 @@ local function SetupUI(UI)
             Default = LocalPlayer.Config.AutoSprint.Speed,
             Precision = 1,
             Callback = function(value)
+                notify("AutoSprint", "Slider Speed received: " .. tostring(value), false)
                 AutoSprint.SetSpeed(value)
             end
         }, "AutoSprintSpeed")
@@ -524,6 +559,7 @@ local function SetupUI(UI)
             Default = LocalPlayer.Config.AutoSprint.Slowdown,
             Precision = 0.1,
             Callback = function(value)
+                notify("AutoSprint", "Slider Slowdown received: " .. tostring(value), false)
                 AutoSprint.SetSlowdown(value)
             end
         }, "AutoSprintSlowdown")
