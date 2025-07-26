@@ -5,7 +5,7 @@ local notify = nil
 local LocalPlayerObj = nil
 local core = nil
 
--- Services for Desync
+-- Services for Desync and AntiSpeed
 local checkcaller = checkcaller
 local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
@@ -32,7 +32,11 @@ LocalPlayer.Config = {
         ReverseY = 350,
         Velocity = 200,
         Multiplier = 7,
-        ToggleKey = "c"
+        ToggleKey = "" -- Изменено с nil на пустую строку
+    },
+    AntiSpeed = {
+        Enabled = false,
+        Method = "Hook" -- Только "Hook"
     }
 }
 
@@ -74,6 +78,13 @@ local DesyncStatus = {
     Velocity = LocalPlayer.Config.Desync.Velocity,
     Multiplier = LocalPlayer.Config.Desync.Multiplier,
     ServerMarker = nil
+}
+
+local AntiSpeedStatus = {
+    Running = false,
+    OriginalIndex = nil,
+    Enabled = LocalPlayer.Config.AntiSpeed.Enabled,
+    Method = LocalPlayer.Config.AntiSpeed.Method
 }
 
 local function getCharacterData()
@@ -423,6 +434,54 @@ Desync.SetMultiplier = function(newMultiplier)
     notify("Desync", "Multiplier set to: " .. tostring(DesyncStatus.Multiplier), false)
 end
 
+-- AntiSpeed Functions
+local AntiSpeed = {}
+AntiSpeed.Start = function()
+    if AntiSpeedStatus.Running or not LocalPlayerObj then return end
+    local character = LocalPlayerObj.Character
+    if not character then return end
+    local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+    if not rootPart then return end
+
+    AntiSpeedStatus.Running = true
+
+    -- Хук метаметода для спуфа AssemblyLinearVelocity
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    AntiSpeedStatus.OriginalIndex = AntiSpeedStatus.OriginalIndex or mt.__index
+    mt.__index = newcclosure(function(self, key)
+        if AntiSpeedStatus.Enabled and not checkcaller() then
+            if self == rootPart and key == "AssemblyLinearVelocity" then
+                return Vector3.new(1, 1, 1)
+            end
+        end
+        return AntiSpeedStatus.OriginalIndex(self, key)
+    end)
+    setreadonly(mt, true)
+
+    notify("AntiSpeed", "Started with method: " .. AntiSpeedStatus.Method, true)
+end
+
+AntiSpeed.Stop = function()
+    if AntiSpeedStatus.OriginalIndex then
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        mt.__index = AntiSpeedStatus.OriginalIndex
+        setreadonly(mt, true)
+    end
+    AntiSpeedStatus.Running = false
+    notify("AntiSpeed", "Stopped", true)
+end
+
+AntiSpeed.SetMethod = function(newMethod)
+    if newMethod ~= "Hook" then
+        newMethod = "Hook"
+    end
+    AntiSpeedStatus.Method = newMethod
+    LocalPlayer.Config.AntiSpeed.Method = newMethod
+    notify("AntiSpeed", "Method set to: " .. newMethod, false)
+end
+
 -- UI Setup
 local function SetupUI(UI)
     local uiElements = {}
@@ -451,10 +510,14 @@ local function SetupUI(UI)
         }, "TimerSpeed")
         uiElements.TimerKey = UI.Sections.Timer:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Timer.ToggleKey,
+            Default = LocalPlayer.Config.Timer.ToggleKey or "",
             Callback = function(value)
                 TimerStatus.Key = value
                 LocalPlayer.Config.Timer.ToggleKey = value
+                if value == "" then
+                    notify("Timer", "Toggle Key cleared. Set a key to use.", false)
+                    return
+                end
                 if isInputFocused() then return end
                 if TimerStatus.Enabled then
                     if TimerStatus.Running then Timer.Stop() else Timer.Start() end
@@ -478,10 +541,14 @@ local function SetupUI(UI)
         }, "DisablerEnabled")
         uiElements.DisablerKey = UI.Sections.Disabler:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Disabler.ToggleKey,
+            Default = LocalPlayer.Config.Disabler.ToggleKey or "",
             Callback = function(value)
                 DisablerStatus.Key = value
                 LocalPlayer.Config.Disabler.ToggleKey = value
+                if value == "" then
+                    notify("Disabler", "Toggle Key cleared. Set a key to use.", false)
+                    return
+                end
                 if isInputFocused() then return end
                 if DisablerStatus.Enabled then
                     if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
@@ -493,7 +560,7 @@ local function SetupUI(UI)
     end
 
     if UI.Sections.Speed then
-        UI.Sections.Speed:Header({ Name = "AutoSprint" })
+        UI.Sections.Speed:Header({ Name = "AutoSprint", Side = "Right" })
         uiElements.AutoSprintEnabled = UI.Sections.Speed:Toggle({
             Name = "Enabled",
             Default = LocalPlayer.Config.AutoSprint.Enabled,
@@ -516,10 +583,14 @@ local function SetupUI(UI)
         }, "AutoSprintSpeed")
         uiElements.AutoSprintKey = UI.Sections.Speed:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.AutoSprint.ToggleKey,
+            Default = LocalPlayer.Config.AutoSprint.ToggleKey or "",
             Callback = function(value)
                 AutoSprintStatus.Key = value
                 LocalPlayer.Config.AutoSprint.ToggleKey = value
+                if value == "" then
+                    notify("AutoSprint", "Toggle Key cleared. Set a key to use.", false)
+                    return
+                end
                 if isInputFocused() then return end
                 if AutoSprintStatus.Enabled then
                     if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
@@ -530,8 +601,8 @@ local function SetupUI(UI)
         }, "AutoSprintKey")
     end
 
-    -- Создание секции Desync слева в табе LocalPlayer
-    local desyncSection = UI.Tabs.LocalPlayer:Section({ Name = "Desync", Side = "Left" })
+    -- Секция Desync на правой части
+    local desyncSection = UI.Tabs.LocalPlayer:Section({ Name = "Desync", Side = "Right" })
     if desyncSection then
         desyncSection:Header({ Name = "Desync" })
         uiElements.DesyncEnabled = desyncSection:Toggle({
@@ -587,10 +658,14 @@ local function SetupUI(UI)
         }, "DesyncMultiplier")
         uiElements.DesyncKey = desyncSection:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Desync.ToggleKey,
+            Default = LocalPlayer.Config.Desync.ToggleKey or "",
             Callback = function(value)
                 DesyncStatus.Key = value
                 LocalPlayer.Config.Desync.ToggleKey = value
+                if value == "" then
+                    notify("Desync", "Toggle Key cleared. Set a key to use.", false)
+                    return
+                end
                 if isInputFocused() then return end
                 if DesyncStatus.Enabled then
                     if DesyncStatus.Running then Desync.Stop() else Desync.Start() end
@@ -599,6 +674,30 @@ local function SetupUI(UI)
                 end
             end
         }, "DesyncKey")
+    end
+
+    -- Секция AntiSpeed на правой части
+    local antiSpeedSection = UI.Tabs.LocalPlayer:Section({ Name = "AntiSpeed", Side = "Right" })
+    if antiSpeedSection then
+        antiSpeedSection:Header({ Name = "AntiSpeed" })
+        uiElements.AntiSpeedEnabled = antiSpeedSection:Toggle({
+            Name = "Enabled",
+            Default = LocalPlayer.Config.AntiSpeed.Enabled,
+            Callback = function(value)
+                AntiSpeedStatus.Enabled = value
+                LocalPlayer.Config.AntiSpeed.Enabled = value
+                if value then AntiSpeed.Start() else AntiSpeed.Stop() end
+            end
+        }, "AntiSpeedEnabled")
+        uiElements.AntiSpeedMethod = antiSpeedSection:Dropdown({
+            Name = "Method Bypass",
+            Options = {"Hook"},
+            Default = LocalPlayer.Config.AntiSpeed.Method,
+            Callback = function(value)
+                notify("AntiSpeed", "Dropdown Method received: " .. tostring(value), false)
+                AntiSpeed.SetMethod(value)
+            end
+        }, "AntiSpeedMethod")
     end
 
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Local Player Sync", Side = "Right" })
@@ -619,6 +718,9 @@ local function SetupUI(UI)
             LocalPlayer.Config.Desync.ReverseY = uiElements.DesyncReverseY:GetValue()
             LocalPlayer.Config.Desync.Velocity = uiElements.DesyncVelocity:GetValue()
             LocalPlayer.Config.Desync.Multiplier = uiElements.DesyncMultiplier:GetValue()
+
+            LocalPlayer.Config.AntiSpeed.Enabled = uiElements.AntiSpeedEnabled:GetState()
+            LocalPlayer.Config.AntiSpeed.Method = uiElements.AntiSpeedMethod:GetValue()
 
             TimerStatus.Enabled = LocalPlayer.Config.Timer.Enabled
             TimerStatus.Speed = LocalPlayer.Config.Timer.Speed
@@ -654,6 +756,14 @@ local function SetupUI(UI)
                 if DesyncStatus.Running then Desync.Stop() end
             end
 
+            AntiSpeedStatus.Enabled = LocalPlayer.Config.AntiSpeed.Enabled
+            AntiSpeedStatus.Method = LocalPlayer.Config.AntiSpeed.Method
+            if AntiSpeedStatus.Enabled then
+                if not AntiSpeedStatus.Running then AntiSpeed.Start() end
+            else
+                if AntiSpeedStatus.Running then AntiSpeed.Stop() end
+            end
+
             notify("LocalPlayer", "Config synchronized!", true)
         end
     })
@@ -675,12 +785,15 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
     if LocalPlayerObj then
         LocalPlayerObj.CharacterAdded:Connect(function(newChar)
             newChar:WaitForChild("Humanoid", 5)
-            newChar:WaitForChild("HumanoidRootPart", 5)
+            newChar:WaitForChild("Human一半
             if AutoSprintStatus.Enabled then
                 AutoSprint.Start()
             end
             if DesyncStatus.Enabled then
                 Desync.Start()
+            end
+            if AntiSpeedStatus.Enabled then
+                AntiSpeed.Start()
             end
         end)
     end
@@ -691,6 +804,9 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
         end
         if DesyncStatus.Enabled then
             Desync.Start()
+        end
+        if AntiSpeedStatus.Enabled then
+            AntiSpeed.Start()
         end
     end
 
