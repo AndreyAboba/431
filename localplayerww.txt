@@ -4,8 +4,9 @@ local PlayerData = nil
 local notify = nil
 local LocalPlayerObj = nil
 local core = nil
+local RagdollClient = game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollClient
 
--- Services for Desync and AntiSpeed
+-- Services for Desync
 local checkcaller = checkcaller
 local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
@@ -26,6 +27,9 @@ LocalPlayer.Config = {
         Speed = 40,
         ToggleKey = nil
     },
+    AntiRagdoll = {
+        Enabled = false
+    },
     Desync = {
         Enabled = false,
         Method = "Reverse", -- "Reverse" or "AssemblyLinearVelocity"
@@ -33,10 +37,6 @@ LocalPlayer.Config = {
         Velocity = 200,
         Multiplier = 7,
         ToggleKey = nil
-    },
-    AntiSpeed = {
-        Enabled = false,
-        Method = "Hook"
     }
 }
 
@@ -65,10 +65,18 @@ local AutoSprintStatus = {
     Speed = LocalPlayer.Config.AutoSprint.Speed
 }
 
+local AntiRagdollStatus = {
+    Running = false,
+    StateConnection = nil,
+    AttributeConnection = nil,
+    PlatformStandConnection = nil,
+    Motor6DConnections = {},
+    Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
+}
+
 local DesyncStatus = {
     Running = false,
     HeartbeatConnection = nil,
-    MouseConnection = nil,
     OriginalIndex = nil,
     DesyncTypes = {},
     Key = LocalPlayer.Config.Desync.ToggleKey,
@@ -78,13 +86,6 @@ local DesyncStatus = {
     Velocity = LocalPlayer.Config.Desync.Velocity,
     Multiplier = LocalPlayer.Config.Desync.Multiplier,
     ServerMarker = nil
-}
-
-local AntiSpeedStatus = {
-    Running = false,
-    OriginalIndex = nil,
-    Enabled = LocalPlayer.Config.AntiSpeed.Enabled,
-    Method = LocalPlayer.Config.AntiSpeed.Method
 }
 
 local function getCharacterData()
@@ -97,6 +98,25 @@ end
 
 local function isCharacterValid(humanoid, rootPart)
     return humanoid and rootPart and humanoid.Health > 0
+end
+
+local function isInputFocused()
+    return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
+end
+
+-- Восстановление Motor6D и отключение BallSocketConstraints
+local function restoreMotor6D(character)
+    if not character then return end
+    for _, motor in ipairs(character:GetDescendants()) do
+        if motor:IsA("Motor6D") and not motor.Enabled then
+            motor.Enabled = true
+            notify("AntiRagdoll", "Restored Motor6D: " .. motor.Name, false)
+        end
+        if motor:IsA("BallSocketConstraint") then
+            motor.Enabled = false
+            notify("AntiRagdoll", "Disabled BallSocketConstraint: " .. motor.Name, false)
+        end
+    end
 end
 
 -- Timer Functions
@@ -289,11 +309,124 @@ AutoSprint.SetSpeed = function(newSpeed)
     newSpeed = tonumber(newSpeed) or AutoSprintStatus.Speed
     AutoSprintStatus.Speed = math.clamp(newSpeed, 33, 100)
     LocalPlayer.Config.AutoSprint.Speed = AutoSprintStatus.Speed
-    local humanoid = getCharacterData()
+    local humanoid, _ = getCharacterData()
     if humanoid and AutoSprintStatus.Running then
         humanoid.WalkSpeed = AutoSprintStatus.Speed
     end
     notify("AutoSprint", "Speed set to: " .. tostring(AutoSprintStatus.Speed), false)
+end
+
+-- AntiRagdoll Functions
+local AntiRagdoll = {}
+AntiRagdoll.Start = function()
+    if AntiRagdollStatus.Running or not LocalPlayerObj or not Services or not RagdollClient then
+        if not RagdollClient then
+            warn("AntiRagdoll: RagdollClient module not found")
+            notify("AntiRagdoll", "Failed to start: RagdollClient module not found.", true)
+        end
+        return
+    end
+    local character = LocalPlayerObj.Character
+    if not character then return end
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if not humanoid then
+        notify("AntiRagdoll", "Failed to start: Humanoid not found.", true)
+        return
+    end
+
+    AntiRagdollStatus.Running = true
+
+    -- Перехват изменения состояния Humanoid
+    AntiRagdollStatus.StateConnection = humanoid:GetStateChangedSignal():Connect(function(oldState, newState)
+        if AntiRagdollStatus.Enabled and newState == Enum.HumanoidStateType.Physics then
+            local ragdollModule = require(RagdollClient)
+            ragdollModule.ToggleRagdoll(character, false)
+            character:SetAttribute("Ragdoll", false)
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            restoreMotor6D(character)
+            notify("AntiRagdoll", "Prevented ragdoll (Physics state detected)", false)
+        end
+    end)
+
+    -- Перехват изменения атрибута Ragdoll
+    AntiRagdollStatus.AttributeConnection = character:GetAttributeChangedSignal("Ragdoll"):Connect(function()
+        if AntiRagdollStatus.Enabled and character:GetAttribute("Ragdoll") then
+            local ragdollModule = require(RagdollClient)
+            ragdollModule.ToggleRagdoll(character, false)
+            character:SetAttribute("Ragdoll", false)
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            restoreMotor6D(character)
+            notify("AntiRagdoll", "Prevented ragdoll (Ragdoll attribute detected)", false)
+        end
+    end)
+
+    -- Перехват изменения PlatformStand
+    AntiRagdollStatus.PlatformStandConnection = humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
+        if AntiRagdollStatus.Enabled and humanoid.PlatformStand then
+            local ragdollModule = require(RagdollClient)
+            ragdollModule.ToggleRagdoll(character, false)
+            character:SetAttribute("Ragdoll", false)
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            restoreMotor6D(character)
+            notify("AntiRagdoll", "Prevented ragdoll (PlatformStand detected)", false)
+        end
+    end)
+
+    -- Перехват изменений Motor6D.Enabled
+    for _, motor in ipairs(character:GetDescendants()) do
+        if motor:IsA("Motor6D") then
+            local conn = motor:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if AntiRagdollStatus.Enabled and not motor.Enabled then
+                    motor.Enabled = true
+                    local ragdollModule = require(RagdollClient)
+                    ragdollModule.ToggleRagdoll(character, false)
+                    character:SetAttribute("Ragdoll", false)
+                    humanoid.PlatformStand = false
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    restoreMotor6D(character)
+                    notify("AntiRagdoll", "Prevented ragdoll (Motor6D disabled: " .. motor.Name .. ")", false)
+                end
+            end)
+            table.insert(AntiRagdollStatus.Motor6DConnections, conn)
+        end
+    end
+
+    -- Проверка начального состояния
+    local ragdollModule = require(RagdollClient)
+    if humanoid:GetState() == Enum.HumanoidStateType.Physics or character:GetAttribute("Ragdoll") or humanoid.PlatformStand then
+        ragdollModule.ToggleRagdoll(character, false)
+        character:SetAttribute("Ragdoll", false)
+        humanoid.PlatformStand = false
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        restoreMotor6D(character)
+        notify("AntiRagdoll", "Initial ragdoll state cleared", false)
+    end
+
+    notify("AntiRagdoll", "Started", true)
+end
+
+AntiRagdoll.Stop = function()
+    if AntiRagdollStatus.StateConnection then
+        AntiRagdollStatus.StateConnection:Disconnect()
+        AntiRagdollStatus.StateConnection = nil
+    end
+    if AntiRagdollStatus.AttributeConnection then
+        AntiRagdollStatus.AttributeConnection:Disconnect()
+        AntiRagdollStatus.AttributeConnection = nil
+    end
+    if AntiRagdollStatus.PlatformStandConnection then
+        AntiRagdollStatus.PlatformStandConnection:Disconnect()
+        AntiRagdollStatus.PlatformStandConnection = nil
+    end
+    for _, conn in ipairs(AntiRagdollStatus.Motor6DConnections) do
+        conn:Disconnect()
+    end
+    AntiRagdollStatus.Motor6DConnections = {}
+    AntiRagdollStatus.Running = false
+    notify("AntiRagdoll", "Stopped", true)
 end
 
 -- Desync Functions
@@ -381,10 +514,6 @@ Desync.Stop = function()
         DesyncStatus.HeartbeatConnection:Disconnect()
         DesyncStatus.HeartbeatConnection = nil
     end
-    if DesyncStatus.MouseConnection then
-        DesyncStatus.MouseConnection:Disconnect()
-        DesyncStatus.MouseConnection = nil
-    end
     if DesyncStatus.ServerMarker then
         DesyncStatus.ServerMarker:Destroy()
         DesyncStatus.ServerMarker = nil
@@ -430,55 +559,6 @@ Desync.SetMultiplier = function(newMultiplier)
     notify("Desync", "Multiplier set to: " .. tostring(DesyncStatus.Multiplier), false)
 end
 
--- AntiSpeed Functions
-local AntiSpeed = {}
-AntiSpeed.Start = function()
-    if AntiSpeedStatus.Running or not LocalPlayerObj then return end
-    local character = LocalPlayerObj.Character
-    if not character then return end
-    local rootPart = character:WaitForChild("HumanoidRootPart", 5)
-    if not rootPart then return end
-
-    AntiSpeedStatus.Running = true
-
-    -- Хук метаметода для спуфа AssemblyLinearVelocity
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    AntiSpeedStatus.OriginalIndex = AntiSpeedStatus.OriginalIndex or mt.__index
-    mt.__index = newcclosure(function(self, key)
-        if AntiSpeedStatus.Enabled and not checkcaller() then
-            if self == rootPart and key == "AssemblyLinearVelocity" then
-                return Vector3.new(1, 1, 1)
-            end
-        end
-        return AntiSpeedStatus.OriginalIndex(self, key)
-    end)
-    setreadonly(mt, true)
-
-    notify("AntiSpeed", "Started with method: " .. AntiSpeedStatus.Method, true)
-end
-
-AntiSpeed.Stop = function()
-    if AntiSpeedStatus.OriginalIndex then
-        local mt = getrawmetatable(game)
-        setreadonly(mt, false)
-        mt.__index = AntiSpeedStatus.OriginalIndex
-        setreadonly(mt, true)
-        AntiSpeedStatus.OriginalIndex = nil
-    end
-    AntiSpeedStatus.Running = false
-    notify("AntiSpeed", "Stopped", true)
-end
-
-AntiSpeed.SetMethod = function(newMethod)
-    if newMethod ~= "Hook" then
-        newMethod = "Hook"
-    end
-    AntiSpeedStatus.Method = newMethod
-    LocalPlayer.Config.AntiSpeed.Method = newMethod
-    notify("AntiSpeed", "Method set to: " .. newMethod, false)
-end
-
 -- UI Setup
 local function SetupUI(UI)
     local uiElements = {}
@@ -508,11 +588,16 @@ local function SetupUI(UI)
         }, "TimerSpeed")
         uiElements.TimerKey = UI.Sections.Timer:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Timer.ToggleKey or "",
+            Default = LocalPlayer.Config.Timer.ToggleKey,
             Callback = function(value)
-                notify("Timer", "Keybind set to: " .. tostring(value), false)
-                TimerStatus.Key = value == "" and nil or value
-                LocalPlayer.Config.Timer.ToggleKey = TimerStatus.Key
+                TimerStatus.Key = value
+                LocalPlayer.Config.Timer.ToggleKey = value
+                if isInputFocused() then return end
+                if TimerStatus.Enabled then
+                    if TimerStatus.Running then Timer.Stop() else Timer.Start() end
+                else
+                    notify("Timer", "Enable Timer to use keybind.", true)
+                end
             end
         }, "TimerKey")
     end
@@ -531,18 +616,23 @@ local function SetupUI(UI)
         }, "DisablerEnabled")
         uiElements.DisablerKey = UI.Sections.Disabler:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Disabler.ToggleKey or "",
+            Default = LocalPlayer.Config.Disabler.ToggleKey,
             Callback = function(value)
-                notify("Disabler", "Keybind set to: " .. tostring(value), false)
-                DisablerStatus.Key = value == "" and nil or value
-                LocalPlayer.Config.Disabler.ToggleKey = DisablerStatus.Key
+                DisablerStatus.Key = value
+                LocalPlayer.Config.Disabler.ToggleKey = value
+                if isInputFocused() then return end
+                if DisablerStatus.Enabled then
+                    if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
+                else
+                    notify("Disabler", "Enable Disabler to use keybind.", true)
+                end
             end
         }, "DisablerKey")
     end
 
     if UI.Sections.Speed then
         UI.Sections.Speed:Header({ Name = "AutoSprint" })
-        UI.Sections.Speed.Side = "Right"
+        UI.Sections.Speed.Side = "Left"
         uiElements.AutoSprintEnabled = UI.Sections.Speed:Toggle({
             Name = "Enabled",
             Default = LocalPlayer.Config.AutoSprint.Enabled,
@@ -565,13 +655,34 @@ local function SetupUI(UI)
         }, "AutoSprintSpeed")
         uiElements.AutoSprintKey = UI.Sections.Speed:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.AutoSprint.ToggleKey or "",
+            Default = LocalPlayer.Config.AutoSprint.ToggleKey,
             Callback = function(value)
-                notify("AutoSprint", "Keybind set to: " .. tostring(value), false)
-                AutoSprintStatus.Key = value == "" and nil or value
-                LocalPlayer.Config.AutoSprint.ToggleKey = AutoSprintStatus.Key
+                AutoSprintStatus.Key = value
+                LocalPlayer.Config.AutoSprint.ToggleKey = value
+                if isInputFocused() then return end
+                if AutoSprintStatus.Enabled then
+                    if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
+                else
+                    notify("AutoSprint", "Enable AutoSprint to use keybind.", true)
+                end
             end
         }, "AutoSprintKey")
+    end
+
+    if UI.Tabs.LocalPlayer then
+        local antiRagdollSection = UI.Tabs.LocalPlayer:Section({ Name = "AntiRagdoll", Side = "Left" })
+        if antiRagdollSection then
+            antiRagdollSection:Header({ Name = "AntiRagdoll" })
+            uiElements.AntiRagdollEnabled = antiRagdollSection:Toggle({
+                Name = "Enabled",
+                Default = LocalPlayer.Config.AntiRagdoll.Enabled,
+                Callback = function(value)
+                    AntiRagdollStatus.Enabled = value
+                    LocalPlayer.Config.AntiRagdoll.Enabled = value
+                    if value then AntiRagdoll.Start() else AntiRagdoll.Stop() end
+                end
+            }, "AntiRagdollEnabled")
+        end
     end
 
     -- Секция Desync на правой стороне
@@ -631,37 +742,18 @@ local function SetupUI(UI)
         }, "DesyncMultiplier")
         uiElements.DesyncKey = desyncSection:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Desync.ToggleKey or "",
+            Default = LocalPlayer.Config.Desync.ToggleKey,
             Callback = function(value)
-                notify("Desync", "Keybind set to: " .. tostring(value), false)
-                DesyncStatus.Key = value == "" and nil or value
-                LocalPlayer.Config.Desync.ToggleKey = DesyncStatus.Key
+                DesyncStatus.Key = value
+                LocalPlayer.Config.Desync.ToggleKey = value
+                if isInputFocused() then return end
+                if DesyncStatus.Enabled then
+                    if DesyncStatus.Running then Desync.Stop() else Desync.Start() end
+                else
+                    notify("Desync", "Enable Desync to use keybind.", true)
+                end
             end
         }, "DesyncKey")
-    end
-
-    -- Секция AntiSpeed на правой стороне
-    local antiSpeedSection = UI.Tabs.LocalPlayer:Section({ Name = "AntiSpeed", Side = "Right" })
-    if antiSpeedSection then
-        antiSpeedSection:Header({ Name = "AntiSpeed" })
-        uiElements.AntiSpeedEnabled = antiSpeedSection:Toggle({
-            Name = "Enabled",
-            Default = LocalPlayer.Config.AntiSpeed.Enabled,
-            Callback = function(value)
-                AntiSpeedStatus.Enabled = value
-                LocalPlayer.Config.AntiSpeed.Enabled = value
-                if value then AntiSpeed.Start() else AntiSpeed.Stop() end
-            end
-        }, "AntiSpeedEnabled")
-        uiElements.AntiSpeedMethod = antiSpeedSection:Dropdown({
-            Name = "Method Bypass",
-            Options = {"Hook"},
-            Default = LocalPlayer.Config.AntiSpeed.Method,
-            Callback = function(value)
-                notify("AntiSpeed", "Dropdown Method received: " .. tostring(value), false)
-                AntiSpeed.SetMethod(value)
-            end
-        }, "AntiSpeedMethod")
     end
 
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Local Player Sync", Side = "Right" })
@@ -671,24 +763,23 @@ local function SetupUI(UI)
         Callback = function()
             LocalPlayer.Config.Timer.Enabled = uiElements.TimerEnabled:GetState()
             LocalPlayer.Config.Timer.Speed = uiElements.TimerSpeed:GetValue()
-            LocalPlayer.Config.Timer.ToggleKey = uiElements.TimerKey:GetValue() == "" and nil or uiElements.TimerKey:GetValue()
+            LocalPlayer.Config.Timer.ToggleKey = uiElements.TimerKey:GetValue()
 
             LocalPlayer.Config.Disabler.Enabled = uiElements.DisablerEnabled:GetState()
-            LocalPlayer.Config.Disabler.ToggleKey = uiElements.DisablerKey:GetValue() == "" and nil or uiElements.DisablerKey:GetValue()
+            LocalPlayer.Config.Disabler.ToggleKey = uiElements.DisablerKey:GetValue()
 
             LocalPlayer.Config.AutoSprint.Enabled = uiElements.AutoSprintEnabled:GetState()
             LocalPlayer.Config.AutoSprint.Speed = uiElements.AutoSprintSpeed:GetValue()
-            LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetValue() == "" and nil or uiElements.AutoSprintKey:GetValue()
+            LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetValue()
+
+            LocalPlayer.Config.AntiRagdoll.Enabled = uiElements.AntiRagdollEnabled:GetState()
 
             LocalPlayer.Config.Desync.Enabled = uiElements.DesyncEnabled:GetState()
             LocalPlayer.Config.Desync.Method = uiElements.DesyncMethod:GetValue()
             LocalPlayer.Config.Desync.ReverseY = uiElements.DesyncReverseY:GetValue()
             LocalPlayer.Config.Desync.Velocity = uiElements.DesyncVelocity:GetValue()
             LocalPlayer.Config.Desync.Multiplier = uiElements.DesyncMultiplier:GetValue()
-            LocalPlayer.Config.Desync.ToggleKey = uiElements.DesyncKey:GetValue() == "" and nil or uiElements.DesyncKey:GetValue()
-
-            LocalPlayer.Config.AntiSpeed.Enabled = uiElements.AntiSpeedEnabled:GetState()
-            LocalPlayer.Config.AntiSpeed.Method = uiElements.AntiSpeedMethod:GetValue()
+            LocalPlayer.Config.Desync.ToggleKey = uiElements.DesyncKey:GetValue()
 
             TimerStatus.Enabled = LocalPlayer.Config.Timer.Enabled
             TimerStatus.Speed = LocalPlayer.Config.Timer.Speed
@@ -716,6 +807,13 @@ local function SetupUI(UI)
                 if AutoSprintStatus.Running then AutoSprint.Stop() end
             end
 
+            AntiRagdollStatus.Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
+            if AntiRagdollStatus.Enabled then
+                if not AntiRagdollStatus.Running then AntiRagdoll.Start() end
+            else
+                if AntiRagdollStatus.Running then AntiRagdoll.Stop() end
+            end
+
             DesyncStatus.Enabled = LocalPlayer.Config.Desync.Enabled
             DesyncStatus.Method = LocalPlayer.Config.Desync.Method
             DesyncStatus.ReverseY = LocalPlayer.Config.Desync.ReverseY
@@ -726,14 +824,6 @@ local function SetupUI(UI)
                 if not DesyncStatus.Running then Desync.Start() end
             else
                 if DesyncStatus.Running then Desync.Stop() end
-            end
-
-            AntiSpeedStatus.Enabled = LocalPlayer.Config.AntiSpeed.Enabled
-            AntiSpeedStatus.Method = LocalPlayer.Config.AntiSpeed.Method
-            if AntiSpeedStatus.Enabled then
-                if not AntiSpeedStatus.Running then AntiSpeed.Start() end
-            else
-                if AntiSpeedStatus.Running then AntiSpeed.Stop() end
             end
 
             notify("LocalPlayer", "Config synchronized!", true)
@@ -761,58 +851,11 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
             if AutoSprintStatus.Enabled then
                 AutoSprint.Start()
             end
+            if AntiRagdollStatus.Enabled then
+                AntiRagdoll.Start()
+            end
             if DesyncStatus.Enabled then
                 Desync.Start()
-            end
-            if AntiSpeedStatus.Enabled then
-                AntiSpeed.Start()
-            end
-        end)
-
-        -- Подключение кейбиндов через UserInputService
-        Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            local key = input.KeyCode.Name:lower()
-            if TimerStatus.Key and key == TimerStatus.Key:lower() then
-                if TimerStatus.Enabled then
-                    if TimerStatus.Running then
-                        Timer.Stop()
-                    else
-                        Timer.Start()
-                    end
-                else
-                    notify("Timer", "Enable Timer to use keybind.", true)
-                end
-            elseif DisablerStatus.Key and key == DisablerStatus.Key:lower() then
-                if DisablerStatus.Enabled then
-                    if DisablerStatus.Running then
-                        Disabler.Stop()
-                    else
-                        Disabler.Start()
-                    end
-                else
-                    notify("Disabler", "Enable Disabler to use keybind.", true)
-                end
-            elseif AutoSprintStatus.Key and key == AutoSprintStatus.Key:lower() then
-                if AutoSprintStatus.Enabled then
-                    if AutoSprintStatus.Running then
-                        AutoSprint.Stop()
-                    else
-                        AutoSprint.Start()
-                    end
-                else
-                    notify("AutoSprint", "Enable AutoSprint to use keybind.", true)
-                end
-            elseif DesyncStatus.Key and key == DesyncStatus.Key:lower() then
-                if DesyncStatus.Enabled then
-                    if DesyncStatus.Running then
-                        Desync.Stop()
-                    else
-                        Desync.Start()
-                    end
-                else
-                    notify("Desync", "Enable Desync to use keybind.", true)
-                end
             end
         end)
     end
@@ -821,11 +864,11 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
         if AutoSprintStatus.Enabled then
             AutoSprint.Start()
         end
+        if AntiRagdollStatus.Enabled then
+            AntiRagdoll.Start()
+        end
         if DesyncStatus.Enabled then
             Desync.Start()
-        end
-        if AntiSpeedStatus.Enabled then
-            AntiSpeed.Start()
         end
     end
 
