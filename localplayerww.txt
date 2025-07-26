@@ -15,16 +15,16 @@ LocalPlayer.Config = {
     Timer = {
         Enabled = false,
         Speed = 2.5,
-        ToggleKey = "T"
+        ToggleKey = nil
     },
     Disabler = {
         Enabled = false,
-        ToggleKey = "D"
+        ToggleKey = nil
     },
     AutoSprint = {
         Enabled = false,
         Speed = 40,
-        ToggleKey = "S"
+        ToggleKey = nil
     },
     Desync = {
         Enabled = false,
@@ -32,7 +32,7 @@ LocalPlayer.Config = {
         ReverseY = 350,
         Velocity = 200,
         Multiplier = 7,
-        ToggleKey = "C"
+        ToggleKey = nil
     },
     AntiSpeed = {
         Enabled = false,
@@ -104,12 +104,12 @@ local Timer = {}
 Timer.Start = function()
     if TimerStatus.Running or not Services then return end
     local success = pcall(function()
-        setfflag("SimEnableStepPhysics", true)
-        setfflag("SimEnableStepPhysicsSelective", true)
+        setfflag("SimEnableStepPhysics", "True")
+        setfflag("SimEnableStepPhysicsSelective", "True")
     end)
     if not success then
         warn("Timer: Failed to enable physics flags")
-        notify("Timer", "Failed to load physics simulation.", true)
+        notify("Timer", "Failed to enable physics simulation.", true)
         return
     end
     TimerStatus.Running = true
@@ -125,8 +125,7 @@ Timer.Start = function()
         if not success then
             warn("Timer physics step failed: " .. tostring(err))
             Timer.Stop()
-            notify("Timer", "Stopped due to physics step failure.", true)
-            return
+            notify("Timer", "Physics step failed. Timer stopped.", true)
         end
     end)
     notify("Timer", "Started with speed: " .. tostring(TimerStatus.Speed), true)
@@ -143,8 +142,8 @@ end
 
 Timer.SetSpeed = function(newSpeed)
     TimerStatus.Speed = math.clamp(newSpeed, 1, 15)
-    LocalPlayer.Config.Timer.Speed = newSpeed
-    notify("Timer", "Speed set to: " .. tostring(newSpeed), false)
+    LocalPlayer.Config.Timer.Speed = TimerStatus.Speed
+    notify("Timer", "Speed set to: " .. tostring(TimerStatus.Speed), false)
 end
 
 -- Disabler Functions
@@ -290,7 +289,7 @@ AutoSprint.SetSpeed = function(newSpeed)
     newSpeed = tonumber(newSpeed) or AutoSprintStatus.Speed
     AutoSprintStatus.Speed = math.clamp(newSpeed, 33, 100)
     LocalPlayer.Config.AutoSprint.Speed = AutoSprintStatus.Speed
-    local humanoid, _ = getCharacterData()
+    local humanoid = getCharacterData()
     if humanoid and AutoSprintStatus.Running then
         humanoid.WalkSpeed = AutoSprintStatus.Speed
     end
@@ -509,15 +508,11 @@ local function SetupUI(UI)
         }, "TimerSpeed")
         uiElements.TimerKey = UI.Sections.Timer:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Timer.ToggleKey,
+            Default = LocalPlayer.Config.Timer.ToggleKey or "",
             Callback = function(value)
-                TimerStatus.Key = value
-                LocalPlayer.Config.Timer.ToggleKey = value
-                if TimerStatus.Enabled then
-                    if TimerStatus.Running then Timer.Stop() else Timer.Start() end
-                else
-                    notify("Timer", "Enable Timer to use keybind.", true)
-                end
+                notify("Timer", "Keybind set to: " .. tostring(value), false)
+                TimerStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.Timer.ToggleKey = TimerStatus.Key
             end
         }, "TimerKey")
     end
@@ -536,15 +531,11 @@ local function SetupUI(UI)
         }, "DisablerEnabled")
         uiElements.DisablerKey = UI.Sections.Disabler:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Disabler.ToggleKey,
+            Default = LocalPlayer.Config.Disabler.ToggleKey or "",
             Callback = function(value)
-                DisablerStatus.Key = value
-                LocalPlayer.Config.Disabler.ToggleKey = value
-                if DisablerStatus.Enabled then
-                    if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
-                else
-                    notify("Disabler", "Enable Disabler to use keybind.", true)
-                end
+                notify("Disabler", "Keybind set to: " .. tostring(value), false)
+                DisablerStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.Disabler.ToggleKey = DisablerStatus.Key
             end
         }, "DisablerKey")
     end
@@ -574,15 +565,11 @@ local function SetupUI(UI)
         }, "AutoSprintSpeed")
         uiElements.AutoSprintKey = UI.Sections.Speed:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.AutoSprint.ToggleKey,
+            Default = LocalPlayer.Config.AutoSprint.ToggleKey or "",
             Callback = function(value)
-                AutoSprintStatus.Key = value
-                LocalPlayer.Config.AutoSprint.ToggleKey = value
-                if AutoSprintStatus.Enabled then
-                    if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
-                else
-                    notify("AutoSprint", "Enable AutoSprint to use keybind.", true)
-                end
+                notify("AutoSprint", "Keybind set to: " .. tostring(value), false)
+                AutoSprintStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.AutoSprint.ToggleKey = AutoSprintStatus.Key
             end
         }, "AutoSprintKey")
     end
@@ -644,15 +631,11 @@ local function SetupUI(UI)
         }, "DesyncMultiplier")
         uiElements.DesyncKey = desyncSection:Keybind({
             Name = "Toggle Key",
-            Default = LocalPlayer.Config.Desync.ToggleKey,
+            Default = LocalPlayer.Config.Desync.ToggleKey or "",
             Callback = function(value)
-                DesyncStatus.Key = value
-                LocalPlayer.Config.Desync.ToggleKey = value
-                if DesyncStatus.Enabled then
-                    if DesyncStatus.Running then Desync.Stop() else Desync.Start() end
-                else
-                    notify("Desync", "Enable Desync to use keybind.", true)
-                end
+                notify("Desync", "Keybind set to: " .. tostring(value), false)
+                DesyncStatus.Key = value == "" and nil or value
+                LocalPlayer.Config.Desync.ToggleKey = DesyncStatus.Key
             end
         }, "DesyncKey")
     end
@@ -688,21 +671,21 @@ local function SetupUI(UI)
         Callback = function()
             LocalPlayer.Config.Timer.Enabled = uiElements.TimerEnabled:GetState()
             LocalPlayer.Config.Timer.Speed = uiElements.TimerSpeed:GetValue()
-            LocalPlayer.Config.Timer.ToggleKey = uiElements.TimerKey:GetValue()
+            LocalPlayer.Config.Timer.ToggleKey = uiElements.TimerKey:GetValue() == "" and nil or uiElements.TimerKey:GetValue()
 
             LocalPlayer.Config.Disabler.Enabled = uiElements.DisablerEnabled:GetState()
-            LocalPlayer.Config.Disabler.ToggleKey = uiElements.DisablerKey:GetValue()
+            LocalPlayer.Config.Disabler.ToggleKey = uiElements.DisablerKey:GetValue() == "" and nil or uiElements.DisablerKey:GetValue()
 
             LocalPlayer.Config.AutoSprint.Enabled = uiElements.AutoSprintEnabled:GetState()
             LocalPlayer.Config.AutoSprint.Speed = uiElements.AutoSprintSpeed:GetValue()
-            LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetValue()
+            LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetValue() == "" and nil or uiElements.AutoSprintKey:GetValue()
 
             LocalPlayer.Config.Desync.Enabled = uiElements.DesyncEnabled:GetState()
             LocalPlayer.Config.Desync.Method = uiElements.DesyncMethod:GetValue()
             LocalPlayer.Config.Desync.ReverseY = uiElements.DesyncReverseY:GetValue()
             LocalPlayer.Config.Desync.Velocity = uiElements.DesyncVelocity:GetValue()
             LocalPlayer.Config.Desync.Multiplier = uiElements.DesyncMultiplier:GetValue()
-            LocalPlayer.Config.Desync.ToggleKey = uiElements.DesyncKey:GetValue()
+            LocalPlayer.Config.Desync.ToggleKey = uiElements.DesyncKey:GetValue() == "" and nil or uiElements.DesyncKey:GetValue()
 
             LocalPlayer.Config.AntiSpeed.Enabled = uiElements.AntiSpeedEnabled:GetState()
             LocalPlayer.Config.AntiSpeed.Method = uiElements.AntiSpeedMethod:GetValue()
@@ -790,27 +773,43 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
         Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
             local key = input.KeyCode.Name:lower()
-            if key == TimerStatus.Key:lower() then
+            if TimerStatus.Key and key == TimerStatus.Key:lower() then
                 if TimerStatus.Enabled then
-                    if TimerStatus.Running then Timer.Stop() else Timer.Start() end
+                    if TimerStatus.Running then
+                        Timer.Stop()
+                    else
+                        Timer.Start()
+                    end
                 else
                     notify("Timer", "Enable Timer to use keybind.", true)
                 end
-            elseif key == DisablerStatus.Key:lower() then
+            elseif DisablerStatus.Key and key == DisablerStatus.Key:lower() then
                 if DisablerStatus.Enabled then
-                    if DisablerStatus.Running then Disabler.Stop() else Disabler.Start() end
+                    if DisablerStatus.Running then
+                        Disabler.Stop()
+                    else
+                        Disabler.Start()
+                    end
                 else
                     notify("Disabler", "Enable Disabler to use keybind.", true)
                 end
-            elseif key == AutoSprintStatus.Key:lower() then
+            elseif AutoSprintStatus.Key and key == AutoSprintStatus.Key:lower() then
                 if AutoSprintStatus.Enabled then
-                    if AutoSprintStatus.Running then AutoSprint.Stop() else AutoSprint.Start() end
+                    if AutoSprintStatus.Running then
+                        AutoSprint.Stop()
+                    else
+                        AutoSprint.Start()
+                    end
                 else
                     notify("AutoSprint", "Enable AutoSprint to use keybind.", true)
                 end
-            elseif key == DesyncStatus.Key:lower() then
+            elseif DesyncStatus.Key and key == DesyncStatus.Key:lower() then
                 if DesyncStatus.Enabled then
-                    if DesyncStatus.Running then Desync.Stop() else Desync.Start() end
+                    if DesyncStatus.Running then
+                        Desync.Stop()
+                    else
+                        Desync.Start()
+                    end
                 else
                     notify("Desync", "Enable Desync to use keybind.", true)
                 end
