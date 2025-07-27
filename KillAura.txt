@@ -27,7 +27,9 @@ function KillAura.Init(UI, Core, notify)
         HIGHLIGHT_RIPOSTE = true, -- Подсветка игрока для Riposte
         MULTI_TARGET = false, -- true: атака нескольких целей, false: одна цель
         TEAM_CHECK = true, -- true: учитывать команды, false: игнорировать команды
-        MAX_TARGETS = 2 -- Максимум атакуемых/подсвечиваемых целей
+        MAX_TARGETS = 2, -- Максимум атакуемых/подсвечиваемых целей
+        BLOCK_COLOR = Color3.fromRGB(0, 255, 0), -- Цвет подсветки для Blocking/Parrying
+        PARRY_COLOR = Color3.fromRGB(0, 162, 255) -- Цвет подсветки для Riposte
     }
 
     local targetHighlights = {} -- Массив подсветок для таргетов
@@ -144,10 +146,10 @@ function KillAura.Init(UI, Core, notify)
         
         local stance = getPlayerStance(player)
         if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.HIGHLIGHT_PARRYING then
-            highlight.FillColor = Color3.fromRGB(0, 255, 0) -- Зеленый для Parrying/Blocking
+            highlight.FillColor = CONFIG.BLOCK_COLOR -- Цвет для Parrying/Blocking
             highlight.Enabled = true
         elseif stance and stance == "riposte" and CONFIG.HIGHLIGHT_RIPOSTE then
-            highlight.FillColor = Color3.fromRGB(0, 162, 255) -- Голубой для Riposte
+            highlight.FillColor = CONFIG.PARRY_COLOR -- Цвет для Riposte
             highlight.Enabled = true
         else
             highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный по умолчанию
@@ -319,6 +321,7 @@ function KillAura.Init(UI, Core, notify)
                 notify("KillAura", "Attack Cooldown set to: " .. value)
             end
         }, 'AttackCooldownKA')
+        KillAuraSection:Divider()
         KillAuraSection:Toggle({
             Name = "Anti Block",
             Default = CONFIG.KICK_BLOCKING,
@@ -335,6 +338,7 @@ function KillAura.Init(UI, Core, notify)
                 notify("KillAura", "Anti Parry " .. (value and "Enabled" or "Disabled"), true)
             end
         }, 'AntiParryKA')
+        KillAuraSection:Divider()
         KillAuraSection:Toggle({
             Name = "Highlight Block",
             Default = CONFIG.HIGHLIGHT_PARRYING,
@@ -351,6 +355,23 @@ function KillAura.Init(UI, Core, notify)
                 notify("KillAura", "Highlight Parry " .. (value and "Enabled" or "Disabled"), true)
             end
         }, 'HighlightParryKA')
+        KillAuraSection:ColorPicker({
+            Name = "Block Color",
+            Default = CONFIG.BLOCK_COLOR,
+            Callback = function(value)
+                CONFIG.BLOCK_COLOR = value
+                notify("KillAura", "Block Color set to: " .. value:ToHex())
+            end
+        }, 'BlockColorKA')
+        KillAuraSection:ColorPicker({
+            Name = "Parry Color",
+            Default = CONFIG.PARRY_COLOR,
+            Callback = function(value)
+                CONFIG.PARRY_COLOR = value
+                notify("KillAura", "Parry Color set to: " .. value:ToHex())
+            end
+        }, 'ParryColorKA')
+        KillAuraSection:Divider()
         KillAuraSection:Toggle({
             Name = "Multi Target",
             Default = CONFIG.MULTI_TARGET,
@@ -378,6 +399,55 @@ function KillAura.Init(UI, Core, notify)
                 notify("KillAura", "Max Targets set to: " .. value)
             end
         }, 'MaxTargetsKA')
+
+        -- Новая секция Weapon Exploits
+        local WeaponExploitsSection = UI.Tabs.Combat:Section({ Name = "Weapon Exploits", Side = "Right" })
+        WeaponExploitsSection:Header({ Name = "Weapon Exploits" })
+        WeaponExploitsSection:Slider({
+            Name = "Minus Windup",
+            Minimum = 0.1,
+            Maximum = 2,
+            Default = CONFIG.MINUS_WINDUP,
+            Precision = 1,
+            Callback = function(value)
+                CONFIG.MINUS_WINDUP = value
+                notify("KillAura", "Minus Windup set to: " .. value)
+            end
+        }, 'MinusWindupKA')
+        WeaponExploitsSection:Slider({
+            Name = "Minus Release",
+            Minimum = 0.1,
+            Maximum = 2,
+            Default = CONFIG.MINUS_RELEASE,
+            Precision = 1,
+            Callback = function(value)
+                CONFIG.MINUS_RELEASE = value
+                notify("KillAura", "Minus Release set to: " .. value)
+            end
+        }, 'MinusReleaseKA')
+        WeaponExploitsSection:Divider()
+        WeaponExploitsSection:Slider({
+            Name = "Kick Delay Windup",
+            Minimum = 0,
+            Maximum = 0.3,
+            Default = CONFIG.KICK_WINDUP_WAIT,
+            Precision = 3,
+            Callback = function(value)
+                CONFIG.KICK_WINDUP_WAIT = value
+                notify("KillAura", "Kick Delay Windup set to: " .. value)
+            end
+        }, 'KickDelayWindupKA')
+        WeaponExploitsSection:Slider({
+            Name = "Kicking Wait",
+            Minimum = 0,
+            Maximum = 0.3,
+            Default = CONFIG.KICKING_WAIT,
+            Precision = 3,
+            Callback = function(value)
+                CONFIG.KICKING_WAIT = value
+                notify("KillAura", "Kicking Wait set to: " .. value)
+            end
+        }, 'KickingWaitKA')
     end
 
     -- Основной цикл киллауры
