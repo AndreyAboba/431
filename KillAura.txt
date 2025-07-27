@@ -356,7 +356,7 @@ function KillAura.Init(UI, Core, notify)
                 notify("KillAura", "Highlight Parry " .. (value and "Enabled" or "Disabled"), true)
             end
         }, 'HighlightParryKA')
-        KillAuraSection:ColorPicker({
+        KillAuraSection:Colorpicker({
             Name = "Block Color",
             Default = CONFIG.BLOCK_COLOR,
             Callback = function(value)
@@ -364,7 +364,7 @@ function KillAura.Init(UI, Core, notify)
                 notify("KillAura", "Block Color set to: " .. value:ToHex())
             end
         }, 'BlockColorKA')
-        KillAuraSection:ColorPicker({
+        KillAuraSection:Colorpicker({
             Name = "Parry Color",
             Default = CONFIG.PARRY_COLOR,
             Callback = function(value)
