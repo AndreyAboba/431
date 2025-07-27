@@ -467,7 +467,7 @@ function KillAura.Init(UI, Core, notify)
             end
         end
         
-        -- Сортировка по расстоянию
+        -- Сортировка по расстоянию для одной цели
         table.sort(targets, function(a, b) return a.distance < b.distance end)
         
         for _, targetData in pairs(targets) do
