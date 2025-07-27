@@ -28,7 +28,8 @@ function KillAura.Init(UI, Core, notify)
         MinusWindup = { Value = 0.9, Default = 0.9 },
         MinusRelease = { Value = 1.4, Default = 1.4 },
         KickDelay = { Value = 0.01, Default = 0.01 },
-        KickStateDelay = { Value = 0, Default = 0 }
+        KickStateDelay = { Value = 0, Default = 0 },
+        DamagePlus = { Value = 0, Default = 0 }
     }
 
     local targetHighlight = nil -- Подсветка для одной цели
@@ -80,17 +81,19 @@ function KillAura.Init(UI, Core, notify)
         end
         
         local success, settings = pcall(require, settingsModule)
-        if not success or not settings or not settings.Windup or not settings.Release then
+        if not success or not settings or not settings.Windup or not settings.Release or not settings.Damage then
             return nil
         end
         
         settings.Windup = math.max(0, settings.Windup - State.MinusWindup.Value)
         settings.Release = math.max(0, settings.Release - State.MinusRelease.Value)
+        settings.Damage = settings.Damage + State.DamagePlus.Value
         
         cachedSettings = {
             weapon = weapon,
             windupTime = settings.Windup,
-            releaseTime = settings.Release
+            releaseTime = settings.Release,
+            damage = settings.Damage
         }
         lastWeapon = weapon
         return cachedSettings
@@ -538,6 +541,20 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'MinusReleaseTE')
+        UI.Sections.ToolExploit:Slider({
+            Name = "Damage Plus",
+            Minimum = 0,
+            Maximum = 50,
+            Default = State.DamagePlus.Default,
+            Precision = 0,
+            Callback = function(value)
+                State.DamagePlus.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("ToolExploit", "Damage Plus set to: " .. value)
+                end
+            end
+        }, 'DamagePlusTE')
         UI.Sections.ToolExploit:Divider()
         UI.Sections.ToolExploit:Slider({
             Name = "Kick Delay",
