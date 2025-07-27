@@ -4,6 +4,7 @@ function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
     local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer")
     local ChangeStance = RemoteEvents:WaitForChild("ChangeStance")
     local Hit = RemoteEvents:WaitForChild("Hit")
@@ -11,8 +12,9 @@ function KillAura.Init(UI, Core, notify)
     local Punch = RemoteEvents:WaitForChild("Punch")
 
     local LocalPlayer = Players.LocalPlayer
+    local ClientModule = require(ReplicatedStorage:WaitForChild("ClientModule"))
 
-    -- Конфигурация
+    -- Конфигурация для классической KillAura
     local State = {
         Enabled = { Value = false, Default = false },
         Range = { Value = 10, Default = 10 },
@@ -28,18 +30,27 @@ function KillAura.Init(UI, Core, notify)
         MinusWindup = { Value = 0.9, Default = 0.9 },
         MinusRelease = { Value = 1.4, Default = 1.4 },
         KickDelay = { Value = 0.01, Default = 0.01 },
-        KickStateDelay = { Value = 0, Default = 0 },
-        DamagePlus = { Value = 0, Default = 0 }
+        KickStateDelay = { Value = 0, Default = 0 }
+    }
+
+    -- Конфигурация для легитимной KillAura
+    local LegitState = {
+        Enabled = { Value = false, Default = false },
+        AutoMode = { Value = true, Default = true },
+        Range = { Value = 10, Default = 10 },
+        AttackCooldown = { Value = 0.24, Default = 0.24 }
     }
 
     local targetHighlight = nil -- Подсветка для одной цели
-    local cachedSettings = nil -- Кэш для настроек
+    local cachedSettings = nil -- Кэш для настроек оружия
     local lastWeapon = nil -- Для отслеживания смены оружия
     local lastAttackTime = 0 -- Для отслеживания времени последней атаки
     local localCharacter = nil -- Кэш для персонажа локального игрока
     local localRootPart = nil -- Кэш для HumanoidRootPart
     local lastNotificationTime = 0
     local notificationDelay = 5
+    local weaponInstance = nil -- Экземпляр оружия
+    local hookedWeapon = nil -- Объект оружия с хуками
 
     -- Функция для проверки состояния игрока (Parrying, Riposte, Blocking)
     local function getPlayerStance(player)
@@ -81,19 +92,17 @@ function KillAura.Init(UI, Core, notify)
         end
         
         local success, settings = pcall(require, settingsModule)
-        if not success or not settings or not settings.Windup or not settings.Release or not settings.Damage then
+        if not success or not settings or not settings.Windup or not settings.Release then
             return nil
         end
         
         settings.Windup = math.max(0, settings.Windup - State.MinusWindup.Value)
         settings.Release = math.max(0, settings.Release - State.MinusRelease.Value)
-        settings.Damage = settings.Damage + State.DamagePlus.Value
         
         cachedSettings = {
             weapon = weapon,
             windupTime = settings.Windup,
-            releaseTime = settings.Release,
-            damage = settings.Damage
+            releaseTime = settings.Release
         }
         lastWeapon = weapon
         return cachedSettings
@@ -110,7 +119,8 @@ function KillAura.Init(UI, Core, notify)
         end
         
         local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
-        if distance > State.Range.Value then
+        local range = LegitState.Enabled.Value and LegitState.Range.Value or State.Range.Value
+        if distance > range then
             return false
         end
         
@@ -208,7 +218,7 @@ function KillAura.Init(UI, Core, notify)
         return math.huge
     end
 
-    -- Функция для выполнения пинка
+    -- Функция для выполнения пинка (классическая KillAura)
     local function performKick(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
         if not targetHumanoid then return false end
@@ -237,7 +247,7 @@ function KillAura.Init(UI, Core, notify)
         return true
     end
 
-    -- Функция для выполнения пунша
+    -- Функция для выполнения пунша (классическая KillAura)
     local function performPunch(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
         if not targetHumanoid then return false end
@@ -259,7 +269,7 @@ function KillAura.Init(UI, Core, notify)
         return true
     end
 
-    -- Основной цикл киллауры
+    -- Основной цикл классической KillAura
     local function runKillAura()
         while true do
             RunService.Heartbeat:Wait()
@@ -369,8 +379,172 @@ function KillAura.Init(UI, Core, notify)
         end
     end
 
-    -- Запуск киллауры в отдельной задаче
+    -- Функция для инициализации хуков
+    local function setupWeaponHooks()
+        if not localCharacter then return end
+        
+        for _, child in pairs(localCharacter:GetChildren()) do
+            if child:IsA("Tool") then
+                weaponInstance = child
+                break
+            end
+        end
+        if not weaponInstance then return end
+        
+        if weaponInstance ~= lastWeapon then
+            local settingsModule = weaponInstance:FindFirstChild("Settings")
+            if not settingsModule then return end
+            local success, settings = pcall(require, settingsModule)
+            if not success or not settings then return end
+            
+            hookedWeapon = ClientModule.Init(weaponInstance)
+            lastWeapon = weaponInstance
+        end
+    end
+
+    -- Хук для метода Activated
+    local originalActivated
+    if hookedWeapon then
+        originalActivated = hookedWeapon.Activated
+        hookedWeapon.Activated = function(...)
+            if LegitState.Enabled.Value and not LegitState.AutoMode.Value then
+                local closestTarget = nil
+                local minDistance = math.huge
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and canTargetPlayer(player) then
+                        local distance = getDistanceToPlayer(player)
+                        if distance < minDistance then
+                            minDistance = distance
+                            closestTarget = player
+                        end
+                    end
+                end
+                
+                if closestTarget and hookedWeapon.Stance == "Idle" then
+                    updateTargetHighlight(closestTarget)
+                    local stance = getPlayerStance(closestTarget)
+                    if stance and (stance == "parrying" or stance == "block" or stance == "blocking") then
+                        hookedWeapon:Punch()
+                    elseif stance and stance == "riposte" then
+                        hookedWeapon:Kick()
+                    else
+                        hookedWeapon:Windup()
+                    end
+                    lastAttackTime = tick()
+                    return
+                end
+            end
+            return originalActivated(...)
+        end
+    end
+
+    -- Хук для метода onInputBegan
+    local originalInputBegan
+    if hookedWeapon then
+        originalInputBegan = hookedWeapon.onInputBegan
+        hookedWeapon.onInputBegan = function(self, input, processed)
+            if LegitState.Enabled.Value and not LegitState.AutoMode.Value then
+                local closestTarget = nil
+                local minDistance = math.huge
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and canTargetPlayer(player) then
+                        local distance = getDistanceToPlayer(player)
+                        if distance < minDistance then
+                            minDistance = distance
+                            closestTarget = player
+                        end
+                    end
+                end
+                
+                if closestTarget then
+                    updateTargetHighlight(closestTarget)
+                    local stance = getPlayerStance(closestTarget)
+                    local binds = require(ReplicatedStorage.InputMap).Binds
+                    if input.KeyCode == binds.combat_punch.Key and self.Stance == "Idle" then
+                        self:Punch()
+                        lastAttackTime = tick()
+                        return
+                    elseif input.KeyCode == binds.combat_kick.Key and self.Stance == "Idle" then
+                        self:Kick()
+                        lastAttackTime = tick()
+                        return
+                    end
+                end
+            end
+            return originalInputBegan(self, input, processed)
+        end
+    end
+
+    -- Основной цикл легитимной KillAura (автоматический режим)
+    local function runLegitAura()
+        while true do
+            RunService.Heartbeat:Wait()
+            
+            if not LegitState.Enabled.Value or not LegitState.AutoMode.Value then
+                removeTargetHighlight()
+                continue
+            end
+            
+            localCharacter = LocalPlayer.Character
+            localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+            if not (localCharacter and localRootPart) then
+                removeTargetHighlight()
+                continue
+            end
+            
+            setupWeaponHooks()
+            if not hookedWeapon then
+                removeTargetHighlight()
+                continue
+            end
+            
+            if tick() - lastAttackTime < LegitState.AttackCooldown.Value then
+                continue
+            end
+            
+            local closestTarget = nil
+            local minDistance = math.huge
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and canTargetPlayer(player) then
+                    local distance = getDistanceToPlayer(player)
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestTarget = player
+                    end
+                end
+            end
+            
+            if not closestTarget then
+                removeTargetHighlight()
+                continue
+            end
+            
+            local targetCharacter = closestTarget.Character
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+            if not (targetCharacter and targetHumanoid) then
+                removeTargetHighlight()
+                continue
+            end
+            
+            updateTargetHighlight(closestTarget)
+            local stance = getPlayerStance(closestTarget)
+            
+            if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and hookedWeapon.Stance == "Idle" then
+                hookedWeapon:Punch()
+                lastAttackTime = tick()
+            elseif stance and stance == "riposte" and hookedWeapon.Stance == "Idle" then
+                hookedWeapon:Kick()
+                lastAttackTime = tick()
+            elseif hookedWeapon.Stance == "Idle" then
+                hookedWeapon:Windup()
+                lastAttackTime = tick()
+            end
+        end
+    end
+
+    -- Запуск классической и легитимной KillAura в отдельных задачах
     task.spawn(runKillAura)
+    task.spawn(runLegitAura)
 
     -- Инициализация UI
     if UI.Tabs and UI.Tabs.Combat then
@@ -541,20 +715,6 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'MinusReleaseTE')
-        UI.Sections.ToolExploit:Slider({
-            Name = "Damage Plus",
-            Minimum = 0,
-            Maximum = 50,
-            Default = State.DamagePlus.Default,
-            Precision = 0,
-            Callback = function(value)
-                State.DamagePlus.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("ToolExploit", "Damage Plus set to: " .. value)
-                end
-            end
-        }, 'DamagePlusTE')
         UI.Sections.ToolExploit:Divider()
         UI.Sections.ToolExploit:Slider({
             Name = "Kick Delay",
@@ -584,6 +744,61 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'KickStateDelayTE')
+
+        -- Создаем секцию Legit Aura на правой части
+        UI.Sections.LegitAura = UI.Sections.LegitAura or UI.Tabs.Combat:Section({ Name = "LegitAura", Side = "Right" })
+        
+        UI.Sections.LegitAura:Header({ Name = "Legit Aura" })
+        UI.Sections.LegitAura:Toggle({
+            Name = "Enabled",
+            Default = LegitState.Enabled.Default,
+            Callback = function(value)
+                LegitState.Enabled.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitAura", "Legit Aura " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end
+        }, 'EnabledLA')
+        UI.Sections.LegitAura:Toggle({
+            Name = "Auto Mode",
+            Default = LegitState.AutoMode.Default,
+            Callback = function(value)
+                LegitState.AutoMode.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitAura", "Auto Mode " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end
+        }, 'AutoModeLA')
+        UI.Sections.LegitAura:Slider({
+            Name = "Range",
+            Minimum = 4,
+            Maximum = 20,
+            Default = LegitState.Range.Default,
+            Precision = 0,
+            Callback = function(value)
+                LegitState.Range.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitAura", "Range set to: " .. value)
+                end
+            end
+        }, 'RangeLA')
+        UI.Sections.LegitAura:Slider({
+            Name = "Attack Cooldown",
+            Minimum = 0.1,
+            Maximum = 0.5,
+            Default = LegitState.AttackCooldown.Default,
+            Precision = 2,
+            Callback = function(value)
+                LegitState.AttackCooldown.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitAura", "Attack Cooldown set to: " .. value)
+                end
+            end
+        }, 'AttackCooldownLA')
     end
 end
 
