@@ -50,7 +50,8 @@ function KillAura.Init(UI, Core, notify)
     local lastNotificationTime = 0
     local notificationDelay = 5
     local weaponInstance = nil -- Экземпляр оружия
-    local hookedWeapon = nil -- Объект оружия с хуками
+    local weaponObject = nil -- Объект оружия из ClientModule
+    local currentStance = "Idle" -- Текущее состояние оружия
 
     -- Функция для проверки состояния игрока (Parrying, Riposte, Blocking)
     local function getPlayerStance(player)
@@ -269,6 +270,158 @@ function KillAura.Init(UI, Core, notify)
         return true
     end
 
+    -- Функция для получения объекта оружия
+    local function getWeaponObject()
+        if not localCharacter then return nil end
+        
+        local weapon
+        for _, child in pairs(localCharacter:GetChildren()) do
+            if child:IsA("Tool") then
+                weapon = child
+                break
+            end
+        end
+        if not weapon or weapon == lastWeapon then
+            return weaponObject
+        end
+        
+        -- Инициализируем объект оружия через ClientModule
+        local success, newWeaponObject = pcall(ClientModule.Init, ClientModule, weapon)
+        if success and newWeaponObject then
+            weaponObject = newWeaponObject
+            lastWeapon = weapon
+            return weaponObject
+        end
+        return nil
+    end
+
+    -- Хук для Tool.Activated
+    local function hookToolActivated()
+        if not localCharacter then return end
+        
+        local weapon
+        for _, child in pairs(localCharacter:GetChildren()) do
+            if child:IsA("Tool") then
+                weapon = child
+                break
+            end
+        end
+        if not weapon then return end
+        
+        if weapon:GetAttribute("Hooked") then return end
+        weapon:SetAttribute("Hooked", true)
+        
+        local originalActivated = weapon.Activated
+        weapon.Activated:Connect(function()
+            if LegitState.Enabled.Value and not LegitState.AutoMode.Value then
+                local weaponObj = getWeaponObject()
+                if not weaponObj or weaponObj.Stance ~= "Idle" then
+                    originalActivated:Fire()
+                    return
+                end
+                
+                local closestTarget = nil
+                local minDistance = math.huge
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and canTargetPlayer(player) then
+                        local distance = getDistanceToPlayer(player)
+                        if distance < minDistance then
+                            minDistance = distance
+                            closestTarget = player
+                        end
+                    end
+                end
+                
+                if closestTarget then
+                    updateTargetHighlight(closestTarget)
+                    local stance = getPlayerStance(closestTarget)
+                    if stance and (stance == "parrying" or stance == "block" or stance == "blocking") then
+                        weaponObj:Punch()
+                    elseif stance and stance == "riposte" then
+                        weaponObj:Kick()
+                    else
+                        weaponObj:Windup()
+                    end
+                    lastAttackTime = tick()
+                    return
+                end
+            end
+            originalActivated:Fire()
+        end)
+    end
+
+    -- Хук для UserInputService.InputBegan
+    local inputBeganConnection
+    local function hookInputBegan()
+        if inputBeganConnection then
+            inputBeganConnection:Disconnect()
+        end
+        inputBeganConnection = UserInputService.InputBegan:Connect(function(input, processed)
+            if not LegitState.Enabled.Value or LegitState.AutoMode.Value or processed then
+                return
+            end
+            
+            local weaponObj = getWeaponObject()
+            if not weaponObj or weaponObj.Stance ~= "Idle" then
+                return
+            end
+            
+            local closestTarget = nil
+            local minDistance = math.huge
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and canTargetPlayer(player) then
+                    local distance = getDistanceToPlayer(player)
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestTarget = player
+                    end
+                end
+            end
+            
+            if closestTarget then
+                updateTargetHighlight(closestTarget)
+                local stance = getPlayerStance(closestTarget)
+                local binds = require(ReplicatedStorage.InputMap).Binds
+                if input.KeyCode == binds.combat_punch.Key then
+                    weaponObj:Punch()
+                    lastAttackTime = tick()
+                elseif input.KeyCode == binds.combat_kick.Key then
+                    weaponObj:Kick()
+                    lastAttackTime = tick()
+                end
+            end
+        end)
+    end
+
+    -- Обновление хуков при экипировке/снятии оружия
+    local function setupWeaponHooks()
+        if not localCharacter then return end
+        
+        local weapon
+        for _, child in pairs(localCharacter:GetChildren()) do
+            if child:IsA("Tool") then
+                weapon = child
+                break
+            end
+        end
+        if weapon and weapon ~= lastWeapon then
+            hookToolActivated()
+            hookInputBegan()
+        end
+    end
+
+    -- Обновление персонажа и хуков
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        localCharacter = character
+        localRootPart = character:WaitForChild("HumanoidRootPart", 5)
+        setupWeaponHooks()
+    end)
+    if LocalPlayer.Character then
+        localCharacter = LocalPlayer.Character
+        localRootPart = localCharacter:FindFirstChild("HumanoidRootPart")
+        setupWeaponHooks()
+    end
+
     -- Основной цикл классической KillAura
     local function runKillAura()
         while true do
@@ -379,102 +532,6 @@ function KillAura.Init(UI, Core, notify)
         end
     end
 
-    -- Функция для инициализации хуков
-    local function setupWeaponHooks()
-        if not localCharacter then return end
-        
-        for _, child in pairs(localCharacter:GetChildren()) do
-            if child:IsA("Tool") then
-                weaponInstance = child
-                break
-            end
-        end
-        if not weaponInstance then return end
-        
-        if weaponInstance ~= lastWeapon then
-            local settingsModule = weaponInstance:FindFirstChild("Settings")
-            if not settingsModule then return end
-            local success, settings = pcall(require, settingsModule)
-            if not success or not settings then return end
-            
-            hookedWeapon = ClientModule.Init(weaponInstance)
-            lastWeapon = weaponInstance
-        end
-    end
-
-    -- Хук для метода Activated
-    local originalActivated
-    if hookedWeapon then
-        originalActivated = hookedWeapon.Activated
-        hookedWeapon.Activated = function(...)
-            if LegitState.Enabled.Value and not LegitState.AutoMode.Value then
-                local closestTarget = nil
-                local minDistance = math.huge
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer and canTargetPlayer(player) then
-                        local distance = getDistanceToPlayer(player)
-                        if distance < minDistance then
-                            minDistance = distance
-                            closestTarget = player
-                        end
-                    end
-                end
-                
-                if closestTarget and hookedWeapon.Stance == "Idle" then
-                    updateTargetHighlight(closestTarget)
-                    local stance = getPlayerStance(closestTarget)
-                    if stance and (stance == "parrying" or stance == "block" or stance == "blocking") then
-                        hookedWeapon:Punch()
-                    elseif stance and stance == "riposte" then
-                        hookedWeapon:Kick()
-                    else
-                        hookedWeapon:Windup()
-                    end
-                    lastAttackTime = tick()
-                    return
-                end
-            end
-            return originalActivated(...)
-        end
-    end
-
-    -- Хук для метода onInputBegan
-    local originalInputBegan
-    if hookedWeapon then
-        originalInputBegan = hookedWeapon.onInputBegan
-        hookedWeapon.onInputBegan = function(self, input, processed)
-            if LegitState.Enabled.Value and not LegitState.AutoMode.Value then
-                local closestTarget = nil
-                local minDistance = math.huge
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer and canTargetPlayer(player) then
-                        local distance = getDistanceToPlayer(player)
-                        if distance < minDistance then
-                            minDistance = distance
-                            closestTarget = player
-                        end
-                    end
-                end
-                
-                if closestTarget then
-                    updateTargetHighlight(closestTarget)
-                    local stance = getPlayerStance(closestTarget)
-                    local binds = require(ReplicatedStorage.InputMap).Binds
-                    if input.KeyCode == binds.combat_punch.Key and self.Stance == "Idle" then
-                        self:Punch()
-                        lastAttackTime = tick()
-                        return
-                    elseif input.KeyCode == binds.combat_kick.Key and self.Stance == "Idle" then
-                        self:Kick()
-                        lastAttackTime = tick()
-                        return
-                    end
-                end
-            end
-            return originalInputBegan(self, input, processed)
-        end
-    end
-
     -- Основной цикл легитимной KillAura (автоматический режим)
     local function runLegitAura()
         while true do
@@ -492,8 +549,8 @@ function KillAura.Init(UI, Core, notify)
                 continue
             end
             
-            setupWeaponHooks()
-            if not hookedWeapon then
+            local weaponObj = getWeaponObject()
+            if not weaponObj or weaponObj.Stance ~= "Idle" then
                 removeTargetHighlight()
                 continue
             end
@@ -529,14 +586,14 @@ function KillAura.Init(UI, Core, notify)
             updateTargetHighlight(closestTarget)
             local stance = getPlayerStance(closestTarget)
             
-            if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and hookedWeapon.Stance == "Idle" then
-                hookedWeapon:Punch()
+            if stance and (stance == "parrying" or stance == "block" or stance == "blocking") then
+                weaponObj:Punch()
                 lastAttackTime = tick()
-            elseif stance and stance == "riposte" and hookedWeapon.Stance == "Idle" then
-                hookedWeapon:Kick()
+            elseif stance and stance == "riposte" then
+                weaponObj:Kick()
                 lastAttackTime = tick()
-            elseif hookedWeapon.Stance == "Idle" then
-                hookedWeapon:Windup()
+            else
+                weaponObj:Windup()
                 lastAttackTime = tick()
             end
         end
