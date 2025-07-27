@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('2')
 function KillAura.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -30,7 +30,7 @@ function KillAura.Init(UI, Core, notify)
         PARRY_COLOR = Color3.fromRGB(0, 162, 255) -- Цвет подсветки для Riposte
     }
 
-    local targetHighlights = {} -- Массив подсветок для таргетов
+    local targetHighlight = nil -- Подсветка только для одной цели
     local cachedSettings = nil -- Кэш для настроек
     local lastWeapon = nil -- Для отслеживания смены оружия
     local lastAttackTime = 0 -- Для отслеживания времени последней атаки
@@ -128,44 +128,47 @@ function KillAura.Init(UI, Core, notify)
 
     -- Функция для создания/обновления подсветки для таргета
     local function updateTargetHighlight(player)
+        if targetHighlight then
+            targetHighlight:Destroy()
+            targetHighlight = nil
+        end
+        
         local character = player.Character
         if not character then return end
         
-        local highlight = targetHighlights[player]
-        if not highlight then
-            highlight = Instance.new("Highlight")
-            highlight.Name = "TargetHighlight"
-            highlight.Parent = character
-            highlight.Adornee = character
-            highlight.FillTransparency = 0.5
-            highlight.OutlineTransparency = 0
-            targetHighlights[player] = highlight
-        end
+        targetHighlight = Instance.new("Highlight")
+        targetHighlight.Name = "TargetHighlight"
+        targetHighlight.Parent = character
+        targetHighlight.Adornee = character
+        targetHighlight.FillTransparency = 0.5
+        targetHighlight.OutlineTransparency = 0
         
         local stance = getPlayerStance(player)
         if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.HIGHLIGHT_PARRYING then
-            highlight.FillColor = CONFIG.BLOCK_COLOR -- Зеленый для Parrying/Blocking
-            highlight.Enabled = true
+            targetHighlight.FillColor = CONFIG.BLOCK_COLOR -- Зеленый для Parrying/Blocking
+            targetHighlight.Enabled = true
         elseif stance and stance == "riposte" and CONFIG.HIGHLIGHT_RIPOSTE then
-            highlight.FillColor = CONFIG.PARRY_COLOR -- Голубой для Riposte
-            highlight.Enabled = true
+            targetHighlight.FillColor = CONFIG.PARRY_COLOR -- Голубой для Riposte
+            targetHighlight.Enabled = true
         else
-            highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный по умолчанию
-            highlight.Enabled = true
+            targetHighlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный по умолчанию
+            targetHighlight.Enabled = true
         end
     end
 
     -- Функция для удаления подсветки
-    local function removeTargetHighlight(player)
-        if targetHighlights[player] then
-            targetHighlights[player]:Destroy()
-            targetHighlights[player] = nil
+    local function removeTargetHighlight()
+        if targetHighlight then
+            targetHighlight:Destroy()
+            targetHighlight = nil
         end
     end
 
     -- Обработка ухода игрока
     Players.PlayerRemoving:Connect(function(player)
-        removeTargetHighlight(player)
+        if targetHighlight and targetHighlight.Parent == player.Character then
+            removeTargetHighlight()
+        end
     end)
 
     -- Обработка появления нового персонажа и смерти
@@ -174,7 +177,9 @@ function KillAura.Init(UI, Core, notify)
             local humanoid = character:WaitForChild("Humanoid", 5)
             if humanoid then
                 humanoid.Died:Connect(function()
-                    removeTargetHighlight(player)
+                    if targetHighlight and targetHighlight.Parent == player.Character then
+                        removeTargetHighlight()
+                    end
                 end)
             end
         end)
@@ -432,26 +437,20 @@ function KillAura.Init(UI, Core, notify)
     -- Основной цикл киллауры
     RunService.RenderStepped:Connect(function()
         if not CONFIG.Enabled then
-            for player in pairs(targetHighlights) do
-                removeTargetHighlight(player)
-            end
+            removeTargetHighlight()
             return
         end
 
         localCharacter = LocalPlayer.Character
         localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
         if not (localCharacter and localRootPart) then
-            for player in pairs(targetHighlights) do
-                removeTargetHighlight(player)
-            end
+            removeTargetHighlight()
             return
         end
         
         local settings = getWeaponSettings()
         if not settings then
-            for player in pairs(targetHighlights) do
-                removeTargetHighlight(player)
-            end
+            removeTargetHighlight()
             return
         end
         
@@ -523,12 +522,12 @@ function KillAura.Init(UI, Core, notify)
                     lastAttackTime = tick()
                 end
             end
+        else
+            removeTargetHighlight()
         end
         
         if not attacked then
-            for player in pairs(targetHighlights) do
-                removeTargetHighlight(player)
-            end
+            removeTargetHighlight()
         end
     end)
 end
