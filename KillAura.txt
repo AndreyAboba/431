@@ -1,46 +1,42 @@
 local KillAura = {}
-print('2')
+
 function KillAura.Init(UI, Core, notify)
-    local Players = Core.Services.Players
-    local RunService = Core.Services.RunService
-    local ReplicatedStorage = Core.Services.ReplicatedStorage
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
     local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer")
     local ChangeStance = RemoteEvents:WaitForChild("ChangeStance")
     local Hit = RemoteEvents:WaitForChild("Hit")
     local Kick = RemoteEvents:WaitForChild("Kick")
     local Punch = RemoteEvents:WaitForChild("Punch")
-    local LocalPlayer = Core.PlayerData.LocalPlayer
+
+    local LocalPlayer = Players.LocalPlayer
 
     -- Конфигурация
-    local CONFIG = {
-        Enabled = false,
-        RANGE = 10, -- Радиус атаки в метрах
-        ATTACK_COOLDOWN = 0.24, -- Кулдаун между атаками
-        MINUS_WINDUP = 0.9, -- Уменьшение Windup
-        MINUS_RELEASE = 1.4, -- Уменьшение Release
-        KICK_WINDUP_WAIT = 0.01, -- Задержка после KickWindup/Punching
-        KICKING_WAIT = 0, -- Задержка после Kicking
-        KICK_BLOCKING = true, -- Пинок/пунш при Parrying/Blocking
-        KICK_PARRYING = true, -- Пинок/пунш при Riposte
-        USE_PUNCH = true, -- true: использовать Punch, false: использовать Kick
-        HIGHLIGHT_PARRYING = true, -- Подсветка игрока для Parrying
-        HIGHLIGHT_RIPOSTE = true, -- Подсветка игрока для Riposte
-        TEAM_CHECK = true, -- true: учитывать команды, false: игнорировать команды
-        BLOCK_COLOR = Color3.fromRGB(0, 255, 0), -- Цвет подсветки для Blocking/Parrying
-        PARRY_COLOR = Color3.fromRGB(0, 162, 255) -- Цвет подсветки для Riposte
+    local State = {
+        Enabled = { Value = false, Default = false },
+        Range = { Value = 10, Default = 10 },
+        AttackCooldown = { Value = 0.24, Default = 0.24 },
+        AntiBlock = { Value = true, Default = true },
+        AntiParry = { Value = true, Default = true },
+        HighlightBlock = { Value = true, Default = true },
+        HighlightParry = { Value = true, Default = true },
+        TeamCheck = { Value = true, Default = true }
     }
 
-    local targetHighlight = nil -- Подсветка только для одной цели
+    local targetHighlight = nil -- Подсветка для одной цели
     local cachedSettings = nil -- Кэш для настроек
     local lastWeapon = nil -- Для отслеживания смены оружия
     local lastAttackTime = 0 -- Для отслеживания времени последней атаки
     local localCharacter = nil -- Кэш для персонажа локального игрока
     local localRootPart = nil -- Кэш для HumanoidRootPart
+    local lastNotificationTime = 0
+    local notificationDelay = 5
 
     -- Функция для проверки состояния игрока (Parrying, Riposte, Blocking)
     local function getPlayerStance(player)
         if player == LocalPlayer then
-            return nil -- Игнорируем локального игрока
+            return nil
         end
         local character = player.Character
         if character then
@@ -81,8 +77,8 @@ function KillAura.Init(UI, Core, notify)
             return nil
         end
         
-        settings.Windup = math.max(0, settings.Windup - CONFIG.MINUS_WINDUP)
-        settings.Release = math.max(0, settings.Release - CONFIG.MINUS_RELEASE)
+        settings.Windup = math.max(0, settings.Windup - 0.9)
+        settings.Release = math.max(0, settings.Release - 1.4)
         
         cachedSettings = {
             weapon = weapon,
@@ -104,17 +100,17 @@ function KillAura.Init(UI, Core, notify)
         end
         
         local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
-        if distance > CONFIG.RANGE then
+        if distance > State.Range.Value then
             return false
         end
         
-        if CONFIG.TEAM_CHECK and targetPlayer.Team and LocalPlayer.Team then
+        if State.TeamCheck.Value and targetPlayer.Team and LocalPlayer.Team then
             local localTeamName = LocalPlayer.Team.Name
             local targetTeamName = targetPlayer.Team.Name
             if localTeamName == targetTeamName and localTeamName ~= "Spectators" then
-                return false -- Не атакуем своих, кроме Spectators
+                return false
             elseif localTeamName == "Spectators" then
-                return true -- Атакуем всех
+                return true
             elseif localTeamName == "Guesmand" then
                 return targetTeamName == "Spectators" or targetTeamName == "Sunderland"
             elseif localTeamName == "Sunderland" then
@@ -128,30 +124,33 @@ function KillAura.Init(UI, Core, notify)
 
     -- Функция для создания/обновления подсветки для таргета
     local function updateTargetHighlight(player)
-        if targetHighlight then
-            targetHighlight:Destroy()
-            targetHighlight = nil
+        if not player or not player.Character then
+            if targetHighlight then
+                targetHighlight:Destroy()
+                targetHighlight = nil
+            end
+            return
         end
         
         local character = player.Character
-        if not character then return end
-        
-        targetHighlight = Instance.new("Highlight")
-        targetHighlight.Name = "TargetHighlight"
-        targetHighlight.Parent = character
-        targetHighlight.Adornee = character
-        targetHighlight.FillTransparency = 0.5
-        targetHighlight.OutlineTransparency = 0
+        if not targetHighlight then
+            targetHighlight = Instance.new("Highlight")
+            targetHighlight.Name = "TargetHighlight"
+            targetHighlight.Parent = character
+            targetHighlight.Adornee = character
+            targetHighlight.FillTransparency = 0.5
+            targetHighlight.OutlineTransparency = 0
+        end
         
         local stance = getPlayerStance(player)
-        if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.HIGHLIGHT_PARRYING then
-            targetHighlight.FillColor = CONFIG.BLOCK_COLOR -- Зеленый для Parrying/Blocking
+        if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and State.HighlightBlock.Value then
+            targetHighlight.FillColor = Color3.fromRGB(0, 255, 0)
             targetHighlight.Enabled = true
-        elseif stance and stance == "riposte" and CONFIG.HIGHLIGHT_RIPOSTE then
-            targetHighlight.FillColor = CONFIG.PARRY_COLOR -- Голубой для Riposte
+        elseif stance and stance == "riposte" and State.HighlightParry.Value then
+            targetHighlight.FillColor = Color3.fromRGB(0, 162, 255)
             targetHighlight.Enabled = true
         else
-            targetHighlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный по умолчанию
+            targetHighlight.FillColor = Color3.fromRGB(255, 0, 0)
             targetHighlight.Enabled = true
         end
     end
@@ -166,7 +165,7 @@ function KillAura.Init(UI, Core, notify)
 
     -- Обработка ухода игрока
     Players.PlayerRemoving:Connect(function(player)
-        if targetHighlight and targetHighlight.Parent == player.Character then
+        if targetHighlight and targetHighlight.Adornee == player.Character then
             removeTargetHighlight()
         end
     end)
@@ -177,7 +176,7 @@ function KillAura.Init(UI, Core, notify)
             local humanoid = character:WaitForChild("Humanoid", 5)
             if humanoid then
                 humanoid.Died:Connect(function()
-                    if targetHighlight and targetHighlight.Parent == player.Character then
+                    if targetHighlight and targetHighlight.Adornee == character then
                         removeTargetHighlight()
                     end
                 end)
@@ -192,7 +191,7 @@ function KillAura.Init(UI, Core, notify)
 
     -- Функция для получения расстояния до игрока
     local function getDistanceToPlayer(targetPlayer)
-        local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local targetRootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         if targetRootPart and localRootPart then
             return (localRootPart.Position - targetRootPart.Position).Magnitude
         end
@@ -202,334 +201,268 @@ function KillAura.Init(UI, Core, notify)
     -- Функция для выполнения пинка
     local function performKick(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
-            print("Kick failed: No Humanoid for " .. targetPlayer.Name)
-            return false
-        end
+        if not targetHumanoid then return false end
         
         local stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not CONFIG.KICK_PARRYING then
-            print("Kick failed: Invalid stance for " .. targetPlayer.Name .. ": " .. (stance or "None"))
-            return false
-        end
+        if not stance or stance ~= "riposte" or not State.AntiParry.Value then return false end
         
         ChangeStance:FireServer("KickWindup")
-        wait(CONFIG.KICK_WINDUP_WAIT)
+        task.wait(0.01)
         
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            print("Kick failed: Target lost after KickWindup for " .. targetPlayer.Name)
-            return false
-        end
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return false end
         stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not CONFIG.KICK_PARRYING then
-            print("Kick failed: Stance changed after KickWindup for " .. targetPlayer.Name .. ": " .. (stance or "None"))
-            return false
-        end
+        if not stance or stance ~= "riposte" or not State.AntiParry.Value then return false end
         
         ChangeStance:FireServer("Kicking")
-        wait(CONFIG.KICKING_WAIT)
+        task.wait(0)
         
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            print("Kick failed: Target lost after Kicking for " .. targetPlayer.Name)
-            return false
-        end
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return false end
         stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not CONFIG.KICK_PARRYING then
-            print("Kick failed: Stance changed after Kicking for " .. targetPlayer.Name .. ": " .. (stance or "None"))
-            return false
-        end
+        if not stance or stance ~= "riposte" or not State.AntiParry.Value then return false end
         
         local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
-        if not targetHandle then
-            print("Kick failed: targetHandle not found for " .. targetPlayer.Name)
-            return false
-        end
+        if not targetHandle then return false end
         
         Kick:FireServer(weapon, targetHandle, targetHumanoid)
-        print("Kick completed for " .. targetPlayer.Name)
         return true
     end
 
     -- Функция для выполнения пунша
     local function performPunch(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
-            print("Punch failed: No Humanoid for " .. targetPlayer.Name)
-            return false
-        end
+        if not targetHumanoid then return false end
         
         local stance = getPlayerStance(targetPlayer)
-        if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING) then
-            print("Punch failed: Invalid stance for " .. targetPlayer.Name .. ": " .. (stance or "None"))
-            return false
-        end
+        if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.AntiBlock.Value) then return false end
         
         ChangeStance:FireServer("Punching")
-        print("Punch: ChangeStance(Punching) sent for " .. targetPlayer.Name)
-        wait(CONFIG.KICK_WINDUP_WAIT)
+        task.wait(0.01)
         
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            print("Punch failed: Target lost after Punching for " .. targetPlayer.Name)
-            return false
-        end
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return false end
         stance = getPlayerStance(targetPlayer)
-        if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING) then
-            print("Punch failed: Stance changed after Punching for " .. targetPlayer.Name .. ": " .. (stance or "None"))
-            return false
-        end
+        if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.AntiBlock.Value) then return false end
         
         local targetHandle = targetCharacter:FindFirstChild("HumanoidRootPart")
-        if not (weapon and targetHandle) then
-            print("Punch failed: Weapon or HumanoidRootPart not found for " .. targetPlayer.Name)
-            return false
-        end
+        if not (weapon and targetHandle) then return false end
         
         Punch:FireServer(weapon, targetHandle, targetHumanoid)
-        print("Punch completed for " .. targetPlayer.Name)
         return true
     end
 
-    -- Настройка UI
-    if UI.Tabs and UI.Tabs.Combat then
-        local KillAuraSection = UI.Tabs.Combat:Section({ Name = "KillAura", Side = "Left" })
+    -- Основной цикл киллауры
+    local function runKillAura()
+        while true do
+            RunService.Heartbeat:Wait()
+            
+            if not State.Enabled.Value then
+                removeTargetHighlight()
+                continue
+            end
+            
+            localCharacter = LocalPlayer.Character
+            localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+            if not (localCharacter and localRootPart) then
+                removeTargetHighlight()
+                continue
+            end
+            
+            local settings = getWeaponSettings()
+            if not settings then
+                removeTargetHighlight()
+                continue
+            end
+            
+            if tick() - lastAttackTime < State.AttackCooldown.Value then
+                continue
+            end
+            
+            local closestTarget = nil
+            local minDistance = math.huge
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and canTargetPlayer(player) then
+                    local distance = getDistanceToPlayer(player)
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestTarget = player
+                    end
+                end
+            end
+            
+            if not closestTarget then
+                removeTargetHighlight()
+                continue
+            end
+            
+            local targetCharacter = closestTarget.Character
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+            if not (targetCharacter and targetHumanoid) then
+                removeTargetHighlight()
+                continue
+            end
+            
+            updateTargetHighlight(closestTarget)
+            local stance = getPlayerStance(closestTarget)
+            
+            local attacked = false
+            if stance then
+                if (stance == "parrying" or stance == "block" or stance == "blocking") and State.AntiBlock.Value then
+                    attacked = performPunch(closestTarget, targetCharacter, settings.weapon)
+                elseif stance == "riposte" and State.AntiParry.Value then
+                    attacked = performKick(closestTarget, targetCharacter, settings.weapon)
+                end
+            end
+            
+            if not attacked then
+                ChangeStance:FireServer("Windup")
+                task.wait(settings.windupTime)
+                
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                    removeTargetHighlight()
+                    continue
+                end
+                stance = getPlayerStance(closestTarget)
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.AntiBlock.Value or (stance == "riposte" and State.AntiParry.Value)) then
+                    removeTargetHighlight()
+                    continue
+                end
+                
+                ChangeStance:FireServer("Release")
+                task.wait(settings.releaseTime)
+                
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                    removeTargetHighlight()
+                    continue
+                end
+                stance = getPlayerStance(closestTarget)
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.AntiBlock.Value or (stance == "riposte" and State.AntiParry.Value)) then
+                    removeTargetHighlight()
+                    continue
+                end
+                
+                local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and 
+                    targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or 
+                    targetCharacter:FindFirstChild("HumanoidRootPart")
+                if not targetHandle then
+                    removeTargetHighlight()
+                    continue
+                end
+                
+                Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
+                attacked = true
+            end
+            
+            if attacked then
+                lastAttackTime = tick()
+            else
+                removeTargetHighlight()
+            end
+        end
+    end
 
-        KillAuraSection:Header({ Name = "KillAura" })
-        KillAuraSection:Toggle({
+    -- Запуск киллауры в отдельной задаче
+    task.spawn(runKillAura)
+
+    -- Инициализация UI
+    if UI.Tabs and UI.Tabs.Combat then
+        -- Создаем секцию KillAura, если она еще не существует
+        UI.Sections.KillAura = UI.Sections.KillAura or UI.Tabs.Combat:Section({ Name = "KillAura" })
+        
+        UI.Sections.KillAura:Header({ Name = "KillAura" })
+        UI.Sections.KillAura:Toggle({
             Name = "Enabled",
-            Default = CONFIG.Enabled,
+            Default = State.Enabled.Default,
             Callback = function(value)
-                CONFIG.Enabled = value
-                notify("KillAura", "KillAura " .. (value and "Enabled" or "Disabled"), true)
+                State.Enabled.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "KillAura " .. (value and "Enabled" or "Disabled"), true)
+                end
             end
         }, 'EnabledKA')
-        KillAuraSection:Slider({
+        UI.Sections.KillAura:Slider({
             Name = "Range",
             Minimum = 4,
             Maximum = 20,
-            Default = CONFIG.RANGE,
+            Default = State.Range.Default,
             Precision = 0,
             Callback = function(value)
-                CONFIG.RANGE = value
-                notify("KillAura", "Range set to: " .. value)
+                State.Range.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Range set to: " .. value)
+                end
             end
         }, 'RangeKA')
-        KillAuraSection:Slider({
-            Name = "AttackCooldown",
-            Minimum = 0.01,
+        UI.Sections.KillAura:Slider({
+            Name = "Attack Cooldown",
+            Minimum = 0.1,
             Maximum = 0.5,
-            Default = CONFIG.ATTACK_COOLDOWN,
+            Default = State.AttackCooldown.Default,
             Precision = 2,
             Callback = function(value)
-                CONFIG.ATTACK_COOLDOWN = value
-                notify("KillAura", "Attack Cooldown set to: " .. value)
+                State.AttackCooldown.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Attack Cooldown set to: " .. value)
+                end
             end
         }, 'AttackCooldownKA')
-        KillAuraSection:Divider()
-        KillAuraSection:Toggle({
+        UI.Sections.KillAura:Toggle({
             Name = "Anti Block",
-            Default = CONFIG.KICK_BLOCKING,
+            Default = State.AntiBlock.Default,
             Callback = function(value)
-                CONFIG.KICK_BLOCKING = value
-                notify("KillAura", "Anti Block " .. (value and "Enabled" or "Disabled"), true)
+                State.AntiBlock.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Anti Block " .. (value and "Enabled" or "Disabled"), true)
+                end
             end
         }, 'AntiBlockKA')
-        KillAuraSection:Toggle({
+        UI.Sections.KillAura:Toggle({
             Name = "Anti Parry",
-            Default = CONFIG.KICK_PARRYING,
+            Default = State.AntiParry.Default,
             Callback = function(value)
-                CONFIG.KICK_PARRYING = value
-                notify("KillAura", "Anti Parry " .. (value and "Enabled" or "Disabled"), true)
+                State.AntiParry.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Anti Parry " .. (value and "Enabled" or "Disabled"), true)
+                end
             end
         }, 'AntiParryKA')
-        KillAuraSection:Divider()
-        KillAuraSection:Toggle({
+        UI.Sections.KillAura:Toggle({
             Name = "Highlight Block",
-            Default = CONFIG.HIGHLIGHT_PARRYING,
+            Default = State.HighlightBlock.Default,
             Callback = function(value)
-                CONFIG.HIGHLIGHT_PARRYING = value
-                notify("KillAura", "Highlight Block " .. (value and "Enabled" or "Disabled"), true)
+                State.HighlightBlock.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Highlight Block " .. (value and "Enabled" or "Disabled"), true)
+                end
             end
         }, 'HighlightBlockKA')
-        KillAuraSection:Toggle({
+        UI.Sections.KillAura:Toggle({
             Name = "Highlight Parry",
-            Default = CONFIG.HIGHLIGHT_RIPOSTE,
+            Default = State.HighlightParry.Default,
             Callback = function(value)
-                CONFIG.HIGHLIGHT_RIPOSTE = value
-                notify("KillAura", "Highlight Parry " .. (value and "Enabled" or "Disabled"), true)
+                State.HighlightParry.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Highlight Parry " .. (value and "Enabled" or "Disabled"), true)
+                end
             end
         }, 'HighlightParryKA')
-        KillAuraSection:Colorpicker({
-            Name = "Block Color",
-            Default = CONFIG.BLOCK_COLOR,
-            Callback = function(value)
-                CONFIG.BLOCK_COLOR = value
-                notify("KillAura", "Block Color set to: " .. value:ToHex())
-            end
-        }, 'BlockColorKA')
-        KillAuraSection:Colorpicker({
-            Name = "Parry Color",
-            Default = CONFIG.PARRY_COLOR,
-            Callback = function(value)
-                CONFIG.PARRY_COLOR = value
-                notify("KillAura", "Parry Color set to: " .. value:ToHex())
-            end
-        }, 'ParryColorKA')
-        KillAuraSection:Divider()
-        KillAuraSection:Toggle({
+        UI.Sections.KillAura:Toggle({
             Name = "Team Check",
-            Default = CONFIG.TEAM_CHECK,
+            Default = State.TeamCheck.Default,
             Callback = function(value)
-                CONFIG.TEAM_CHECK = value
-                notify("KillAura", "Team Check " .. (value and "Enabled" or "Disabled"), true)
+                State.TeamCheck.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Team Check " .. (value and "Enabled" or "Disabled"), true)
+                end
             end
         }, 'TeamCheckKA')
-
-        -- Новая секция Weapon Exploits
-        local WeaponExploitsSection = UI.Tabs.Combat:Section({ Name = "Weapon Exploits", Side = "Right" })
-        WeaponExploitsSection:Header({ Name = "Weapon Exploits" })
-        WeaponExploitsSection:Slider({
-            Name = "Minus Windup",
-            Minimum = 0.1,
-            Maximum = 2,
-            Default = CONFIG.MINUS_WINDUP,
-            Precision = 1,
-            Callback = function(value)
-                CONFIG.MINUS_WINDUP = value
-                notify("KillAura", "Minus Windup set to: " .. value)
-            end
-        }, 'MinusWindupKA')
-        WeaponExploitsSection:Slider({
-            Name = "Minus Release",
-            Minimum = 0.1,
-            Maximum = 2,
-            Default = CONFIG.MINUS_RELEASE,
-            Precision = 1,
-            Callback = function(value)
-                CONFIG.MINUS_RELEASE = value
-                notify("KillAura", "Minus Release set to: " .. value)
-            end
-        }, 'MinusReleaseKA')
-        WeaponExploitsSection:Divider()
-        WeaponExploitsSection:Slider({
-            Name = "Kick Delay Windup",
-            Minimum = 0,
-            Maximum = 0.3,
-            Default = CONFIG.KICK_WINDUP_WAIT,
-            Precision = 3,
-            Callback = function(value)
-                CONFIG.KICK_WINDUP_WAIT = value
-                notify("KillAura", "Kick Delay Windup set to: " .. value)
-            end
-        }, 'KickDelayWindupKA')
-        WeaponExploitsSection:Slider({
-            Name = "Kicking Wait",
-            Minimum = 0,
-            Maximum = 0.3,
-            Default = CONFIG.KICKING_WAIT,
-            Precision = 3,
-            Callback = function(value)
-                CONFIG.KICKING_WAIT = value
-                notify("KillAura", "Kicking Wait set to: " .. value)
-            end
-        }, 'KickingWaitKA')
     end
-
-    -- Основной цикл киллауры
-    RunService.RenderStepped:Connect(function()
-        if not CONFIG.Enabled then
-            removeTargetHighlight()
-            return
-        end
-
-        localCharacter = LocalPlayer.Character
-        localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-        if not (localCharacter and localRootPart) then
-            removeTargetHighlight()
-            return
-        end
-        
-        local settings = getWeaponSettings()
-        if not settings then
-            removeTargetHighlight()
-            return
-        end
-        
-        if tick() - lastAttackTime < CONFIG.ATTACK_COOLDOWN then
-            return
-        end
-        
-        local attacked = false
-        local target = nil
-        local minDistance = math.huge
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and canTargetPlayer(player) then
-                local distance = getDistanceToPlayer(player)
-                if distance < minDistance then
-                    minDistance = distance
-                    target = player
-                end
-            end
-        end
-        
-        if target then
-            local targetCharacter = target.Character
-            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
-            if targetCharacter and targetHumanoid then
-                updateTargetHighlight(target)
-                
-                local stance = getPlayerStance(target)
-                
-                if stance then
-                    if (stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING then
-                        local success = performPunch(target, targetCharacter, settings.weapon)
-                        attacked = attacked or success
-                        if success then
-                            lastAttackTime = tick()
-                        end
-                    elseif stance == "riposte" and CONFIG.KICK_PARRYING then
-                        local success = performKick(target, targetCharacter, settings.weapon)
-                        attacked = attacked or success
-                        if success then
-                            lastAttackTime = tick()
-                        end
-                    end
-                elseif not attacked then
-                    ChangeStance:FireServer("Windup")
-                    wait(settings.windupTime)
-                    
-                    if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return end
-                    stance = getPlayerStance(target)
-                    if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING or (stance == "riposte" and CONFIG.KICK_PARRYING)) then
-                        return
-                    end
-                    
-                    ChangeStance:FireServer("Release")
-                    wait(settings.releaseTime)
-                    
-                    if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return end
-                    stance = getPlayerStance(target)
-                    if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING or (stance == "riposte" and CONFIG.KICK_PARRYING)) then
-                        return
-                    end
-                    
-                    local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and 
-                        targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or 
-                        targetCharacter:FindFirstChild("HumanoidRootPart")
-                    if not targetHandle then return end
-                    
-                    Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
-                    attacked = true
-                    lastAttackTime = tick()
-                end
-            end
-        else
-            removeTargetHighlight()
-        end
-        
-        if not attacked then
-            removeTargetHighlight()
-        end
-    end)
 end
 
 return KillAura
