@@ -4,9 +4,8 @@ local PlayerData = nil
 local notify = nil
 local LocalPlayerObj = nil
 local core = nil
-local RagdollClient = game:GetService("ReplicatedStorage").Modules.Client.Char.RagdollClient
 
--- Services for Desync
+-- Services for Desync and VeloBypass
 local checkcaller = checkcaller
 local newcclosure = newcclosure
 local hookmetamethod = hookmetamethod
@@ -27,9 +26,6 @@ LocalPlayer.Config = {
         Speed = 40,
         ToggleKey = nil
     },
-    AntiRagdoll = {
-        Enabled = false
-    },
     Desync = {
         Enabled = false,
         Method = "Reverse", -- "Reverse" or "AssemblyLinearVelocity"
@@ -37,6 +33,10 @@ LocalPlayer.Config = {
         Velocity = 200,
         Multiplier = 7,
         ToggleKey = nil
+    },
+    VeloBypass = {
+        Enabled = false,
+        Method = "Hook"
     }
 }
 
@@ -65,15 +65,6 @@ local AutoSprintStatus = {
     Speed = LocalPlayer.Config.AutoSprint.Speed
 }
 
-local AntiRagdollStatus = {
-    Running = false,
-    StateConnection = nil,
-    AttributeConnection = nil,
-    PlatformStandConnection = nil,
-    Motor6DConnections = {},
-    Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
-}
-
 local DesyncStatus = {
     Running = false,
     HeartbeatConnection = nil,
@@ -86,6 +77,13 @@ local DesyncStatus = {
     Velocity = LocalPlayer.Config.Desync.Velocity,
     Multiplier = LocalPlayer.Config.Desync.Multiplier,
     ServerMarker = nil
+}
+
+local VeloBypassStatus = {
+    Running = false,
+    OriginalIndex = nil,
+    Enabled = LocalPlayer.Config.VeloBypass.Enabled,
+    Method = LocalPlayer.Config.VeloBypass.Method
 }
 
 local function getCharacterData()
@@ -102,21 +100,6 @@ end
 
 local function isInputFocused()
     return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
-end
-
--- Восстановление Motor6D и отключение BallSocketConstraints
-local function restoreMotor6D(character)
-    if not character then return end
-    for _, motor in ipairs(character:GetDescendants()) do
-        if motor:IsA("Motor6D") and not motor.Enabled then
-            motor.Enabled = true
-            notify("AntiRagdoll", "Restored Motor6D: " .. motor.Name, false)
-        end
-        if motor:IsA("BallSocketConstraint") then
-            motor.Enabled = false
-            notify("AntiRagdoll", "Disabled BallSocketConstraint: " .. motor.Name, false)
-        end
-    end
 end
 
 -- Timer Functions
@@ -316,119 +299,6 @@ AutoSprint.SetSpeed = function(newSpeed)
     notify("AutoSprint", "Speed set to: " .. tostring(AutoSprintStatus.Speed), false)
 end
 
--- AntiRagdoll Functions
-local AntiRagdoll = {}
-AntiRagdoll.Start = function()
-    if AntiRagdollStatus.Running or not LocalPlayerObj or not Services or not RagdollClient then
-        if not RagdollClient then
-            warn("AntiRagdoll: RagdollClient module not found")
-            notify("AntiRagdoll", "Failed to start: RagdollClient module not found.", true)
-        end
-        return
-    end
-    local character = LocalPlayerObj.Character
-    if not character then return end
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    if not humanoid then
-        notify("AntiRagdoll", "Failed to start: Humanoid not found.", true)
-        return
-    end
-
-    AntiRagdollStatus.Running = true
-
-    -- Перехват изменения состояния Humanoid
-    AntiRagdollStatus.StateConnection = humanoid:GetStateChangedSignal():Connect(function(oldState, newState)
-        if AntiRagdollStatus.Enabled and newState == Enum.HumanoidStateType.Physics then
-            local ragdollModule = require(RagdollClient)
-            ragdollModule.ToggleRagdoll(character, false)
-            character:SetAttribute("Ragdoll", false)
-            humanoid.PlatformStand = false
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            restoreMotor6D(character)
-            notify("AntiRagdoll", "Prevented ragdoll (Physics state detected)", false)
-        end
-    end)
-
-    -- Перехват изменения атрибута Ragdoll
-    AntiRagdollStatus.AttributeConnection = character:GetAttributeChangedSignal("Ragdoll"):Connect(function()
-        if AntiRagdollStatus.Enabled and character:GetAttribute("Ragdoll") then
-            local ragdollModule = require(RagdollClient)
-            ragdollModule.ToggleRagdoll(character, false)
-            character:SetAttribute("Ragdoll", false)
-            humanoid.PlatformStand = false
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            restoreMotor6D(character)
-            notify("AntiRagdoll", "Prevented ragdoll (Ragdoll attribute detected)", false)
-        end
-    end)
-
-    -- Перехват изменения PlatformStand
-    AntiRagdollStatus.PlatformStandConnection = humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
-        if AntiRagdollStatus.Enabled and humanoid.PlatformStand then
-            local ragdollModule = require(RagdollClient)
-            ragdollModule.ToggleRagdoll(character, false)
-            character:SetAttribute("Ragdoll", false)
-            humanoid.PlatformStand = false
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            restoreMotor6D(character)
-            notify("AntiRagdoll", "Prevented ragdoll (PlatformStand detected)", false)
-        end
-    end)
-
-    -- Перехват изменений Motor6D.Enabled
-    for _, motor in ipairs(character:GetDescendants()) do
-        if motor:IsA("Motor6D") then
-            local conn = motor:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if AntiRagdollStatus.Enabled and not motor.Enabled then
-                    motor.Enabled = true
-                    local ragdollModule = require(RagdollClient)
-                    ragdollModule.ToggleRagdoll(character, false)
-                    character:SetAttribute("Ragdoll", false)
-                    humanoid.PlatformStand = false
-                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-                    restoreMotor6D(character)
-                    notify("AntiRagdoll", "Prevented ragdoll (Motor6D disabled: " .. motor.Name .. ")", false)
-                end
-            end)
-            table.insert(AntiRagdollStatus.Motor6DConnections, conn)
-        end
-    end
-
-    -- Проверка начального состояния
-    local ragdollModule = require(RagdollClient)
-    if humanoid:GetState() == Enum.HumanoidStateType.Physics or character:GetAttribute("Ragdoll") or humanoid.PlatformStand then
-        ragdollModule.ToggleRagdoll(character, false)
-        character:SetAttribute("Ragdoll", false)
-        humanoid.PlatformStand = false
-        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        restoreMotor6D(character)
-        notify("AntiRagdoll", "Initial ragdoll state cleared", false)
-    end
-
-    notify("AntiRagdoll", "Started", true)
-end
-
-AntiRagdoll.Stop = function()
-    if AntiRagdollStatus.StateConnection then
-        AntiRagdollStatus.StateConnection:Disconnect()
-        AntiRagdollStatus.StateConnection = nil
-    end
-    if AntiRagdollStatus.AttributeConnection then
-        AntiRagdollStatus.AttributeConnection:Disconnect()
-        AntiRagdollStatus.AttributeConnection = nil
-    end
-    if AntiRagdollStatus.PlatformStandConnection then
-        AntiRagdollStatus.PlatformStandConnection:Disconnect()
-        AntiRagdollStatus.PlatformStandConnection = nil
-    end
-    for _, conn in ipairs(AntiRagdollStatus.Motor6DConnections) do
-        conn:Disconnect()
-    end
-    AntiRagdollStatus.Motor6DConnections = {}
-    AntiRagdollStatus.Running = false
-    notify("AntiRagdoll", "Stopped", true)
-end
-
 -- Desync Functions
 local Desync = {}
 Desync.Start = function()
@@ -488,10 +358,8 @@ Desync.Start = function()
         -- Применение метода десинхронизации
         if DesyncStatus.Method == "Reverse" then
             spoofCFrame = rootPart.CFrame * CFrame.Angles(math.pi, 0, 0) * CFrame.new(0, DesyncStatus.ReverseY, 0)
-            notify("Desync", "Reverse: Flipped upside down and moved by " .. tostring(DesyncStatus.ReverseY) .. " units", false)
         elseif DesyncStatus.Method == "AssemblyLinearVelocity" then
             spoofVelocity = Vector3.new(spoofVelocity.X, DesyncStatus.Velocity * DesyncStatus.Multiplier, spoofVelocity.Z)
-            notify("Desync", "AssemblyLinearVelocity: Set Y velocity to " .. tostring(DesyncStatus.Velocity * DesyncStatus.Multiplier), false)
         end
 
         -- Применение спуфа
@@ -557,6 +425,55 @@ Desync.SetMultiplier = function(newMultiplier)
     DesyncStatus.Multiplier = math.clamp(newMultiplier, 1, 20)
     LocalPlayer.Config.Desync.Multiplier = DesyncStatus.Multiplier
     notify("Desync", "Multiplier set to: " .. tostring(DesyncStatus.Multiplier), false)
+end
+
+-- VeloBypass Functions
+local VeloBypass = {}
+VeloBypass.Start = function()
+    if VeloBypassStatus.Running or not LocalPlayerObj then return end
+    local character = LocalPlayerObj.Character
+    if not character then return end
+    local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+    if not rootPart then return end
+
+    VeloBypassStatus.Running = true
+
+    -- Хук метаметода для спуфа AssemblyLinearVelocity
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    VeloBypassStatus.OriginalIndex = VeloBypassStatus.OriginalIndex or mt.__index
+    mt.__index = newcclosure(function(self, key)
+        if VeloBypassStatus.Enabled and not checkcaller() then
+            if self == rootPart and key == "AssemblyLinearVelocity" then
+                return Vector3.new(1, 1, 1)
+            end
+        end
+        return VeloBypassStatus.OriginalIndex(self, key)
+    end)
+    setreadonly(mt, true)
+
+    notify("VeloBypass", "Started with method: " .. VeloBypassStatus.Method, true)
+end
+
+VeloBypass.Stop = function()
+    if VeloBypassStatus.OriginalIndex then
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        mt.__index = VeloBypassStatus.OriginalIndex
+        setreadonly(mt, true)
+        VeloBypassStatus.OriginalIndex = nil
+    end
+    VeloBypassStatus.Running = false
+    notify("VeloBypass", "Stopped", true)
+end
+
+VeloBypass.SetMethod = function(newMethod)
+    if newMethod ~= "Hook" then
+        newMethod = "Hook"
+    end
+    VeloBypassStatus.Method = newMethod
+    LocalPlayer.Config.VeloBypass.Method = newMethod
+    notify("VeloBypass", "Method set to: " .. newMethod, false)
 end
 
 -- UI Setup
@@ -669,22 +586,6 @@ local function SetupUI(UI)
         }, "AutoSprintKey")
     end
 
-    if UI.Tabs.LocalPlayer then
-        local antiRagdollSection = UI.Tabs.LocalPlayer:Section({ Name = "AntiRagdoll", Side = "Left" })
-        if antiRagdollSection then
-            antiRagdollSection:Header({ Name = "AntiRagdoll" })
-            uiElements.AntiRagdollEnabled = antiRagdollSection:Toggle({
-                Name = "Enabled",
-                Default = LocalPlayer.Config.AntiRagdoll.Enabled,
-                Callback = function(value)
-                    AntiRagdollStatus.Enabled = value
-                    LocalPlayer.Config.AntiRagdoll.Enabled = value
-                    if value then AntiRagdoll.Start() else AntiRagdoll.Stop() end
-                end
-            }, "AntiRagdollEnabled")
-        end
-    end
-
     -- Секция Desync на правой стороне
     local desyncSection = UI.Tabs.LocalPlayer:Section({ Name = "Desync", Side = "Right" })
     if desyncSection then
@@ -756,6 +657,30 @@ local function SetupUI(UI)
         }, "DesyncKey")
     end
 
+    -- Секция VeloBypass на правой стороне
+    local veloBypassSection = UI.Tabs.LocalPlayer:Section({ Name = "VeloBypass", Side = "Right" })
+    if veloBypassSection then
+        veloBypassSection:Header({ Name = "VeloBypass" })
+        uiElements.VeloBypassEnabled = veloBypassSection:Toggle({
+            Name = "Enabled",
+            Default = LocalPlayer.Config.VeloBypass.Enabled,
+            Callback = function(value)
+                VeloBypassStatus.Enabled = value
+                LocalPlayer.Config.VeloBypass.Enabled = value
+                if value then VeloBypass.Start() else VeloBypass.Stop() end
+            end
+        }, "VeloBypassEnabled")
+        uiElements.VeloBypassMethod = veloBypassSection:Dropdown({
+            Name = "Method",
+            Options = {"Hook"},
+            Default = LocalPlayer.Config.VeloBypass.Method,
+            Callback = function(value)
+                notify("VeloBypass", "Dropdown Method received: " .. tostring(value), false)
+                VeloBypass.SetMethod(value)
+            end
+        }, "VeloBypassMethod")
+    end
+
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Local Player Sync", Side = "Right" })
     localconfigSection:Header({ Name = "LocalPlayer Settings Sync" })
     localconfigSection:Button({
@@ -772,14 +697,15 @@ local function SetupUI(UI)
             LocalPlayer.Config.AutoSprint.Speed = uiElements.AutoSprintSpeed:GetValue()
             LocalPlayer.Config.AutoSprint.ToggleKey = uiElements.AutoSprintKey:GetValue()
 
-            LocalPlayer.Config.AntiRagdoll.Enabled = uiElements.AntiRagdollEnabled:GetState()
-
             LocalPlayer.Config.Desync.Enabled = uiElements.DesyncEnabled:GetState()
             LocalPlayer.Config.Desync.Method = uiElements.DesyncMethod:GetValue()
             LocalPlayer.Config.Desync.ReverseY = uiElements.DesyncReverseY:GetValue()
             LocalPlayer.Config.Desync.Velocity = uiElements.DesyncVelocity:GetValue()
             LocalPlayer.Config.Desync.Multiplier = uiElements.DesyncMultiplier:GetValue()
             LocalPlayer.Config.Desync.ToggleKey = uiElements.DesyncKey:GetValue()
+
+            LocalPlayer.Config.VeloBypass.Enabled = uiElements.VeloBypassEnabled:GetState()
+            LocalPlayer.Config.VeloBypass.Method = uiElements.VeloBypassMethod:GetValue()
 
             TimerStatus.Enabled = LocalPlayer.Config.Timer.Enabled
             TimerStatus.Speed = LocalPlayer.Config.Timer.Speed
@@ -807,13 +733,6 @@ local function SetupUI(UI)
                 if AutoSprintStatus.Running then AutoSprint.Stop() end
             end
 
-            AntiRagdollStatus.Enabled = LocalPlayer.Config.AntiRagdoll.Enabled
-            if AntiRagdollStatus.Enabled then
-                if not AntiRagdollStatus.Running then AntiRagdoll.Start() end
-            else
-                if AntiRagdollStatus.Running then AntiRagdoll.Stop() end
-            end
-
             DesyncStatus.Enabled = LocalPlayer.Config.Desync.Enabled
             DesyncStatus.Method = LocalPlayer.Config.Desync.Method
             DesyncStatus.ReverseY = LocalPlayer.Config.Desync.ReverseY
@@ -824,6 +743,14 @@ local function SetupUI(UI)
                 if not DesyncStatus.Running then Desync.Start() end
             else
                 if DesyncStatus.Running then Desync.Stop() end
+            end
+
+            VeloBypassStatus.Enabled = LocalPlayer.Config.VeloBypass.Enabled
+            VeloBypassStatus.Method = LocalPlayer.Config.VeloBypass.Method
+            if VeloBypassStatus.Enabled then
+                if not VeloBypassStatus.Running then VeloBypass.Start() end
+            else
+                if VeloBypassStatus.Running then VeloBypass.Stop() end
             end
 
             notify("LocalPlayer", "Config synchronized!", true)
@@ -851,11 +778,11 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
             if AutoSprintStatus.Enabled then
                 AutoSprint.Start()
             end
-            if AntiRagdollStatus.Enabled then
-                AntiRagdoll.Start()
-            end
             if DesyncStatus.Enabled then
                 Desync.Start()
+            end
+            if VeloBypassStatus.Enabled then
+                VeloBypass.Start()
             end
         end)
     end
@@ -864,11 +791,11 @@ function LocalPlayer.Init(UI, coreParam, notifyFunc)
         if AutoSprintStatus.Enabled then
             AutoSprint.Start()
         end
-        if AntiRagdollStatus.Enabled then
-            AntiRagdoll.Start()
-        end
         if DesyncStatus.Enabled then
             Desync.Start()
+        end
+        if VeloBypassStatus.Enabled then
+            VeloBypass.Start()
         end
     end
 
