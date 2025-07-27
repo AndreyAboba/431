@@ -21,7 +21,14 @@ function KillAura.Init(UI, Core, notify)
         AntiParry = { Value = true, Default = true },
         HighlightBlock = { Value = true, Default = true },
         HighlightParry = { Value = true, Default = true },
-        TeamCheck = { Value = true, Default = true }
+        TeamCheck = { Value = true, Default = true },
+        ParryColor = { Value = Color3.fromRGB(0, 162, 255), Default = Color3.fromRGB(0, 162, 255) },
+        BlockColor = { Value = Color3.fromRGB(0, 255, 0), Default = Color3.fromRGB(0, 255, 0) },
+        DefaultColor = { Value = Color3.fromRGB(255, 0, 0), Default = Color3.fromRGB(255, 0, 0) },
+        MinusWindup = { Value = 0.9, Default = 0.9 },
+        MinusRelease = { Value = 1.4, Default = 1.4 },
+        KickDelay = { Value = 0.01, Default = 0.01 },
+        KickStateDelay = { Value = 0, Default = 0 }
     }
 
     local targetHighlight = nil -- Подсветка для одной цели
@@ -77,8 +84,8 @@ function KillAura.Init(UI, Core, notify)
             return nil
         end
         
-        settings.Windup = math.max(0, settings.Windup - 0.9)
-        settings.Release = math.max(0, settings.Release - 1.4)
+        settings.Windup = math.max(0, settings.Windup - State.MinusWindup.Value)
+        settings.Release = math.max(0, settings.Release - State.MinusRelease.Value)
         
         cachedSettings = {
             weapon = weapon,
@@ -144,13 +151,13 @@ function KillAura.Init(UI, Core, notify)
         
         local stance = getPlayerStance(player)
         if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and State.HighlightBlock.Value then
-            targetHighlight.FillColor = Color3.fromRGB(0, 255, 0)
+            targetHighlight.FillColor = State.BlockColor.Value
             targetHighlight.Enabled = true
         elseif stance and stance == "riposte" and State.HighlightParry.Value then
-            targetHighlight.FillColor = Color3.fromRGB(0, 162, 255)
+            targetHighlight.FillColor = State.ParryColor.Value
             targetHighlight.Enabled = true
         else
-            targetHighlight.FillColor = Color3.fromRGB(255, 0, 0)
+            targetHighlight.FillColor = State.DefaultColor.Value
             targetHighlight.Enabled = true
         end
     end
@@ -207,14 +214,14 @@ function KillAura.Init(UI, Core, notify)
         if not stance or stance ~= "riposte" or not State.AntiParry.Value then return false end
         
         ChangeStance:FireServer("KickWindup")
-        task.wait(0.01)
+        task.wait(State.KickDelay.Value)
         
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return false end
         stance = getPlayerStance(targetPlayer)
         if not stance or stance ~= "riposte" or not State.AntiParry.Value then return false end
         
         ChangeStance:FireServer("Kicking")
-        task.wait(0)
+        task.wait(State.KickStateDelay.Value)
         
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return false end
         stance = getPlayerStance(targetPlayer)
@@ -236,7 +243,7 @@ function KillAura.Init(UI, Core, notify)
         if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.AntiBlock.Value) then return false end
         
         ChangeStance:FireServer("Punching")
-        task.wait(0.01)
+        task.wait(State.KickDelay.Value)
         
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then return false end
         stance = getPlayerStance(targetPlayer)
@@ -364,8 +371,8 @@ function KillAura.Init(UI, Core, notify)
 
     -- Инициализация UI
     if UI.Tabs and UI.Tabs.Combat then
-        -- Создаем секцию KillAura, если она еще не существует
-        UI.Sections.KillAura = UI.Sections.KillAura or UI.Tabs.Combat:Section({ Name = "KillAura" })
+        -- Создаем секцию KillAura на левой части
+        UI.Sections.KillAura = UI.Sections.KillAura or UI.Tabs.Combat:Section({ Name = "KillAura", Side = "Left" })
         
         UI.Sections.KillAura:Header({ Name = "KillAura" })
         UI.Sections.KillAura:Toggle({
@@ -407,6 +414,7 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'AttackCooldownKA')
+        UI.Sections.KillAura:Divider()
         UI.Sections.KillAura:Toggle({
             Name = "Anti Block",
             Default = State.AntiBlock.Default,
@@ -429,6 +437,7 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'AntiParryKA')
+        UI.Sections.KillAura:Divider()
         UI.Sections.KillAura:Toggle({
             Name = "Highlight Block",
             Default = State.HighlightBlock.Default,
@@ -451,6 +460,29 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'HighlightParryKA')
+        UI.Sections.KillAura:Colorpicker({
+            Name = "Parry Color",
+            Default = State.ParryColor.Default,
+            Callback = function(value)
+                State.ParryColor.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Parry Color set to: R=" .. math.floor(value.R * 255) .. ", G=" .. math.floor(value.G * 255) .. ", B=" .. math.floor(value.B * 255))
+                end
+            end
+        }, 'ParryColorKA')
+        UI.Sections.KillAura:Colorpicker({
+            Name = "Block Color",
+            Default = State.BlockColor.Default,
+            Callback = function(value)
+                State.BlockColor.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Block Color set to: R=" .. math.floor(value.R * 255) .. ", G=" .. math.floor(value.G * 255) .. ", B=" .. math.floor(value.B * 255))
+                end
+            end
+        }, 'BlockColorKA')
+        UI.Sections.KillAura:Divider()
         UI.Sections.KillAura:Toggle({
             Name = "Team Check",
             Default = State.TeamCheck.Default,
@@ -462,6 +494,79 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         }, 'TeamCheckKA')
+        UI.Sections.KillAura:Colorpicker({
+            Name = "Default Color",
+            Default = State.DefaultColor.Default,
+            Callback = function(value)
+                State.DefaultColor.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Default Color set to: R=" .. math.floor(value.R * 255) .. ", G=" .. math.floor(value.G * 255) .. ", B=" .. math.floor(value.B * 255))
+                end
+            end
+        }, 'DefaultColorKA')
+
+        -- Создаем секцию ToolExploit на правой части
+        UI.Sections.ToolExploit = UI.Sections.ToolExploit or UI.Tabs.Combat:Section({ Name = "ToolExploit", Side = "Right" })
+        
+        UI.Sections.ToolExploit:Header({ Name = "Tool Exploit" })
+        UI.Sections.ToolExploit:Slider({
+            Name = "Minus Windup",
+            Minimum = 0.1,
+            Maximum = 2,
+            Default = State.MinusWindup.Default,
+            Precision = 1,
+            Callback = function(value)
+                State.MinusWindup.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("ToolExploit", "Minus Windup set to: " .. value)
+                end
+            end
+        }, 'MinusWindupTE')
+        UI.Sections.ToolExploit:Slider({
+            Name = "Minus Release",
+            Minimum = 0.1,
+            Maximum = 2,
+            Default = State.MinusRelease.Default,
+            Precision = 1,
+            Callback = function(value)
+                State.MinusRelease.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("ToolExploit", "Minus Release set to: " .. value)
+                end
+            end
+        }, 'MinusReleaseTE')
+        UI.Sections.ToolExploit:Divider()
+        UI.Sections.ToolExploit:Slider({
+            Name = "Kick Delay",
+            Minimum = 0.01,
+            Maximum = 0.2,
+            Default = State.KickDelay.Default,
+            Precision = 3,
+            Callback = function(value)
+                State.KickDelay.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("ToolExploit", "Kick Delay set to: " .. value)
+                end
+            end
+        }, 'KickDelayTE')
+        UI.Sections.ToolExploit:Slider({
+            Name = "Kick State Delay",
+            Minimum = 0.01,
+            Maximum = 0.2,
+            Default = State.KickStateDelay.Default,
+            Precision = 3,
+            Callback = function(value)
+                State.KickStateDelay.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("ToolExploit", "Kick State Delay set to: " .. value)
+                end
+            end
+        }, 'KickStateDelayTE')
     end
 end
 
