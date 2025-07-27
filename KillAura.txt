@@ -1,0 +1,528 @@
+local KillAura = {}
+
+function KillAura.Init(UI, Core, notify)
+    local Players = Core.Services.Players
+    local RunService = Core.Services.RunService
+    local ReplicatedStorage = Core.Services.ReplicatedStorage
+    local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer")
+    local ChangeStance = RemoteEvents:WaitForChild("ChangeStance")
+    local Hit = RemoteEvents:WaitForChild("Hit")
+    local Kick = RemoteEvents:WaitForChild("Kick")
+    local Punch = RemoteEvents:WaitForChild("Punch")
+    local LocalPlayer = Core.PlayerData.LocalPlayer
+
+    -- Конфигурация
+    local CONFIG = {
+        Enabled = false,
+        RANGE = 10, -- Радиус атаки в метрах
+        ATTACK_COOLDOWN = 0.24, -- Кулдаун между атаками
+        MINUS_WINDUP = 0.9, -- Уменьшение Windup
+        MINUS_RELEASE = 1.4, -- Уменьшение Release
+        KICK_WINDUP_WAIT = 0.01, -- Задержка после KickWindup/Punching
+        KICKING_WAIT = 0, -- Задержка после Kicking
+        KICK_BLOCKING = true, -- Пинок/пунш при Parrying/Blocking
+        KICK_PARRYING = true, -- Пинок/пунш при Riposte
+        USE_PUNCH = true, -- true: использовать Punch, false: использовать Kick
+        HIGHLIGHT_PARRYING = true, -- Подсветка игрока для Parrying
+        HIGHLIGHT_RIPOSTE = true, -- Подсветка игрока для Riposte
+        MULTI_TARGET = false, -- true: атака нескольких целей, false: одна цель
+        TEAM_CHECK = true, -- true: учитывать команды, false: игнорировать команды
+        MAX_TARGETS = 2 -- Максимум атакуемых/подсвечиваемых целей
+    }
+
+    local targetHighlights = {} -- Массив подсветок для таргетов
+    local cachedSettings = nil -- Кэш для настроек
+    local lastWeapon = nil -- Для отслеживания смены оружия
+    local lastAttackTime = 0 -- Для отслеживания времени последней атаки
+    local localCharacter = nil -- Кэш для персонажа локального игрока
+    local localRootPart = nil -- Кэш для HumanoidRootPart
+
+    -- Функция для проверки состояния игрока (Parrying, Riposte, Blocking)
+    local function getPlayerStance(player)
+        if player == LocalPlayer then
+            return nil -- Игнорируем локального игрока
+        end
+        local character = player.Character
+        if character then
+            local stanceValue = character:FindFirstChild("Stance", true)
+            if stanceValue and stanceValue:IsA("StringValue") then
+                return stanceValue.Value:lower()
+            end
+        end
+        return nil
+    end
+
+    -- Функция для получения настроек оружия
+    local function getWeaponSettings()
+        if not localCharacter then return nil end
+        
+        local weapon
+        for _, child in pairs(localCharacter:GetChildren()) do
+            if child:IsA("Tool") then
+                weapon = child
+                break
+            end
+        end
+        if not weapon then
+            return nil
+        end
+        
+        if weapon == lastWeapon and cachedSettings then
+            return cachedSettings
+        end
+        
+        local settingsModule = weapon:FindFirstChild("Settings")
+        if not settingsModule then
+            return nil
+        end
+        
+        local success, settings = pcall(require, settingsModule)
+        if not success or not settings or not settings.Windup or not settings.Release then
+            return nil
+        end
+        
+        settings.Windup = math.max(0, settings.Windup - CONFIG.MINUS_WINDUP)
+        settings.Release = math.max(0, settings.Release - CONFIG.MINUS_RELEASE)
+        
+        cachedSettings = {
+            weapon = weapon,
+            windupTime = settings.Windup,
+            releaseTime = settings.Release
+        }
+        lastWeapon = weapon
+        return cachedSettings
+    end
+
+    -- Функция для проверки расстояния и состояния игрока
+    local function canTargetPlayer(targetPlayer)
+        if not (localCharacter and localRootPart and targetPlayer.Character) then return false end
+        
+        local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+        if not (targetRootPart and humanoid) or humanoid.Health <= 0 or humanoid:GetState() ~= Enum.HumanoidStateType.Running then
+            return false
+        end
+        
+        local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
+        if distance > CONFIG.RANGE then
+            return false
+        end
+        
+        if CONFIG.TEAM_CHECK and targetPlayer.Team and LocalPlayer.Team then
+            local localTeamName = LocalPlayer.Team.Name
+            local targetTeamName = targetPlayer.Team.Name
+            if localTeamName == targetTeamName and localTeamName ~= "Spectators" then
+                return false -- Не атакуем своих, кроме Spectators
+            elseif localTeamName == "Spectators" then
+                return true -- Атакуем всех
+            elseif localTeamName == "Guesmand" then
+                return targetTeamName == "Spectators" or targetTeamName == "Sunderland"
+            elseif localTeamName == "Sunderland" then
+                return targetTeamName == "Guesmand" or targetTeamName == "Spectators"
+            end
+            return false
+        end
+        
+        return true
+    end
+
+    -- Функция для создания/обновления подсветки для таргета
+    local function updateTargetHighlight(player)
+        local character = player.Character
+        if not character then return end
+        
+        local highlight = targetHighlights[player]
+        if not highlight then
+            highlight = Instance.new("Highlight")
+            highlight.Name = "TargetHighlight"
+            highlight.Parent = character
+            highlight.Adornee = character
+            highlight.FillTransparency = 0.5
+            highlight.OutlineTransparency = 0
+            targetHighlights[player] = highlight
+        end
+        
+        local stance = getPlayerStance(player)
+        if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.HIGHLIGHT_PARRYING then
+            highlight.FillColor = Color3.fromRGB(0, 255, 0) -- Зеленый для Parrying/Blocking
+            highlight.Enabled = true
+        elseif stance and stance == "riposte" and CONFIG.HIGHLIGHT_RIPOSTE then
+            highlight.FillColor = Color3.fromRGB(0, 162, 255) -- Голубой для Riposte
+            highlight.Enabled = true
+        else
+            highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный по умолчанию
+            highlight.Enabled = true
+        end
+    end
+
+    -- Функция для удаления подсветки
+    local function removeTargetHighlight(player)
+        if targetHighlights[player] then
+            targetHighlights[player]:Destroy()
+            targetHighlights[player] = nil
+        end
+    end
+
+    -- Обработка ухода игрока
+    Players.PlayerRemoving:Connect(function(player)
+        removeTargetHighlight(player)
+    end)
+
+    -- Обработка появления нового персонажа и смерти
+    local function onCharacterAdded(player)
+        player.CharacterAdded:Connect(function(character)
+            local humanoid = character:WaitForChild("Humanoid", 5)
+            if humanoid then
+                humanoid.Died:Connect(function()
+                    removeTargetHighlight(player)
+                end)
+            end
+        end)
+    end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        onCharacterAdded(player)
+    end
+    Players.PlayerAdded:Connect(onCharacterAdded)
+
+    -- Функция для получения расстояния до игрока
+    local function getDistanceToPlayer(targetPlayer)
+        local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetRootPart and localRootPart then
+            return (localRootPart.Position - targetRootPart.Position).Magnitude
+        end
+        return math.huge
+    end
+
+    -- Функция для выполнения пинка
+    local function performKick(targetPlayer, targetCharacter, weapon)
+        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+        if not targetHumanoid then
+            print("Kick failed: No Humanoid for " .. targetPlayer.Name)
+            return false
+        end
+        
+        local stance = getPlayerStance(targetPlayer)
+        if not stance or stance ~= "riposte" or not CONFIG.KICK_PARRYING then
+            print("Kick failed: Invalid stance for " .. targetPlayer.Name .. ": " .. (stance or "None"))
+            return false
+        end
+        
+        ChangeStance:FireServer("KickWindup")
+        wait(CONFIG.KICK_WINDUP_WAIT)
+        
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+            print("Kick failed: Target lost after KickWindup for " .. targetPlayer.Name)
+            return false
+        end
+        stance = getPlayerStance(targetPlayer)
+        if not stance or stance ~= "riposte" or not CONFIG.KICK_PARRYING then
+            print("Kick failed: Stance changed after KickWindup for " .. targetPlayer.Name .. ": " .. (stance or "None"))
+            return false
+        end
+        
+        ChangeStance:FireServer("Kicking")
+        wait(CONFIG.KICKING_WAIT)
+        
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+            print("Kick failed: Target lost after Kicking for " .. targetPlayer.Name)
+            return false
+        end
+        stance = getPlayerStance(targetPlayer)
+        if not stance or stance ~= "riposte" or not CONFIG.KICK_PARRYING then
+            print("Kick failed: Stance changed after Kicking for " .. targetPlayer.Name .. ": " .. (stance or "None"))
+            return false
+        end
+        
+        local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
+        if not targetHandle then
+            print("Kick failed: targetHandle not found for " .. targetPlayer.Name)
+            return false
+        end
+        
+        Kick:FireServer(weapon, targetHandle, targetHumanoid)
+        print("Kick completed for " .. targetPlayer.Name)
+        return true
+    end
+
+    -- Функция для выполнения пунша
+    local function performPunch(targetPlayer, targetCharacter, weapon)
+        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+        if not targetHumanoid then
+            print("Punch failed: No Humanoid for " .. targetPlayer.Name)
+            return false
+        end
+        
+        local stance = getPlayerStance(targetPlayer)
+        if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING) then
+            print("Punch failed: Invalid stance for " .. targetPlayer.Name .. ": " .. (stance or "None"))
+            return false
+        end
+        
+        ChangeStance:FireServer("Punching")
+        print("Punch: ChangeStance(Punching) sent for " .. targetPlayer.Name)
+        wait(CONFIG.KICK_WINDUP_WAIT)
+        
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+            print("Punch failed: Target lost after Punching for " .. targetPlayer.Name)
+            return false
+        end
+        stance = getPlayerStance(targetPlayer)
+        if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING) then
+            print("Punch failed: Stance changed after Punching for " .. targetPlayer.Name .. ": " .. (stance or "None"))
+            return false
+        end
+        
+        local targetHandle = targetCharacter:FindFirstChild("HumanoidRootPart")
+        if not (weapon and targetHandle) then
+            print("Punch failed: Weapon or HumanoidRootPart not found for " .. targetPlayer.Name)
+            return false
+        end
+        
+        Punch:FireServer(weapon, targetHandle, targetHumanoid)
+        print("Punch completed for " .. targetPlayer.Name)
+        return true
+    end
+
+    -- Настройка UI
+    if UI.Tabs and UI.Tabs.Combat then
+        local KillAuraSection = UI.Tabs.Combat:Section({ Name = "KillAura", Side = "Left" })
+
+        KillAuraSection:Header({ Name = "KillAura" })
+        KillAuraSection:Toggle({
+            Name = "Enabled",
+            Default = CONFIG.Enabled,
+            Callback = function(value)
+                CONFIG.Enabled = value
+                notify("KillAura", "KillAura " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'EnabledKA')
+        KillAuraSection:Slider({
+            Name = "Range",
+            Minimum = 4,
+            Maximum = 20,
+            Default = CONFIG.RANGE,
+            Precision = 0,
+            Callback = function(value)
+                CONFIG.RANGE = value
+                notify("KillAura", "Range set to: " .. value)
+            end
+        }, 'RangeKA')
+        KillAuraSection:Slider({
+            Name = "AttackCooldown",
+            Minimum = 0.01,
+            Maximum = 0.5,
+            Default = CONFIG.ATTACK_COOLDOWN,
+            Precision = 2,
+            Callback = function(value)
+                CONFIG.ATTACK_COOLDOWN = value
+                notify("KillAura", "Attack Cooldown set to: " .. value)
+            end
+        }, 'AttackCooldownKA')
+        KillAuraSection:Toggle({
+            Name = "Anti Block",
+            Default = CONFIG.KICK_BLOCKING,
+            Callback = function(value)
+                CONFIG.KICK_BLOCKING = value
+                notify("KillAura", "Anti Block " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'AntiBlockKA')
+        KillAuraSection:Toggle({
+            Name = "Anti Parry",
+            Default = CONFIG.KICK_PARRYING,
+            Callback = function(value)
+                CONFIG.KICK_PARRYING = value
+                notify("KillAura", "Anti Parry " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'AntiParryKA')
+        KillAuraSection:Toggle({
+            Name = "Highlight Block",
+            Default = CONFIG.HIGHLIGHT_PARRYING,
+            Callback = function(value)
+                CONFIG.HIGHLIGHT_PARRYING = value
+                notify("KillAura", "Highlight Block " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'HighlightBlockKA')
+        KillAuraSection:Toggle({
+            Name = "Highlight Parry",
+            Default = CONFIG.HIGHLIGHT_RIPOSTE,
+            Callback = function(value)
+                CONFIG.HIGHLIGHT_RIPOSTE = value
+                notify("KillAura", "Highlight Parry " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'HighlightParryKA')
+        KillAuraSection:Toggle({
+            Name = "Multi Target",
+            Default = CONFIG.MULTI_TARGET,
+            Callback = function(value)
+                CONFIG.MULTI_TARGET = value
+                notify("KillAura", "Multi Target " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'MultiTargetKA')
+        KillAuraSection:Toggle({
+            Name = "Team Check",
+            Default = CONFIG.TEAM_CHECK,
+            Callback = function(value)
+                CONFIG.TEAM_CHECK = value
+                notify("KillAura", "Team Check " .. (value and "Enabled" or "Disabled"), true)
+            end
+        }, 'TeamCheckKA')
+        KillAuraSection:Slider({
+            Name = "Max Targets",
+            Minimum = 2,
+            Maximum = 4,
+            Default = CONFIG.MAX_TARGETS,
+            Precision = 0,
+            Callback = function(value)
+                CONFIG.MAX_TARGETS = value
+                notify("KillAura", "Max Targets set to: " .. value)
+            end
+        }, 'MaxTargetsKA')
+    end
+
+    -- Основной цикл киллауры
+    RunService.RenderStepped:Connect(function()
+        if not CONFIG.Enabled then
+            for player in pairs(targetHighlights) do
+                removeTargetHighlight(player)
+            end
+            return
+        end
+
+        localCharacter = LocalPlayer.Character
+        localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+        if not (localCharacter and localRootPart) then
+            for player in pairs(targetHighlights) do
+                removeTargetHighlight(player)
+            end
+            return
+        end
+        
+        local settings = getWeaponSettings()
+        if not settings then
+            for player in pairs(targetHighlights) do
+                removeTargetHighlight(player)
+            end
+            return
+        end
+        
+        if tick() - lastAttackTime < CONFIG.ATTACK_COOLDOWN then
+            return
+        end
+        
+        local attacked = false
+        local targets = {}
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and canTargetPlayer(player) then
+                table.insert(targets, {player = player, distance = getDistanceToPlayer(player)})
+            end
+        end
+        
+        -- Сортировка по расстоянию для одной цели
+        if not CONFIG.MULTI_TARGET then
+            table.sort(targets, function(a, b) return a.distance < b.distance end)
+        end
+        
+        local targetCount = 0
+        for _, targetData in pairs(targets) do
+            local targetPlayer = targetData.player
+            local targetCharacter = targetPlayer.Character
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+            if not (targetCharacter and targetHumanoid) then continue end
+            
+            local stance = getPlayerStance(targetPlayer)
+            
+            if targetCount < CONFIG.MAX_TARGETS then
+                updateTargetHighlight(targetPlayer)
+            end
+            
+            if stance then
+                if (stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING then
+                    local success = performPunch(targetPlayer, targetCharacter, settings.weapon)
+                    attacked = attacked or success
+                    if success then
+                        lastAttackTime = tick()
+                    end
+                elseif stance == "riposte" and CONFIG.KICK_PARRYING then
+                    local success = performKick(targetPlayer, targetCharacter, settings.weapon)
+                    attacked = attacked or success
+                    if success then
+                        lastAttackTime = tick()
+                    end
+                end
+            end
+            
+            if not CONFIG.MULTI_TARGET and not attacked then
+                ChangeStance:FireServer("Windup")
+                wait(settings.windupTime)
+                
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then continue end
+                stance = getPlayerStance(targetPlayer)
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING or (stance == "riposte" and CONFIG.KICK_PARRYING)) then
+                    continue
+                end
+                
+                ChangeStance:FireServer("Release")
+                wait(settings.releaseTime)
+                
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then continue end
+                stance = getPlayerStance(targetPlayer)
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING or (stance == "riposte" and CONFIG.KICK_PARRYING)) then
+                    continue
+                end
+                
+                local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and 
+                    targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or 
+                    targetCharacter:FindFirstChild("HumanoidRootPart")
+                if not targetHandle then continue end
+                
+                Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
+                attacked = true
+                lastAttackTime = tick()
+                break
+            elseif CONFIG.MULTI_TARGET and not stance then
+                ChangeStance:FireServer("Windup")
+                wait(settings.windupTime)
+                
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then continue end
+                stance = getPlayerStance(targetPlayer)
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING or (stance == "riposte" and CONFIG.KICK_PARRYING)) then
+                    continue
+                end
+                
+                ChangeStance:FireServer("Release")
+                wait(settings.releaseTime)
+                
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then continue end
+                stance = getPlayerStance(targetPlayer)
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and CONFIG.KICK_BLOCKING or (stance == "riposte" and CONFIG.KICK_PARRYING)) then
+                    continue
+                end
+                
+                local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and 
+                    targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or 
+                    targetCharacter:FindFirstChild("HumanoidRootPart")
+                if not targetHandle then continue end
+                
+                Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
+                attacked = true
+                lastAttackTime = tick()
+            end
+            
+            targetCount = targetCount + 1
+            if not CONFIG.MULTI_TARGET and attacked then
+                break
+            elseif targetCount >= CONFIG.MAX_TARGETS then
+                break
+            end
+        end
+        
+        if not attacked then
+            for player in pairs(targetHighlights) do
+                removeTargetHighlight(player)
+            end
+        end
+    end)
+end
+
+return KillAura
