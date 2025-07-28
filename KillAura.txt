@@ -87,7 +87,7 @@ function KillAura.Init(UI, Core, notify)
             return nil
         end
         
-        if State.Enabled.Value or not State.OnlyWithKillaura.Value then
+        if not State.OnlyWithKillaura.Value or State.Enabled.Value then
             settings.Windup = math.max(0, settings.Windup - State.MinusWindup.Value)
             settings.Release = math.max(0, settings.Release - State.MinusRelease.Value)
         end
