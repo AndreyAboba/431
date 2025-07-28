@@ -1,3 +1,4 @@
+print('1')
 local KillAura = {}
 
 function KillAura.Init(UI, Core, notify)
@@ -95,7 +96,7 @@ function KillAura.Init(UI, Core, notify)
             return nil
         end
         
-        if not State.OnlyWithKillaura.Value or (State.OnlyWithKillaura.Value and State.Enabled.Value) then
+        if not State.OnlyWithKillaura.Value or State.Enabled.Value then
             settings.Windup = math.max(0, settings.Windup - State.MinusWindup.Value)
             settings.Release = math.max(0, settings.Release - State.MinusRelease.Value)
         end
