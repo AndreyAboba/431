@@ -29,8 +29,7 @@ function KillAura.Init(UI, Core, notify)
         MinusWindup = { Value = 0.9, Default = 0.9 },
         MinusRelease = { Value = 1.4, Default = 1.4 },
         KickDelay = { Value = 0.01, Default = 0.01 },
-        KickStateDelay = { Value = 0, Default = 0 },
-        OnlyWithKillaura = { Value = true, Default = true }
+        KickStateDelay = { Value = 0, Default = 0 }
     }
 
     local targetHighlight = nil
@@ -87,8 +86,8 @@ function KillAura.Init(UI, Core, notify)
             return nil
         end
         
-        -- Применяем модификаторы всегда, если OnlyWithKillaura = false, или если OnlyWithKillaura = true и KillAura включена
-        if not State.OnlyWithKillaura.Value or (State.OnlyWithKillaura.Value and State.Enabled.Value) then
+        -- Применяем модификаторы только если KillAura включена
+        if State.Enabled.Value then
             settings.Windup = math.max(0, settings.Windup - State.MinusWindup.Value)
             settings.Release = math.max(0, settings.Release - State.MinusRelease.Value)
         end
@@ -145,7 +144,7 @@ function KillAura.Init(UI, Core, notify)
             return
         end
         
-        if player ~= currentTarget then
+        if player != currentTarget then
             if targetHighlight then
                 targetHighlight:Destroy()
                 targetHighlight = nil
@@ -296,7 +295,7 @@ function KillAura.Init(UI, Core, notify)
             local closestTarget = nil
             local minDistance = math.huge
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and canTargetPlayer(player) then
+                if player != LocalPlayer and canTargetPlayer(player) then
                     local distance = getDistanceToPlayer(player)
                     if distance < minDistance then
                         minDistance = distance
@@ -520,17 +519,6 @@ function KillAura.Init(UI, Core, notify)
         UI.Sections.ToolExploit = UI.Sections.ToolExploit or UI.Tabs.Combat:Section({ Name = "ToolExploit", Side = "Right" })
         
         UI.Sections.ToolExploit:Header({ Name = "Tool Exploit" })
-        UI.Sections.ToolExploit:Toggle({
-            Name = "Only with Killaura",
-            Default = State.OnlyWithKillaura.Default,
-            Callback = function(value)
-                State.OnlyWithKillaura.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("ToolExploit", "Only with Killaura " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end
-        }, 'OnlyWithKillauraTE')
         UI.Sections.ToolExploit:Slider({
             Name = "Minus Windup",
             Minimum = 0.1,
