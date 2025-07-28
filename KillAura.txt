@@ -144,7 +144,7 @@ function KillAura.Init(UI, Core, notify)
             return
         end
         
-        if player != currentTarget then
+        if player ~= currentTarget then
             if targetHighlight then
                 targetHighlight:Destroy()
                 targetHighlight = nil
@@ -295,7 +295,7 @@ function KillAura.Init(UI, Core, notify)
             local closestTarget = nil
             local minDistance = math.huge
             for _, player in pairs(Players:GetPlayers()) do
-                if player != LocalPlayer and canTargetPlayer(player) then
+                if player ~= LocalPlayer and canTargetPlayer(player) then
                     local distance = getDistanceToPlayer(player)
                     if distance < minDistance then
                         minDistance = distance
