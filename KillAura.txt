@@ -26,7 +26,8 @@ function KillAura.Init(UI, Core, notify)
             HighlightBlock = { Value = true, Default = true },
             HighlightParry = { Value = true, Default = true },
             TeamCheck = { Value = true, Default = true },
-            ForceIdle = { Value = false, Default = false },
+            DynamicCooldown = { Value = false, Default = false },
+            CooldownValues = { Value = {0.1, 0.5, 0.7, 1.0}, Default = {0.1, 0.5, 0.7, 1.0} },
             ParryColor = { Value = Color3.fromRGB(0, 162, 255), Default = Color3.fromRGB(0, 162, 255) },
             BlockColor = { Value = Color3.fromRGB(0, 255, 0), Default = Color3.fromRGB(0, 255, 0) },
             DefaultColor = { Value = Color3.fromRGB(255, 0, 0), Default = Color3.fromRGB(255, 0, 0) },
@@ -683,7 +684,7 @@ function KillAura.Init(UI, Core, notify)
 
     -- Функция для выполнения AutoKick
     local function performAutoKick(targetPlayer, targetCharacter, weapon)
-        if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value or not State.KillAura.AntiParry.Value then
+        if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
             return false
         end
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
@@ -717,13 +718,58 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         Kick:FireServer(weapon, targetHandle, targetHumanoid)
+        warn("AutoKick: Performed kick on target in Windup")
         return true
+    end
+
+    -- Основной цикл AutoKick
+    local function runAutoKick()
+        while true do
+            RunService.Heartbeat:Wait()
+            if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
+                continue
+            end
+            localCharacter = LocalPlayer.Character
+            localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+            localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
+            if not (localCharacter and localRootPart and localHumanoid) then
+                continue
+            end
+            local settings = getWeaponSettings()
+            if not settings or not settings.weapon then
+                continue
+            end
+            local closestTarget = nil
+            local minDistance = math.huge
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and canTargetPlayer(player, State.KillAura.Range.Value, State.KillAura.TeamCheck.Value) then
+                    local distance = getDistanceToPlayer(player)
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestTarget = player
+                    end
+                end
+            end
+            if not closestTarget then
+                continue
+            end
+            local targetCharacter = closestTarget.Character
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+            if not (targetCharacter and targetHumanoid) then
+                continue
+            end
+            local stance = getPlayerStance(closestTarget)
+            if stance == "windup" then
+                performAutoKick(closestTarget, targetCharacter, settings.weapon)
+            end
+        end
     end
 
     -- Основной цикл KillAura
     local function runKillAura()
         task.spawn(collectDodgeData)
         task.spawn(runAutoDodge)
+        task.spawn(runAutoKick)
         while true do
             RunService.Heartbeat:Wait()
             if not State.KillAura.Enabled.Value then
@@ -771,28 +817,19 @@ function KillAura.Init(UI, Core, notify)
             if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
                 continue
             end
-            if State.KillAura.ForceIdle.Value and stance == "riposte" then
-                ChangeStance:FireServer("Idle")
-                task.wait(0.01)
-                warn("Force Idle: Cancelled attack due to Riposte")
-                continue
-            end
             local attacked = false
             if stance then
-                if State.LegitHelper.Enabled.Value and State.LegitHelper.AutoKick.Value and stance == "windup" and State.KillAura.AntiParry.Value then
-                    attacked = performAutoKick(closestKillAuraTarget, targetCharacter, settings.weapon)
-                elseif (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
+                if (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
                     attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
                 elseif stance == "riposte" and State.KillAura.AntiParry.Value then
                     attacked = performKick(closestKillAuraTarget, targetCharacter, settings.weapon)
                 end
             end
             if not attacked then
-                if State.KillAura.ForceIdle.Value and stance == "riposte" then
-                    ChangeStance:FireServer("Idle")
-                    task.wait(0.01)
-                    warn("Force Idle: Cancelled attack due to Riposte")
-                    continue
+                if State.KillAura.DynamicCooldown.Value then
+                    local cooldown = (stance == "riposte") and math.max(table.unpack(State.KillAura.CooldownValues.Value)) or State.KillAura.CooldownValues.Value[math.random(1, #State.KillAura.CooldownValues.Value)]
+                    warn("Dynamic Cooldown: Waiting " .. cooldown .. " seconds before attack")
+                    task.wait(cooldown)
                 end
                 ChangeStance:FireServer("Windup")
                 task.wait(settings.windupTime)
@@ -803,12 +840,6 @@ function KillAura.Init(UI, Core, notify)
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
-                    continue
-                end
-                if State.KillAura.ForceIdle.Value and stance == "riposte" then
-                    ChangeStance:FireServer("Idle")
-                    task.wait(0.01)
-                    warn("Force Idle: Cancelled attack due to Riposte")
                     continue
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
@@ -825,12 +856,6 @@ function KillAura.Init(UI, Core, notify)
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
-                    continue
-                end
-                if State.KillAura.ForceIdle.Value and stance == "riposte" then
-                    ChangeStance:FireServer("Idle")
-                    task.wait(0.01)
-                    warn("Force Idle: Cancelled attack due to Riposte")
                     continue
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
@@ -899,7 +924,7 @@ function KillAura.Init(UI, Core, notify)
     end
     Players.PlayerAdded:Connect(onCharacterAdded)
 
-    -- Запуск цикла KillAura
+    -- Запуск циклов
     task.spawn(runKillAura)
 
     -- Инициализация UI
@@ -1037,16 +1062,37 @@ function KillAura.Init(UI, Core, notify)
             'TeamCheckKA'
         })
         UI.Sections.KillAura:Toggle({
-            Name = "Force Idle",
-            Default = State.KillAura.ForceIdle.Default,
+            Name = "Dynamic Cooldown",
+            Default = State.KillAura.DynamicCooldown.Default,
             Callback = function(value)
-                State.KillAura.ForceIdle.Value = value
+                State.KillAura.DynamicCooldown.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
-                    notify("KillAura", "Force Idle " .. (value and "Enabled" or "Disabled"), true)
+                    notify("KillAura", "Dynamic Cooldown " .. (value and "Enabled" or "Disabled"), true)
                 end
             end,
-            'ForceIdleKA'
+            'DynamicCooldownKA'
+        })
+        UI.Sections.KillAura:TextBox({
+            Name = "Cooldown Values",
+            Default = table.concat(State.KillAura.CooldownValues.Default, ","),
+            Placeholder = "0.1,0.5,0.7,1.0",
+            Callback = function(value)
+                local values = {}
+                for num in string.gmatch(value, "%d+%.%d+") do
+                    table.insert(values, tonumber(num))
+                end
+                if #values > 0 then
+                    State.KillAura.CooldownValues.Value = values
+                    if tick() - lastNotificationTime >= notificationDelay then
+                        lastNotificationTime = tick()
+                        notify("KillAura", "Cooldown Values set to: " .. table.concat(values, ", "))
+                    end
+                else
+                    notify("KillAura", "Invalid Cooldown Values, using default", true)
+                end
+            end,
+            'CooldownValuesKA'
         })
         UI.Sections.KillAura:Colorpicker({
             Name = "Default Color",
