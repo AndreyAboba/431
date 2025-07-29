@@ -61,7 +61,9 @@ function KillAura.Init(UI, Core, notify)
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
-            AutoKick = { Value = false, Default = false }
+            AutoKick = { Value = false, Default = false },
+            AutoKickRange = { Value = 10, Default = 10 },
+            AutoKickTeamCheck = { Value = true, Default = true }
         }
     }
 
@@ -742,7 +744,7 @@ function KillAura.Init(UI, Core, notify)
             local closestTarget = nil
             local minDistance = math.huge
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and canTargetPlayer(player, State.KillAura.Range.Value, State.KillAura.TeamCheck.Value) then
+                if player ~= LocalPlayer and canTargetPlayer(player, State.LegitHelper.AutoKickRange.Value, State.LegitHelper.AutoKickTeamCheck.Value) then
                     local distance = getDistanceToPlayer(player)
                     if distance < minDistance then
                         minDistance = distance
@@ -1073,27 +1075,6 @@ function KillAura.Init(UI, Core, notify)
             end,
             'DynamicCooldownKA'
         })
-        UI.Sections.KillAura:TextBox({
-            Name = "Cooldown Values",
-            Default = table.concat(State.KillAura.CooldownValues.Default, ","),
-            Placeholder = "0.1,0.5,0.7,1.0",
-            Callback = function(value)
-                local values = {}
-                for num in string.gmatch(value, "%d+%.%d+") do
-                    table.insert(values, tonumber(num))
-                end
-                if #values > 0 then
-                    State.KillAura.CooldownValues.Value = values
-                    if tick() - lastNotificationTime >= notificationDelay then
-                        lastNotificationTime = tick()
-                        notify("KillAura", "Cooldown Values set to: " .. table.concat(values, ", "))
-                    end
-                else
-                    notify("KillAura", "Invalid Cooldown Values, using default", true)
-                end
-            end,
-            'CooldownValuesKA'
-        })
         UI.Sections.KillAura:Colorpicker({
             Name = "Default Color",
             Default = State.KillAura.DefaultColor.Default,
@@ -1135,6 +1116,33 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'AutoKickLH'
+        })
+        UI.Sections.LegitHelper:Slider({
+            Name = "AutoKick Range",
+            Minimum = 4,
+            Maximum = 20,
+            Default = State.LegitHelper.AutoKickRange.Default,
+            Precision = 0,
+            Callback = function(value)
+                State.LegitHelper.AutoKickRange.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "AutoKick Range set to: " .. value)
+                end
+            end,
+            'AutoKickRangeLH'
+        })
+        UI.Sections.LegitHelper:Toggle({
+            Name = "AutoKick Team Check",
+            Default = State.LegitHelper.AutoKickTeamCheck.Default,
+            Callback = function(value)
+                State.LegitHelper.AutoKickTeamCheck.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "AutoKick Team Check " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'AutoKickTeamCheckLH'
         })
 
         -- Секция ToolExploit (правая часть)
