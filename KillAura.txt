@@ -311,9 +311,9 @@ function KillAura.Init(UI, Core, notify)
 
     -- Функция блокировки MouseButton1 для Riposte
     local function blockMouseButton1()
-        ContextActionService:BindAction("BlockMouseButton1", function()
+        ContextActionService:BindActionAtPriority("BlockMouseButton1", function()
             return Enum.ContextActionResult.Sink
-        end, false, Enum.UserInputType.MouseButton1)
+        end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseButton1)
         warn("Blocking MouseButton1 for Riposte")
         task.spawn(function()
             while isRiposteActive and tick() < riposteEndTime do
@@ -397,6 +397,8 @@ function KillAura.Init(UI, Core, notify)
                 localHumanoid.WalkSpeed = 7
                 print("Playing Parrying animation: " .. animations.Parry)
             elseif action == "Riposte" and State.AutoDodge.LegitParry.Value and animations and animations.Riposte then
+                ChangeStance:FireServer("Riposte")
+                blockMouseButton1()
                 local animation = Instance.new("Animation")
                 animation.AnimationId = "rbxassetid://" .. animations.Riposte
                 animationTrack = localHumanoid:LoadAnimation(animation)
@@ -406,7 +408,6 @@ function KillAura.Init(UI, Core, notify)
                 localHumanoid.WalkSpeed = 1
                 isRiposteActive = true
                 riposteEndTime = tick() + waitTime + State.AutoDodge.RiposteMouseLockDuration.Value
-                blockMouseButton1()
                 print("Playing Riposte animation: " .. animations.Riposte)
                 task.spawn(function()
                     task.wait(0.5)
@@ -419,14 +420,16 @@ function KillAura.Init(UI, Core, notify)
             warn("Settings or weapon not found for local player")
         end
 
-        ChangeStance:FireServer(action)
+        if action ~= "Riposte" then
+            ChangeStance:FireServer(action)
+        end
         task.wait(waitTime)
         if State.AutoDodge.IdleSpoof.Value then
             local currentStance = getPlayerStance(LocalPlayer)
             if currentStance and table.find(INVALID_STANCES, currentStance) then
                 print("IdleSpoof: Restoring dodge action after stance change")
                 ChangeStance:FireServer("Idle")
-                task.wait(0.01)
+                task.wait(0.05)
                 if desiredDodgeAction and not isPerformingAction then
                     ChangeStance:FireServer(desiredDodgeAction)
                 end
@@ -549,7 +552,7 @@ function KillAura.Init(UI, Core, notify)
                     if State.AutoDodge.IdleSpoof.Value and localStance and table.find(INVALID_STANCES, localStance) then
                         print("IdleSpoof activated, sent ChangeStance('Idle')")
                         ChangeStance:FireServer("Idle")
-                        task.wait(0.01)
+                        task.wait(0.05)
                     end
                     local releaseTime = lastReleaseTime or 1.4
                     local dmgPointDistance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
@@ -618,7 +621,7 @@ function KillAura.Init(UI, Core, notify)
     -- Функция для выполнения пунша
     local function performPunch(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid or isRiposteActive then
+        if not targetHumanoid then
             return false
         end
         local stance = getPlayerStance(targetPlayer)
@@ -645,11 +648,11 @@ function KillAura.Init(UI, Core, notify)
     -- Функция для выполнения пинка
     local function performKick(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid or isRiposteActive then
+        if not targetHumanoid then
             return false
         end
         local stance = getPlayerStance(targetPlayer)
-        if not stance or (stance ~= "riposte" and stance ~= "windup") or not State.KillAura.AntiParry.Value then
+        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
             return false
         end
         ChangeStance:FireServer("KickWindup")
@@ -658,7 +661,7 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         stance = getPlayerStance(targetPlayer)
-        if not stance or (stance ~= "riposte" and stance ~= "windup") or not State.KillAura.AntiParry.Value then
+        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
             return false
         end
         ChangeStance:FireServer("Kicking")
@@ -667,7 +670,46 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         stance = getPlayerStance(targetPlayer)
-        if not stance or (stance ~= "riposte" and stance ~= "windup") or not State.KillAura.AntiParry.Value then
+        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
+            return false
+        end
+        local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
+        if not targetHandle then
+            return false
+        end
+        Kick:FireServer(weapon, targetHandle, targetHumanoid)
+        return true
+    end
+
+    -- Функция для выполнения AutoKick
+    local function performAutoKick(targetPlayer, targetCharacter, weapon)
+        if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value or not State.KillAura.AntiParry.Value then
+            return false
+        end
+        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+        if not targetHumanoid then
+            return false
+        end
+        local stance = getPlayerStance(targetPlayer)
+        if not stance or stance ~= "windup" then
+            return false
+        end
+        ChangeStance:FireServer("KickWindup")
+        task.wait(State.KillAura.KickDelay.Value)
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+            return false
+        end
+        stance = getPlayerStance(targetPlayer)
+        if not stance or stance ~= "windup" then
+            return false
+        end
+        ChangeStance:FireServer("Kicking")
+        task.wait(State.KillAura.KickStateDelay.Value)
+        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+            return false
+        end
+        stance = getPlayerStance(targetPlayer)
+        if not stance or stance ~= "windup" then
             return false
         end
         local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
@@ -683,7 +725,7 @@ function KillAura.Init(UI, Core, notify)
         task.spawn(collectDodgeData)
         task.spawn(runAutoDodge)
         while true do
-            task.wait(0.01)
+            RunService.Heartbeat:Wait()
             if not State.KillAura.Enabled.Value then
                 removeTargetHighlight()
                 continue
@@ -729,62 +771,79 @@ function KillAura.Init(UI, Core, notify)
             if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
                 continue
             end
+            if State.KillAura.ForceIdle.Value and stance == "riposte" then
+                ChangeStance:FireServer("Idle")
+                task.wait(0.01)
+                warn("Force Idle: Cancelled attack due to Riposte")
+                continue
+            end
             local attacked = false
             if stance then
-                if (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
-                    if settings and settings.weapon then
-                        attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
-                    end
-                elseif (stance == "riposte" or (stance == "windup" and State.LegitHelper.Enabled.Value and State.LegitHelper.AutoKick.Value)) and State.KillAura.AntiParry.Value then
-                    if settings and settings.weapon then
-                        attacked = performKick(closestKillAuraTarget, targetCharacter, settings.weapon)
-                    end
+                if State.LegitHelper.Enabled.Value and State.LegitHelper.AutoKick.Value and stance == "windup" and State.KillAura.AntiParry.Value then
+                    attacked = performAutoKick(closestKillAuraTarget, targetCharacter, settings.weapon)
+                elseif (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
+                    attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
+                elseif stance == "riposte" and State.KillAura.AntiParry.Value then
+                    attacked = performKick(closestKillAuraTarget, targetCharacter, settings.weapon)
                 end
             end
             if not attacked then
-                if stance == "riposte" and State.KillAura.ForceIdle.Value then
+                if State.KillAura.ForceIdle.Value and stance == "riposte" then
                     ChangeStance:FireServer("Idle")
                     task.wait(0.01)
+                    warn("Force Idle: Cancelled attack due to Riposte")
                     continue
                 end
                 ChangeStance:FireServer("Windup")
                 task.wait(settings.windupTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
+                    warn("Attack cancelled due to Riposte")
                     continue
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
                     continue
                 end
-                if stance == "riposte" and State.KillAura.ForceIdle.Value then
+                if State.KillAura.ForceIdle.Value and stance == "riposte" then
                     ChangeStance:FireServer("Idle")
                     task.wait(0.01)
+                    warn("Force Idle: Cancelled attack due to Riposte")
                     continue
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
                     removeTargetHighlight()
+                    warn("Attack cancelled due to Riposte")
                     continue
                 end
                 ChangeStance:FireServer("Release")
                 task.wait(settings.releaseTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
+                    warn("Attack cancelled due to Riposte")
                     continue
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
                     continue
                 end
+                if State.KillAura.ForceIdle.Value and stance == "riposte" then
+                    ChangeStance:FireServer("Idle")
+                    task.wait(0.01)
+                    warn("Force Idle: Cancelled attack due to Riposte")
+                    continue
+                end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
                     removeTargetHighlight()
+                    warn("Attack cancelled due to Riposte")
                     continue
                 end
                 local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and 
                     targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or 
                     targetCharacter:FindFirstChild("HumanoidRootPart")
-                if not targetHandle or isRiposteActive then
+                if not targetHandle then
                     removeTargetHighlight()
+                    warn("Attack cancelled due to Riposte")
                     continue
                 end
                 Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
@@ -1162,7 +1221,7 @@ function KillAura.Init(UI, Core, notify)
             Name = "Team Check",
             Default = State.AutoDodge.TeamCheck.Default,
             Callback = function(value)
-                State.AutoDodge.TeamCheck tkananValue = value
+                State.AutoDodge.TeamCheck.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("AutoDodge", "Team Check " .. (value and "Enabled" or "Disabled"), true)
