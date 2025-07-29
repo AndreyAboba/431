@@ -4,7 +4,7 @@ function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
+    local ContextActionService = game:GetService("ContextActionService")
     local Animation = game:GetService("Animation")
     local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer")
     local ChangeStance = RemoteEvents:WaitForChild("ChangeStance")
@@ -88,7 +88,6 @@ function KillAura.Init(UI, Core, notify)
     local function getPlayerStance(player)
         local character = player.Character
         if not character then
-            print("No character found for player: " .. tostring(player))
             return nil
         end
         local stanceValue = character:FindFirstChild("Stance", true)
@@ -128,7 +127,6 @@ function KillAura.Init(UI, Core, notify)
     -- Функция для получения настроек оружия игрока
     local function getWeaponSettings()
         if not localCharacter then
-            print("No localCharacter found")
             return nil
         end
         local weapon
@@ -139,7 +137,6 @@ function KillAura.Init(UI, Core, notify)
             end
         end
         if not weapon then
-            print("No weapon found")
             cachedSettings = nil
             lastWeapon = nil
             return nil
@@ -149,14 +146,13 @@ function KillAura.Init(UI, Core, notify)
         end
         local settingsModule = weapon:FindFirstChild("Settings")
         if not settingsModule then
-            print("No settingsModule found for weapon: " .. tostring(weapon))
             cachedSettings = nil
             lastWeapon = nil
             return nil
         end
         local success, settings = pcall(require, settingsModule)
         if not success or not settings or not settings.Windup or not settings.Release then
-            print("Invalid settings for weapon: " .. tostring(weapon))
+            warn("Failed to load weapon settings")
             cachedSettings = nil
             lastWeapon = nil
             return nil
@@ -310,20 +306,17 @@ function KillAura.Init(UI, Core, notify)
 
     -- Функция блокировки MouseButton1 для Riposte
     local function blockMouseButton1()
-        local connection
-        connection = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 and isRiposteActive then
-                gameProcessedEvent = true
-                print("Blocked MouseButton1 input during Riposte")
-            end
-        end)
+        ContextActionService:BindAction("BlockMouseButton1", function()
+            return Enum.ContextActionResult.Sink
+        end, false, Enum.UserInputType.MouseButton1)
+        warn("Blocking MouseButton1 for Riposte")
         task.spawn(function()
             while isRiposteActive and tick() < riposteEndTime do
                 task.wait()
             end
             isRiposteActive = false
-            connection:Disconnect()
-            print("MouseButton1 block ended")
+            ContextActionService:UnbindAction("BlockMouseButton1")
+            warn("MouseButton1 block ended")
         end)
     end
 
@@ -621,32 +614,26 @@ function KillAura.Init(UI, Core, notify)
     local function performPunch(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
         if not targetHumanoid then
-            print("No targetHumanoid found in performPunch")
             return false
         end
         local stance = getPlayerStance(targetPlayer)
         if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value) then
-            print("Invalid stance or AntiBlock disabled in performPunch: " .. tostring(stance))
             return false
         end
         ChangeStance:FireServer("Punching")
         task.wait(State.KillAura.KickDelay.Value)
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            print("Target character invalid in performPunch")
             return false
         end
         stance = getPlayerStance(targetPlayer)
         if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value) then
-            print("Invalid stance after delay in performPunch: " .. tostring(stance))
             return false
         end
         local targetHandle = targetCharacter:FindFirstChild("HumanoidRootPart")
         if not (weapon and targetHandle) then
-            print("No weapon or targetHandle in performPunch")
             return false
         end
         Punch:FireServer(weapon, targetHandle, targetHumanoid)
-        print("Punch fired for target: " .. tostring(targetPlayer))
         return true
     end
 
@@ -654,43 +641,35 @@ function KillAura.Init(UI, Core, notify)
     local function performKick(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
         if not targetHumanoid then
-            print("No targetHumanoid found in performKick")
             return false
         end
         local stance = getPlayerStance(targetPlayer)
         if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
-            print("Invalid stance or AntiParry disabled in performKick: " .. tostring(stance))
             return false
         end
         ChangeStance:FireServer("KickWindup")
         task.wait(State.KillAura.KickDelay.Value)
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            print("Target character invalid in performKick")
             return false
         end
         stance = getPlayerStance(targetPlayer)
         if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
-            print("Invalid stance after delay in performKick: " .. tostring(stance))
             return false
         end
         ChangeStance:FireServer("Kicking")
         task.wait(State.KillAura.KickStateDelay.Value)
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            print("Target character invalid after kick state in performKick")
             return false
         end
         stance = getPlayerStance(targetPlayer)
         if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
-            print("Invalid stance after kick state delay in performKick: " .. tostring(stance))
             return false
         end
         local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
         if not targetHandle then
-            print("No targetHandle in performKick")
             return false
         end
         Kick:FireServer(weapon, targetHandle, targetHumanoid)
-        print("Kick fired for target: " .. tostring(targetPlayer))
         return true
     end
 
@@ -709,13 +688,11 @@ function KillAura.Init(UI, Core, notify)
             localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
             if not (localCharacter and localRootPart and localHumanoid) then
                 removeTargetHighlight()
-                print("No localCharacter, localRootPart, or localHumanoid in runKillAura")
                 continue
             end
             local settings = getWeaponSettings()
             if not settings or not settings.weapon then
                 removeTargetHighlight()
-                print("Error: settings or settings.weapon is nil in runKillAura")
                 continue
             end
             if tick() - lastAttackTime < State.KillAura.AttackCooldown.Value then
@@ -740,13 +717,11 @@ function KillAura.Init(UI, Core, notify)
             local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
             if not (targetCharacter and targetHumanoid) then
                 removeTargetHighlight()
-                print("No targetCharacter or targetHumanoid in runKillAura")
                 continue
             end
             updateTargetHighlight(closestKillAuraTarget)
             local stance = getPlayerStance(closestKillAuraTarget)
             if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
-                print("KillAura paused due to KillAuraSync, waiting for dodge")
                 continue
             end
             local attacked = false
@@ -754,14 +729,10 @@ function KillAura.Init(UI, Core, notify)
                 if (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
                     if settings and settings.weapon then
                         attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
-                    else
-                        print("Error: settings or settings.weapon is nil in performPunch")
                     end
                 elseif stance == "riposte" and State.KillAura.AntiParry.Value then
                     if settings and settings.weapon then
                         attacked = performKick(closestKillAuraTarget, targetCharacter, settings.weapon)
-                    else
-                        print("Error: settings or settings.weapon is nil in performKick")
                     end
                 end
             end
@@ -770,12 +741,10 @@ function KillAura.Init(UI, Core, notify)
                 task.wait(settings.windupTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
-                    print("Target character invalid after windup")
                     continue
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
-                    print("KillAura paused due to KillAuraSync, waiting for dodge")
                     continue
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
@@ -786,12 +755,10 @@ function KillAura.Init(UI, Core, notify)
                 task.wait(settings.releaseTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
-                    print("Target character invalid after release")
                     continue
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
-                    print("KillAura paused due to KillAuraSync, waiting for dodge")
                     continue
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
@@ -803,11 +770,9 @@ function KillAura.Init(UI, Core, notify)
                     targetCharacter:FindFirstChild("HumanoidRootPart")
                 if not targetHandle then
                     removeTargetHighlight()
-                    print("No targetHandle in runKillAura")
                     continue
                 end
                 Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
-                print("Hit fired for target: " .. tostring(closestKillAuraTarget))
                 attacked = true
             end
             if attacked then
