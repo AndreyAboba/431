@@ -15,7 +15,7 @@ function KillAura.Init(UI, Core, notify)
     local LocalPlayer = Players.LocalPlayer
     local ClientModule = require(ReplicatedStorage:WaitForChild("ClientModule"))
 
-    -- Конфигурация для KillAura и AutoDodge
+    -- Конфигурация для KillAura, AutoDodge и LegitHelper
     local State = {
         KillAura = {
             Enabled = { Value = false, Default = false },
@@ -26,6 +26,7 @@ function KillAura.Init(UI, Core, notify)
             HighlightBlock = { Value = true, Default = true },
             HighlightParry = { Value = true, Default = true },
             TeamCheck = { Value = true, Default = true },
+            ForceIdle = { Value = false, Default = false },
             ParryColor = { Value = Color3.fromRGB(0, 162, 255), Default = Color3.fromRGB(0, 162, 255) },
             BlockColor = { Value = Color3.fromRGB(0, 255, 0), Default = Color3.fromRGB(0, 255, 0) },
             DefaultColor = { Value = Color3.fromRGB(255, 0, 0), Default = Color3.fromRGB(255, 0, 0) },
@@ -56,6 +57,10 @@ function KillAura.Init(UI, Core, notify)
             DefaultWaitTime = { Value = 0.55, Default = 0.55 },
             RiposteMouseLockDuration = { Value = 1.5, Default = 1.5 },
             MaxWaitTime = { Value = 2.0, Default = 2.0 }
+        },
+        LegitHelper = {
+            Enabled = { Value = false, Default = false },
+            AutoKick = { Value = false, Default = false }
         }
     }
 
@@ -613,7 +618,7 @@ function KillAura.Init(UI, Core, notify)
     -- Функция для выполнения пунша
     local function performPunch(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
+        if not targetHumanoid or isRiposteActive then
             return false
         end
         local stance = getPlayerStance(targetPlayer)
@@ -640,11 +645,11 @@ function KillAura.Init(UI, Core, notify)
     -- Функция для выполнения пинка
     local function performKick(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
+        if not targetHumanoid or isRiposteActive then
             return false
         end
         local stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
+        if not stance or (stance ~= "riposte" and stance ~= "windup") or not State.KillAura.AntiParry.Value then
             return false
         end
         ChangeStance:FireServer("KickWindup")
@@ -653,7 +658,7 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
+        if not stance or (stance ~= "riposte" and stance ~= "windup") or not State.KillAura.AntiParry.Value then
             return false
         end
         ChangeStance:FireServer("Kicking")
@@ -662,7 +667,7 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
+        if not stance or (stance ~= "riposte" and stance ~= "windup") or not State.KillAura.AntiParry.Value then
             return false
         end
         local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
@@ -678,7 +683,7 @@ function KillAura.Init(UI, Core, notify)
         task.spawn(collectDodgeData)
         task.spawn(runAutoDodge)
         while true do
-            RunService.Heartbeat:Wait()
+            task.wait(0.01)
             if not State.KillAura.Enabled.Value then
                 removeTargetHighlight()
                 continue
@@ -730,13 +735,18 @@ function KillAura.Init(UI, Core, notify)
                     if settings and settings.weapon then
                         attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
                     end
-                elseif stance == "riposte" and State.KillAura.AntiParry.Value then
+                elseif (stance == "riposte" or (stance == "windup" and State.LegitHelper.Enabled.Value and State.LegitHelper.AutoKick.Value)) and State.KillAura.AntiParry.Value then
                     if settings and settings.weapon then
                         attacked = performKick(closestKillAuraTarget, targetCharacter, settings.weapon)
                     end
                 end
             end
             if not attacked then
+                if stance == "riposte" and State.KillAura.ForceIdle.Value then
+                    ChangeStance:FireServer("Idle")
+                    task.wait(0.01)
+                    continue
+                end
                 ChangeStance:FireServer("Windup")
                 task.wait(settings.windupTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
@@ -745,6 +755,11 @@ function KillAura.Init(UI, Core, notify)
                 end
                 stance = getPlayerStance(closestKillAuraTarget)
                 if State.AutoDodge.KillAuraSync.Value and stance == "release" and State.AutoDodge.Enabled.Value and isDodgePending then
+                    continue
+                end
+                if stance == "riposte" and State.KillAura.ForceIdle.Value then
+                    ChangeStance:FireServer("Idle")
+                    task.wait(0.01)
                     continue
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
@@ -768,7 +783,7 @@ function KillAura.Init(UI, Core, notify)
                 local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and 
                     targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or 
                     targetCharacter:FindFirstChild("HumanoidRootPart")
-                if not targetHandle then
+                if not targetHandle or isRiposteActive then
                     removeTargetHighlight()
                     continue
                 end
@@ -962,6 +977,18 @@ function KillAura.Init(UI, Core, notify)
             end,
             'TeamCheckKA'
         })
+        UI.Sections.KillAura:Toggle({
+            Name = "Force Idle",
+            Default = State.KillAura.ForceIdle.Default,
+            Callback = function(value)
+                State.KillAura.ForceIdle.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Force Idle " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'ForceIdleKA'
+        })
         UI.Sections.KillAura:Colorpicker({
             Name = "Default Color",
             Default = State.KillAura.DefaultColor.Default,
@@ -973,6 +1000,36 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'DefaultColorKA'
+        })
+
+        -- Секция LegitHelper (левая часть)
+        UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
+        UI.Sections.LegitHelper:Header({ Name = "Legit Helper" })
+        UI.Sections.LegitHelper:Toggle({
+            Name = "Enabled",
+            Default = State.LegitHelper.Enabled.Default,
+            Callback = function(value)
+                State.LegitHelper.Enabled.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "LegitHelper " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'EnabledLH'
+        })
+        UI.Sections.LegitHelper:Divider()
+        UI.Sections.LegitHelper:Header({ Name = "AutoKick" })
+        UI.Sections.LegitHelper:Toggle({
+            Name = "Enabled",
+            Default = State.LegitHelper.AutoKick.Default,
+            Callback = function(value)
+                State.LegitHelper.AutoKick.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "AutoKick " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'AutoKickLH'
         })
 
         -- Секция ToolExploit (правая часть)
@@ -1105,7 +1162,7 @@ function KillAura.Init(UI, Core, notify)
             Name = "Team Check",
             Default = State.AutoDodge.TeamCheck.Default,
             Callback = function(value)
-                State.AutoDodge.TeamCheck.Value = value
+                State.AutoDodge.TeamCheck tkananValue = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("AutoDodge", "Team Check " .. (value and "Enabled" or "Disabled"), true)
