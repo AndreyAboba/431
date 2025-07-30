@@ -1664,7 +1664,7 @@ function KillAura.Init(UI, Core, notify)
         })
         UI.Sections.AutoDodge:Dropdown({
             Name = "Blocking Mode",
-            Options = {"Block", "Parry", "Chance"},
+            Options = {"Parrying", "Riposte", "Chance"},
             Default = State.AutoDodge.BlockingMode.Default,
             Callback = function(value)
                 State.AutoDodge.BlockingMode.Value = value
