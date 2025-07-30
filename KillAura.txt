@@ -485,7 +485,7 @@ function KillAura.Init(UI, Core, notify)
                 local weapon, settings = getTargetWeaponSettings(closestTarget)
                 if weapon and settings and settings.Release then
                     lastTargetWeapon = weapon
-                    lastReleaseTime = settings.Release
+                    lastReleaseTime = math.max(0.1, settings.Release - 0.1) -- Уменьшение для мелких оружий
                 else
                     lastTargetWeapon = nil
                     lastReleaseTime = nil
@@ -545,7 +545,7 @@ function KillAura.Init(UI, Core, notify)
                         ChangeStance:FireServer("Idle")
                         task.wait(0.05)
                     end
-                    local releaseTime = lastReleaseTime or 0.5
+                    local releaseTime = lastReleaseTime or 0.3
                     local dmgPointDistance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
                     local waitTime
                     if type(releaseTime) == "number" and releaseTime > 0 and dmgPointDistance ~= math.huge and dmgPointDistance == dmgPointDistance then
@@ -782,12 +782,8 @@ function KillAura.Init(UI, Core, notify)
             if not (localCharacter and localRootPart and localHumanoid) then
                 continue
             end
-            if (State.LegitHelper.KillAuraSync.Value and State.KillAura.Enabled.Value) or 
-               (State.LegitHelper.AutoDodgeSync.Value and State.AutoDodge.Enabled.Value) then
-                local localStance = getPlayerStance(LocalPlayer)
-                if localStance and table.find(INVALID_STANCES, localStance) or isPerformingAction then
-                    continue
-                end
+            if (State.LegitHelper.AutoDodgeSync.Value and State.AutoDodge.Enabled.Value and isDodgePending) or isPerformingAction then
+                continue
             end
             local settings = getWeaponSettings()
             if not settings or not settings.weapon then
@@ -1191,27 +1187,15 @@ function KillAura.Init(UI, Core, notify)
         })
         UI.Sections.LegitHelper:Toggle({
             Name = "KillAura Sync",
-            Default = State.LegitHelper.KillAuraSync.Default,
+            Default = State.LegitHelper.AutoDodgeSync.Default,
             Callback = function(value)
-                State.LegitHelper.KillAuraSync.Value = value
+                State.LegitHelper.AutoDodgeSync.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("LegitHelper", "KillAura Sync " .. (value and "Enabled" or "Disabled"), true)
                 end
             end,
             'KillAuraSyncLH'
-        })
-        UI.Sections.LegitHelper:Toggle({
-            Name = "AutoDodge Sync",
-            Default = State.LegitHelper.AutoDodgeSync.Default,
-            Callback = function(value)
-                State.LegitHelper.AutoDodgeSync.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "AutoDodge Sync " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'AutoDodgeSyncLH'
         })
         UI.Sections.LegitHelper:Divider()
         UI.Sections.LegitHelper:Toggle({
