@@ -89,6 +89,8 @@ function KillAura.Init(UI, Core, notify)
     local riposteEndTime = 0
     local isDodgePending = false
     local desiredDodgeAction = nil
+    local lastKickTime = 0
+    local kickCooldown = 0.5
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
@@ -268,6 +270,7 @@ function KillAura.Init(UI, Core, notify)
             if targetHighlight then
                 targetHighlight.Enabled = false
                 currentTarget = nil
+                Core.BulwarkTarget.CurrentTarget = nil
             end
             return
         end
@@ -277,6 +280,7 @@ function KillAura.Init(UI, Core, notify)
                 targetHighlight = nil
             end
             currentTarget = player
+            Core.BulwarkTarget.CurrentTarget = player.Name
             targetHighlight = Instance.new("Highlight")
             targetHighlight.Name = "TargetHighlight"
             targetHighlight.Parent = player.Character
@@ -301,6 +305,7 @@ function KillAura.Init(UI, Core, notify)
         if targetHighlight then
             targetHighlight.Enabled = false
             currentTarget = nil
+            Core.BulwarkTarget.CurrentTarget = nil
         end
     end
 
@@ -441,7 +446,7 @@ function KillAura.Init(UI, Core, notify)
             animationTrack:Destroy()
         end
         if originalWalkSpeed then
-            localHumanoid.WalkSpeed = originalWalkSpeed
+            localHumanoid.WalkSpeed = 9
             originalWalkSpeed = nil
         end
 
@@ -485,7 +490,7 @@ function KillAura.Init(UI, Core, notify)
                 local weapon, settings = getTargetWeaponSettings(closestTarget)
                 if weapon and settings and settings.Release then
                     lastTargetWeapon = weapon
-                    lastReleaseTime = math.max(0.1, settings.Release - 0.1) -- Уменьшение для мелких оружий
+                    lastReleaseTime = math.max(0.1, settings.Release - 0.1)
                 else
                     lastTargetWeapon = nil
                     lastReleaseTime = nil
@@ -600,6 +605,7 @@ function KillAura.Init(UI, Core, notify)
                     ChangeStance:FireServer("UnParry")
                     task.wait(0.01)
                     ChangeStance:FireServer("Idle")
+                    localHumanoid.WalkSpeed = 9
                     lastDodgeTime = tick()
                     isDodgePending = false
                     desiredDodgeAction = nil
@@ -674,6 +680,9 @@ function KillAura.Init(UI, Core, notify)
         if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
             return false
         end
+        if tick() - lastKickTime < kickCooldown then
+            return false
+        end
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
         if not targetHumanoid then
             return false
@@ -698,7 +707,6 @@ function KillAura.Init(UI, Core, notify)
         end
 
         if State.LegitHelper.LegitKick.Value then
-            originalWalkSpeed = localHumanoid.WalkSpeed
             localHumanoid.WalkSpeed = 1
             ChangeStance:FireServer("KickWindup")
             local kickAnimation = Instance.new("Animation")
@@ -710,16 +718,16 @@ function KillAura.Init(UI, Core, notify)
             if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                 kickAnimTrack:Stop()
                 kickAnimTrack:Destroy()
-                localHumanoid.WalkSpeed = originalWalkSpeed
-                originalWalkSpeed = nil
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             stance = getPlayerStance(targetPlayer)
             if not stance or stance ~= "windup" then
                 kickAnimTrack:Stop()
                 kickAnimTrack:Destroy()
-                localHumanoid.WalkSpeed = originalWalkSpeed
-                originalWalkSpeed = nil
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             ChangeStance:FireServer("Kicking")
@@ -728,8 +736,8 @@ function KillAura.Init(UI, Core, notify)
             if not targetHandle then
                 kickAnimTrack:Stop()
                 kickAnimTrack:Destroy()
-                localHumanoid.WalkSpeed = originalWalkSpeed
-                originalWalkSpeed = nil
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             Kick:FireServer(weapon, targetHandle, targetHumanoid)
@@ -737,35 +745,47 @@ function KillAura.Init(UI, Core, notify)
             kickAnimTrack.Stopped:Wait()
             task.wait(0.2)
             ChangeStance:FireServer("Idle")
-            localHumanoid.WalkSpeed = originalWalkSpeed
-            originalWalkSpeed = nil
+            localHumanoid.WalkSpeed = 9
             kickAnimTrack:Destroy()
+            lastKickTime = tick()
             return true
         else
             ChangeStance:FireServer("KickWindup")
             task.wait(State.KillAura.KickDelay.Value)
             if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             stance = getPlayerStance(targetPlayer)
             if not stance or stance ~= "windup" then
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             ChangeStance:FireServer("Kicking")
             task.wait(State.KillAura.KickStateDelay.Value)
             if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             stance = getPlayerStance(targetPlayer)
             if not stance or stance ~= "windup" then
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
             if not targetHandle then
+                localHumanoid.WalkSpeed = 9
+                lastKickTime = tick()
                 return false
             end
             Kick:FireServer(weapon, targetHandle, targetHumanoid)
             warn("AutoKick: Performed kick on target in Windup")
+            localHumanoid.WalkSpeed = 9
+            lastKickTime = tick()
             return true
         end
     end
@@ -774,8 +794,10 @@ function KillAura.Init(UI, Core, notify)
         while true do
             RunService.Heartbeat:Wait()
             if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
+                Core.BulwarkTarget.isAutoKick = false
                 continue
             end
+            Core.BulwarkTarget.isAutoKick = true
             localCharacter = LocalPlayer.Character
             localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
             localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
@@ -822,9 +844,11 @@ function KillAura.Init(UI, Core, notify)
         while true do
             RunService.Heartbeat:Wait()
             if not State.KillAura.Enabled.Value then
+                Core.BulwarkTarget.isKillAura = false
                 removeTargetHighlight()
                 continue
             end
+            Core.BulwarkTarget.isKillAura = true
             localCharacter = LocalPlayer.Character
             localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
             localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
@@ -981,6 +1005,7 @@ function KillAura.Init(UI, Core, notify)
             Default = State.KillAura.Enabled.Default,
             Callback = function(value)
                 State.KillAura.Enabled.Value = value
+                Core.BulwarkTarget.isKillAura = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("KillAura", "KillAura " .. (value and "Enabled" or "Disabled"), true)
@@ -1178,6 +1203,7 @@ function KillAura.Init(UI, Core, notify)
             Default = State.LegitHelper.AutoKick.Default,
             Callback = function(value)
                 State.LegitHelper.AutoKick.Value = value
+                Core.BulwarkTarget.isAutoKick = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("LegitHelper", "AutoKick " .. (value and "Enabled" or "Disabled"), true)
@@ -1282,6 +1308,7 @@ function KillAura.Init(UI, Core, notify)
             Default = State.AutoDodge.Enabled.Default,
             Callback = function(value)
                 State.AutoDodge.Enabled.Value = value
+                Core.BulwarkTarget.isAutoDodge = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("AutoDodge", "AutoDodge " .. (value and "Enabled" or "Disabled"), true)
