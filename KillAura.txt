@@ -335,6 +335,8 @@ function KillAura.Init(UI, Core, notify)
 
     local function updateWarningText(action, waitTime)
         if not State.AutoDodge.WarningText.Value or not warningTextLabel then
+            warningTextLabel.Text = ""
+            warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             return
         end
         local startTime = tick()
@@ -353,7 +355,8 @@ function KillAura.Init(UI, Core, notify)
                     task.wait()
                 end
                 if warningTextLabel and State.AutoDodge.WarningText.Value then
-                    warningTextLabel.Text = ""
+                    warningTextLabel.Text = "Nothing"
+                    warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
                 end
             end)
         elseif action == "Riposte" then
@@ -368,9 +371,13 @@ function KillAura.Init(UI, Core, notify)
                     task.wait()
                 end
                 if warningTextLabel and State.AutoDodge.WarningText.Value then
-                    warningTextLabel.Text = ""
+                    warningTextLabel.Text = "Nothing"
+                    warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
                 end
             end)
+        else
+            warningTextLabel.Text = "Nothing"
+            warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
         end
     end
 
@@ -795,11 +802,11 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
+        if not targetHumanoid or targetHumanoid.Health <= 0 then
             return false
         end
         local localStance = getPlayerStance(LocalPlayer)
-        if localStance and (table.find(AUTO_KICK_INVALID_STANCES, localStance) or (State.AutoDodge.Enabled.Value and localStance == "idle" and isDodgePending)) then
+        if localStance and table.find(INVALID_STANCES, localStance) then
             return false
         end
         local stance = getPlayerStance(targetPlayer)
@@ -919,13 +926,6 @@ function KillAura.Init(UI, Core, notify)
             if not (localCharacter and localRootPart and localHumanoid) then
                 continue
             end
-            if (State.LegitHelper.AutoDodgeSync.Value and State.AutoDodge.Enabled.Value and isDodgePending) or isPerformingAction then
-                continue
-            end
-            local localStance = getPlayerStance(LocalPlayer)
-            if localStance and (table.find(AUTO_KICK_INVALID_STANCES, localStance) or (State.AutoDodge.Enabled.Value and localStance == "idle" and isDodgePending)) then
-                continue
-            end
             local settings = getWeaponSettings()
             if not settings or not settings.weapon then
                 continue
@@ -949,9 +949,8 @@ function KillAura.Init(UI, Core, notify)
             if not (targetCharacter and targetHumanoid) then
                 continue
             end
-            local stance = getPlayerStance(closestTarget)
-            if stance == "windup" then
-                performAutoKick(closestTarget, targetCharacter, settings.weapon)
+            if performAutoKick(closestTarget, targetCharacter, settings.weapon) then
+                lastKickTime = tick()
             end
         end
     end
@@ -1122,17 +1121,15 @@ function KillAura.Init(UI, Core, notify)
 
         warningTextLabel = Instance.new("TextLabel")
         warningTextLabel.Name = "WarningText"
-        warningTextLabel.Size = UDim2.new(0, 200, 0, 100)
+        warningTextLabel.Size = UDim2.new(0, 200 * State.AutoDodge.WarningTextScale.Value, 0, 100 * State.AutoDodge.WarningTextScale.Value)
         warningTextLabel.Position = State.AutoDodge.WarningTextPosition.Value
         warningTextLabel.BackgroundTransparency = 1
-        warningTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
         warningTextLabel.TextScaled = true
         warningTextLabel.TextTransparency = 0
         warningTextLabel.Font = Enum.Font.SourceSansBold
-        warningTextLabel.Text = ""
+        warningTextLabel.Text = "Nothing"
         warningTextLabel.Parent = screenGui
-
-        warningTextLabel.Size = UDim2.new(0, 200 * State.AutoDodge.WarningTextScale.Value, 0, 100 * State.AutoDodge.WarningTextScale.Value)
 
         warningTextLabel.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1294,31 +1291,6 @@ function KillAura.Init(UI, Core, notify)
             end,
             'BlockColorKA'
         })
-        UI.Sections.KillAura:Divider()
-        UI.Sections.KillAura:Toggle({
-            Name = "Team Check",
-            Default = State.KillAura.TeamCheck.Default,
-            Callback = function(value)
-                State.KillAura.TeamCheck.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("KillAura", "Team Check " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'TeamCheckKA'
-        })
-        UI.Sections.KillAura:Toggle({
-            Name = "Dynamic Cooldown",
-            Default = State.KillAura.DynamicCooldown.Default,
-            Callback = function(value)
-                State.KillAura.DynamicCooldown.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("KillAura", "Dynamic Cooldown " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'DynamicCooldownKA'
-        })
         UI.Sections.KillAura:Colorpicker({
             Name = "Default Color",
             Default = State.KillAura.DefaultColor.Default,
@@ -1400,7 +1372,6 @@ function KillAura.Init(UI, Core, notify)
             end,
             'KillAuraSyncLH'
         })
-        UI.Sections.LegitHelper:Divider()
         UI.Sections.LegitHelper:Toggle({
             Name = "Legit Kick",
             Default = State.LegitHelper.LegitKick.Default,
