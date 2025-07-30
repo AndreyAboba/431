@@ -93,8 +93,7 @@ function KillAura.Init(UI, Core, notify)
     local kickCooldown = 0.5
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
-    local INVALID_STANCES_AUTOKICK = {"windup", "release", "parrying", "flinch", "recovery"}
-    local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
+    local INVALID_STANCES_AUTOKICK = {"windup", "release", "parrying", "flinch", "recovery", "idle"}
 
     local function getPlayerStance(player)
         local character = player.Character
@@ -745,7 +744,7 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         local localStance = getPlayerStance(LocalPlayer)
-        if localStance and (table.find(INVALID_STANCES_AUTOKICK, localStance) or (State.AutoDodge.IdleSpoof.Value and localStance == "idle" and isDodgePending)) then
+        if localStance and (table.find(INVALID_STANCES_AUTOKICK, localStance) or (State.AutoDodge.Enabled.Value and isDodgePending and localStance == "idle")) then
             return false
         end
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
@@ -873,7 +872,7 @@ function KillAura.Init(UI, Core, notify)
                 continue
             end
             local localStance = getPlayerStance(LocalPlayer)
-            if localStance and (table.find(INVALID_STANCES_AUTOKICK, localStance) or (State.AutoDodge.IdleSpoof.Value and localStance == "idle" and isDodgePending)) then
+            if localStance and (table.find(INVALID_STANCES_AUTOKICK, localStance) or (State.AutoDodge.Enabled.Value and isDodgePending and localStance == "idle")) then
                 continue
             end
             local settings = getWeaponSettings()
@@ -1106,7 +1105,6 @@ function KillAura.Init(UI, Core, notify)
             Callback = function(value)
                 State.KillAura.AttackCooldown.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotification Betsy
                     lastNotificationTime = tick()
                     notify("KillAura", "Attack Cooldown set to: " .. value)
                 end
