@@ -6,6 +6,7 @@ function KillAura.Init(UI, Core, notify)
     local RunService = game:GetService("RunService")
     local ContextActionService = game:GetService("ContextActionService")
     local Animation = game:GetService("Animation")
+    local StarterGui = game:GetService("StarterGui")
     local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer")
     local ChangeStance = RemoteEvents:WaitForChild("ChangeStance")
     local Hit = RemoteEvents:WaitForChild("Hit")
@@ -44,6 +45,7 @@ function KillAura.Init(UI, Core, notify)
             KillAuraSync = { Value = false, Default = false },
             IdleSpoof = { Value = false, Default = false },
             UseClientIdle = { Value = false, Default = false },
+            WarningText = { Value = false, Default = false },
             BlockingMode = { Value = "Chance", Default = "Chance" },
             ParryingChance = { Value = 50, Default = 50 },
             RiposteChance = { Value = 50, Default = 50 },
@@ -90,6 +92,7 @@ function KillAura.Init(UI, Core, notify)
     local desiredDodgeAction = nil
     local lastKickTime = 0
     local kickCooldown = 0.5
+    local warningTextLabel = nil
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local AUTO_KICK_INVALID_STANCES = {"windup", "release", "parrying", "flinch", "recovery", "idle"}
@@ -315,13 +318,54 @@ function KillAura.Init(UI, Core, notify)
         end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseButton1)
         warn("Blocking MouseButton1 for Riposte")
         task.spawn(function()
-            while isRiposteActive and tick() < riposteEndTime do
+            while isRiposteActive and tick() <= riposteEndTime do
                 task.wait()
             end
             isRiposteActive = false
             ContextActionService:UnbindAction("BlockMouseButton1")
             warn("MouseButton1 block ended")
         end)
+    end
+
+    local function updateWarningText(action, waitTime)
+        if not State.AutoDodge.WarningText.Value or not warningTextLabel then
+            return
+        end
+        local startTime = tick()
+        local endTime = startTime + waitTime
+        local riposteDuration = action == "Riposte" and State.AutoDodge.RiposteMouseLockDuration.Value or 0
+
+        if action == "Parrying" then
+            warningTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            warningTextLabel.Text = string.format("Blocking | Start: %.2fs", waitTime)
+            task.spawn(function()
+                while tick() < endTime and warningTextLabel and State.AutoDodge.WarningText.Value do
+                    local remaining = endTime - tick()
+                    if remaining > 0 then
+                        warningTextLabel.Text = string.format("Blocking | End: %.2fs", remaining)
+                    end
+                    task.wait()
+                end
+                if warningTextLabel and State.AutoDodge.WarningText.Value then
+                    warningTextLabel.Text = ""
+                end
+            end)
+        elseif action == "Riposte" then
+            warningTextLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
+            warningTextLabel.Text = string.format("Parrying | Start: %.2fs\nDONT PUNCH | %.2fs", waitTime, waitTime + riposteDuration)
+            task.spawn(function()
+                while tick() < endTime + riposteDuration and warningTextLabel and State.AutoDodge.WarningText.Value do
+                    local remaining = endTime + riposteDuration - tick()
+                    if remaining > 0 then
+                        warningTextLabel.Text = string.format("Parrying | End: %.2fs\nDONT PUNCH | %.2fs", remaining, remaining)
+                    end
+                    task.wait()
+                end
+                if warningTextLabel and State.AutoDodge.WarningText.Value then
+                    warningTextLabel.Text = ""
+                end
+            end)
+        end
     end
 
     local function performDodgeAction(action, waitTime)
@@ -419,6 +463,7 @@ function KillAura.Init(UI, Core, notify)
         if action ~= "Riposte" then
             ChangeStance:FireServer(action)
         end
+        updateWarningText(action, waitTime)
         task.wait(waitTime)
         if State.AutoDodge.IdleSpoof.Value then
             local currentStance = getPlayerStance(LocalPlayer)
@@ -1063,6 +1108,33 @@ function KillAura.Init(UI, Core, notify)
     end
     Players.PlayerAdded:Connect(onCharacterAdded)
 
+    local function setupWarningText()
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "AutoDodgeWarning"
+        screenGui.Parent = game:GetService("CoreGui")
+        screenGui.IgnoreGuiInset = true
+
+        warningTextLabel = Instance.new("TextLabel")
+        warningTextLabel.Name = "WarningText"
+        warningTextLabel.Size = UDim2.new(0, 200, 0, 100)
+        warningTextLabel.Position = UDim2.new(0.5, -100, 0.1, 0)
+        warningTextLabel.BackgroundTransparency = 1
+        warningTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        warningTextLabel.TextScaled = true
+        warningTextLabel.Font = Enum.Font.SourceSansBold
+        warningTextLabel.Text = ""
+        warningTextLabel.Parent = screenGui
+    end
+
+    local function toggleWarningText(value)
+        if value and not warningTextLabel then
+            setupWarningText()
+        elseif not value and warningTextLabel then
+            warningTextLabel.Parent:Destroy()
+            warningTextLabel = nil
+        end
+    end
+
     task.spawn(runKillAura)
 
     if UI.Tabs and UI.Tabs.Combat then
@@ -1477,6 +1549,19 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'UseClientIdleAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Warning Text",
+            Default = State.AutoDodge.WarningText.Default,
+            Callback = function(value)
+                State.AutoDodge.WarningText.Value = value
+                toggleWarningText(value)
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Warning Text " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'WarningTextAD'
         })
         UI.Sections.AutoDodge:Dropdown({
             Name = "Blocking Mode",
