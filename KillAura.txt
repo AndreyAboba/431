@@ -1,3 +1,4 @@
+```lua
 local KillAura = {}
 
 function KillAura.Init(UI, Core, notify)
@@ -337,8 +338,8 @@ function KillAura.Init(UI, Core, notify)
 
     local function updateWarningText(action, waitTime)
         if not State.AutoDodge.WarningText.Value or not warningTextLabel then
-            warningTextLabel.Text = ""
-            warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            Core.BulwarkTarget.CombatState = nil
+            warn("WarningText disabled or warningTextLabel is nil, skipping text update")
             return
         end
         local startTime = tick()
