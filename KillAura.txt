@@ -788,7 +788,7 @@ function KillAura.Init(UI, Core, notify)
                 return false
             end
             stance = getPlayerStance(targetPlayer)
-            if not stance or stance != "windup" then
+            if not stance or stance ~= "windup" then
                 kickAnimTrack:Stop()
                 kickAnimTrack:Destroy()
                 localHumanoid.WalkSpeed = 9
@@ -823,7 +823,7 @@ function KillAura.Init(UI, Core, notify)
                 return false
             end
             stance = getPlayerStance(targetPlayer)
-            if not stance or stance != "windup" then
+            if not stance or stance ~= "windup" then
                 localHumanoid.WalkSpeed = 9
                 lastKickTime = tick()
                 return false
@@ -836,7 +836,7 @@ function KillAura.Init(UI, Core, notify)
                 return false
             end
             stance = getPlayerStance(targetPlayer)
-            if not stance or stance != "windup" then
+            if not stance or stance ~= "windup" then
                 localHumanoid.WalkSpeed = 9
                 lastKickTime = tick()
                 return false
