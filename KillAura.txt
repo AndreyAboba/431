@@ -1,4 +1,3 @@
-```lua
 local KillAura = {}
 
 function KillAura.Init(UI, Core, notify)
