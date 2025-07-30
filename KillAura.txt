@@ -1388,8 +1388,7 @@ function KillAura.Init(UI, Core, notify)
             'EnabledLH'
         })
         UI.Sections.LegitHelper:Divider()
-        UI.Sections.LegitHelper:Paragraph({
-            Header = "Auto Kick" })
+        UI.Sections.LegitHelper:Label({ Text = "Auto Kick"})
         UI.Sections.LegitHelper:Toggle({
             Name = "Enabled",
             Default = State.LegitHelper.AutoKick.Default,
@@ -1631,7 +1630,7 @@ function KillAura.Init(UI, Core, notify)
             'UseClientIdleAD'
         })
         UI.Sections.AutoDodge:Divider()
-        
+
         UI.Sections.AutoDodge:Toggle({
             Name = "Warning Text",
             Default = State.AutoDodge.WarningText.Default,
