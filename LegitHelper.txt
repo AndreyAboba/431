@@ -135,7 +135,8 @@ function LegitHelper.Init(UI, Core, notify)
     end
 
     -- Проверка существования секции LegitHelper
-    if not UI.Tabs or not UI.Tabs.Combat or not UI.Sections.LegitHelper then
+   wait(1)
+   if not UI.Tabs or not UI.Tabs.Combat or not UI.Sections.LegitHelper then
         warn("LegitHelper section not found in UI.Tabs.Combat. Please ensure it is initialized.")
         return
     end
