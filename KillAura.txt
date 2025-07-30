@@ -63,7 +63,9 @@ function KillAura.Init(UI, Core, notify)
             Enabled = { Value = false, Default = false },
             AutoKick = { Value = false, Default = false },
             Range = { Value = 10, Default = 10 },
-            TeamCheck = { Value = true, Default = true }
+            TeamCheck = { Value = true, Default = true },
+            KillAuraSync = { Value = false, Default = false },
+            LegitKick = { Value = true, Default = true }
         }
     }
 
@@ -697,31 +699,92 @@ function KillAura.Init(UI, Core, notify)
         if not stance or stance ~= "windup" then
             return false
         end
-        ChangeStance:FireServer("KickWindup")
-        task.wait(State.KillAura.KickDelay.Value)
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+        local settings = getWeaponSettings()
+        if not settings or not settings.Type then
             return false
         end
-        stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "windup" then
+        local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
+        if not animationsModule then
+            warn("WeaponAnimations not found at ReplicatedStorage.ClientModule.WeaponAnimations")
             return false
         end
-        ChangeStance:FireServer("Kicking")
-        task.wait(State.KillAura.KickStateDelay.Value)
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+        local animations = animationsModule and require(animationsModule)[settings.Type]
+        if not animations then
+            warn("Animations not found for weapon type: " .. tostring(settings.Type))
             return false
         end
-        stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "windup" then
-            return false
+
+        if State.LegitHelper.LegitKick.Value then
+            originalWalkSpeed = localHumanoid.WalkSpeed
+            localHumanoid.WalkSpeed = 1
+            ChangeStance:FireServer("KickWindup")
+            local kickAnimation = Instance.new("Animation")
+            kickAnimation.AnimationId = "rbxassetid://" .. animations.Kick
+            local kickAnimTrack = localHumanoid:LoadAnimation(kickAnimation)
+            kickAnimTrack:Play(0.1, 1, kickAnimTrack.Length / 1)
+            print("Playing Kick animation: " .. animations.Kick)
+            kickAnimTrack:GetMarkerReachedSignal("Kick"):Wait()
+            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                kickAnimTrack:Stop()
+                kickAnimTrack:Destroy()
+                localHumanoid.WalkSpeed = originalWalkSpeed
+                originalWalkSpeed = nil
+                return false
+            end
+            stance = getPlayerStance(targetPlayer)
+            if not stance or stance ~= "windup" then
+                kickAnimTrack:Stop()
+                kickAnimTrack:Destroy()
+                localHumanoid.WalkSpeed = originalWalkSpeed
+                originalWalkSpeed = nil
+                return false
+            end
+            ChangeStance:FireServer("Kicking")
+            localHumanoid.WalkSpeed = 5
+            local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
+            if not targetHandle then
+                kickAnimTrack:Stop()
+                kickAnimTrack:Destroy()
+                localHumanoid.WalkSpeed = originalWalkSpeed
+                originalWalkSpeed = nil
+                return false
+            end
+            Kick:FireServer(weapon, targetHandle, targetHumanoid)
+            warn("AutoKick: Performed kick on target in Windup")
+            kickAnimTrack.Stopped:Wait()
+            task.wait(0.2)
+            ChangeStance:FireServer("Idle")
+            localHumanoid.WalkSpeed = originalWalkSpeed
+            originalWalkSpeed = nil
+            kickAnimTrack:Destroy()
+            return true
+        else
+            ChangeStance:FireServer("KickWindup")
+            task.wait(State.KillAura.KickDelay.Value)
+            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                return false
+            end
+            stance = getPlayerStance(targetPlayer)
+            if not stance or stance ~= "windup" then
+                return false
+            end
+            ChangeStance:FireServer("Kicking")
+            task.wait(State.KillAura.KickStateDelay.Value)
+            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                return false
+            end
+            stance = getPlayerStance(targetPlayer)
+            if not stance or stance ~= "windup" then
+                return false
+            end
+            local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
+            if not targetHandle then
+                return false
+            end
+            Kick:FireServer(weapon, targetHandle, targetHumanoid)
+            warn("AutoKick: Performed kick on target in Windup")
+            return true
         end
-        local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
-        if not targetHandle then
-            return false
-        end
-        Kick:FireServer(weapon, targetHandle, targetHumanoid)
-        warn("AutoKick: Performed kick on target in Windup")
-        return true
     end
 
     -- Основной цикл AutoKick
@@ -736,6 +799,12 @@ function KillAura.Init(UI, Core, notify)
             localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
             if not (localCharacter and localRootPart and localHumanoid) then
                 continue
+            end
+            if State.LegitHelper.KillAuraSync.Value and State.KillAura.Enabled.Value then
+                local localStance = getPlayerStance(LocalPlayer)
+                if localStance and table.find(INVALID_STANCES, localStance) or isPerformingAction then
+                    continue
+                end
             end
             local settings = getWeaponSettings()
             if not settings or not settings.weapon then
@@ -1130,6 +1199,18 @@ function KillAura.Init(UI, Core, notify)
             end,
             'TeamCheckLH'
         })
+        UI.Sections.LegitHelper:Toggle({
+            Name = "KillAura Sync",
+            Default = State.LegitHelper.KillAuraSync.Default,
+            Callback = function(value)
+                State.LegitHelper.KillAuraSync.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "KillAura Sync " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'KillAuraSyncLH'
+        })
         UI.Sections.LegitHelper:Divider()
         UI.Sections.LegitHelper:Header({ Name = "AutoKick" })
         UI.Sections.LegitHelper:Toggle({
@@ -1143,6 +1224,19 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'AutoKickLH'
+        })
+        UI.Sections.LegitHelper:Divider()
+        UI.Sections.LegitHelper:Toggle({
+            Name = "Legit Kick",
+            Default = State.LegitHelper.LegitKick.Default,
+            Callback = function(value)
+                State.LegitHelper.LegitKick.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "Legit Kick " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'LegitKickLH'
         })
 
         -- Секция ToolExploit (правая часть)
