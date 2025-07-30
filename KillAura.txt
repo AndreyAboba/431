@@ -43,6 +43,7 @@ function KillAura.Init(UI, Core, notify)
             TeamCheck = { Value = true, Default = true },
             KillAuraSync = { Value = false, Default = false },
             IdleSpoof = { Value = false, Default = false },
+            UseClientIdle = { Value = false, Default = false },
             BlockingMode = { Value = "Chance", Default = "Chance" },
             ParryingChance = { Value = 50, Default = 50 },
             RiposteChance = { Value = 50, Default = 50 },
@@ -54,7 +55,6 @@ function KillAura.Init(UI, Core, notify)
             Delay = { Value = 0.02, Default = 0.02 },
             Blocking = { Value = true, Default = true },
             BlockingAntiStun = { Value = true, Default = true },
-            DefaultWaitTime = { Value = 0.3, Default = 0.3 },
             RiposteMouseLockDuration = { Value = 1.5, Default = 1.5 },
             MaxWaitTime = { Value = 2.0, Default = 2.0 }
         },
@@ -366,12 +366,12 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         if waitTime == math.huge or waitTime ~= waitTime then
-            waitTime = State.AutoDodge.DefaultWaitTime.Value
-            warn("Invalid waitTime, using DefaultWaitTime: " .. State.AutoDodge.DefaultWaitTime.Value)
+            waitTime = 0.3
+            warn("Invalid waitTime, using fallback: 0.3")
         end
         if waitTime > State.AutoDodge.MaxWaitTime.Value then
-            waitTime = State.AutoDodge.DefaultWaitTime.Value
-            warn("waitTime exceeded MaxWaitTime, using DefaultWaitTime: " .. State.AutoDodge.DefaultWaitTime.Value)
+            waitTime = 0.3
+            warn("waitTime exceeded MaxWaitTime, using fallback: 0.3")
         end
 
         local animationTrack
@@ -391,7 +391,6 @@ function KillAura.Init(UI, Core, notify)
                 animationTrack = localHumanoid:LoadAnimation(animation)
                 animationTrack:Play(0.1)
                 animationTrack:AdjustSpeed(1)
-                originalWalkSpeed = localHumanoid.WalkSpeed
                 localHumanoid.WalkSpeed = 7
                 print("Playing Parrying animation: " .. animations.Parry)
             elseif action == "Riposte" and State.AutoDodge.LegitParry.Value and animations and animations.Riposte then
@@ -402,7 +401,6 @@ function KillAura.Init(UI, Core, notify)
                 animationTrack = localHumanoid:LoadAnimation(animation)
                 animationTrack:Play(0.1)
                 animationTrack:AdjustSpeed(0)
-                originalWalkSpeed = localHumanoid.WalkSpeed
                 localHumanoid.WalkSpeed = 1
                 isRiposteActive = true
                 riposteEndTime = tick() + waitTime + State.AutoDodge.RiposteMouseLockDuration.Value
@@ -427,6 +425,25 @@ function KillAura.Init(UI, Core, notify)
             if currentStance and table.find(INVALID_STANCES, currentStance) then
                 print("IdleSpoof: Restoring dodge action after stance change")
                 ChangeStance:FireServer("Idle")
+                if State.AutoDodge.UseClientIdle.Value and settings and settings.Type then
+                    local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
+                    local animations = animationsModule and require(animationsModule)[settings.Type]
+                    if animations and animations.Idle then
+                        local idleAnimation = Instance.new("Animation")
+                        idleAnimation.AnimationId = "rbxassetid://" .. animations.Idle
+                        local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
+                        idleAnimTrack:Play(0.1)
+                        idleAnimTrack:AdjustSpeed(1)
+                        print("Playing Client Idle animation: " .. animations.Idle)
+                        task.spawn(function()
+                            task.wait(0.5)
+                            if idleAnimTrack and idleAnimTrack.IsPlaying then
+                                idleAnimTrack:Stop(0.2)
+                                idleAnimTrack:Destroy()
+                            end
+                        end)
+                    end
+                end
                 task.wait(0.05)
                 if desiredDodgeAction and not isPerformingAction then
                     ChangeStance:FireServer(desiredDodgeAction)
@@ -445,10 +462,7 @@ function KillAura.Init(UI, Core, notify)
             animationTrack:Stop(action == "Parrying" and 0.2 or 0.7)
             animationTrack:Destroy()
         end
-        if originalWalkSpeed then
-            localHumanoid.WalkSpeed = 9
-            originalWalkSpeed = nil
-        end
+        localHumanoid.WalkSpeed = 9
 
         ChangeStance:FireServer("Idle")
         if action == "Riposte" then
@@ -506,10 +520,12 @@ function KillAura.Init(UI, Core, notify)
         while true do
             task.wait(State.AutoDodge.Delay.Value)
             if not State.AutoDodge.Enabled.Value then
+                Core.BulwarkTarget.isAutoDodge = false
                 isDodgePending = false
                 desiredDodgeAction = nil
                 continue
             end
+            Core.BulwarkTarget.isAutoDodge = true
             if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0) then
                 isDodgePending = false
                 desiredDodgeAction = nil
@@ -548,6 +564,28 @@ function KillAura.Init(UI, Core, notify)
                     if State.AutoDodge.IdleSpoof.Value and localStance and table.find(INVALID_STANCES, localStance) then
                         print("IdleSpoof activated, sent ChangeStance('Idle')")
                         ChangeStance:FireServer("Idle")
+                        if State.AutoDodge.UseClientIdle.Value then
+                            local settings, weapon = getLocalWeaponSettings()
+                            if settings and settings.Type then
+                                local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
+                                local animations = animationsModule and require(animationsModule)[settings.Type]
+                                if animations and animations.Idle then
+                                    local idleAnimation = Instance.new("Animation")
+                                    idleAnimation.AnimationId = "rbxassetid://" .. animations.Idle
+                                    local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
+                                    idleAnimTrack:Play(0.1)
+                                    idleAnimTrack:AdjustSpeed(1)
+                                    print("Playing Client Idle animation: " .. animations.Idle)
+                                    task.spawn(function()
+                                        task.wait(0.5)
+                                        if idleAnimTrack and idleAnimTrack.IsPlaying then
+                                            idleAnimTrack:Stop(0.2)
+                                            idleAnimTrack:Destroy()
+                                        end
+                                    end)
+                                end
+                            end
+                        end
                         task.wait(0.05)
                     end
                     local releaseTime = lastReleaseTime or 0.3
@@ -556,12 +594,12 @@ function KillAura.Init(UI, Core, notify)
                     if type(releaseTime) == "number" and releaseTime > 0 and dmgPointDistance ~= math.huge and dmgPointDistance == dmgPointDistance then
                         waitTime = math.max(0.1, releaseTime * (State.AutoDodge.BaseMultiplier.Value + dmgPointDistance * State.AutoDodge.DistanceFactor.Value))
                         if waitTime > State.AutoDodge.MaxWaitTime.Value then
-                            waitTime = State.AutoDodge.DefaultWaitTime.Value
-                            warn("waitTime exceeded MaxWaitTime, using DefaultWaitTime: " .. State.AutoDodge.DefaultWaitTime.Value)
+                            waitTime = releaseTime / 2
+                            warn("Complex waitTime calculation failed, using fallback: releaseTime / 2 = " .. waitTime)
                         end
                     else
-                        waitTime = State.AutoDodge.DefaultWaitTime.Value
-                        warn("Invalid releaseTime or dmgPointDistance, using DefaultWaitTime: " .. State.AutoDodge.DefaultWaitTime.Value)
+                        waitTime = releaseTime / 2
+                        warn("Invalid releaseTime or dmgPointDistance, using fallback: releaseTime / 2 = " .. waitTime)
                     end
                     local action
                     if State.AutoDodge.BlockingMode.Value == "Riposte" then
@@ -605,6 +643,28 @@ function KillAura.Init(UI, Core, notify)
                     ChangeStance:FireServer("UnParry")
                     task.wait(0.01)
                     ChangeStance:FireServer("Idle")
+                    if State.AutoDodge.UseClientIdle.Value then
+                        local settings, weapon = getLocalWeaponSettings()
+                        if settings and settings.Type then
+                            local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
+                            local animations = animationsModule and require(animationsModule)[settings.Type]
+                            if animations and animations.Idle then
+                                local idleAnimation = Instance.new("Animation")
+                                idleAnimation.AnimationId = "rbxassetid://" .. animations.Idle
+                                local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
+                                idleAnimTrack:Play(0.1)
+                                idleAnimTrack:AdjustSpeed(1)
+                                print("Playing Client Idle animation: " .. animations.Idle)
+                                task.spawn(function()
+                                    task.wait(0.5)
+                                    if idleAnimTrack and idleAnimTrack.IsPlaying then
+                                        idleAnimTrack:Stop(0.2)
+                                        idleAnimTrack:Destroy()
+                                    end
+                                end)
+                            end
+                        end
+                    end
                     localHumanoid.WalkSpeed = 9
                     lastDodgeTime = tick()
                     isDodgePending = false
@@ -1169,6 +1229,21 @@ function KillAura.Init(UI, Core, notify)
             end,
             'EnabledLH'
         })
+        UI.Sections.LegitHelper:Divider()
+        UI.Sections.LegitHelper:Header({ Name = "AutoKick" })
+        UI.Sections.LegitHelper:Toggle({
+            Name = "Enabled",
+            Default = State.LegitHelper.AutoKick.Default,
+            Callback = function(value)
+                State.LegitHelper.AutoKick.Value = value
+                Core.BulwarkTarget.isAutoKick = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("LegitHelper", "AutoKick " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'AutoKickLH'
+        })
         UI.Sections.LegitHelper:Slider({
             Name = "Range",
             Minimum = 4,
@@ -1195,21 +1270,6 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'TeamCheckLH'
-        })
-        UI.Sections.LegitHelper:Divider()
-        UI.Sections.LegitHelper:Header({ Name = "AutoKick" })
-        UI.Sections.LegitHelper:Toggle({
-            Name = "Enabled",
-            Default = State.LegitHelper.AutoKick.Default,
-            Callback = function(value)
-                State.LegitHelper.AutoKick.Value = value
-                Core.BulwarkTarget.isAutoKick = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "AutoKick " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'AutoKickLH'
         })
         UI.Sections.LegitHelper:Toggle({
             Name = "KillAura Sync",
@@ -1397,6 +1457,18 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'IdleSpoofAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Use Client Idle",
+            Default = State.AutoDodge.UseClientIdle.Default,
+            Callback = function(value)
+                State.AutoDodge.UseClientIdle.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Use Client Idle " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'UseClientIdleAD'
         })
         UI.Sections.AutoDodge:Dropdown({
             Name = "Blocking Mode",
