@@ -1309,6 +1309,7 @@ function KillAura.Init(UI, Core, notify)
             'AntiParryKA'
         })
         UI.Sections.KillAura:Divider()
+
         UI.Sections.KillAura:Toggle({
             Name = "Highlight Block",
             Default = State.KillAura.HighlightBlock.Default,
@@ -1333,6 +1334,8 @@ function KillAura.Init(UI, Core, notify)
             end,
             'HighlightParryKA'
         })
+        UI.Sections.KillAura:Divider()
+
         UI.Sections.KillAura:Colorpicker({
             Name = "Parry Color",
             Default = State.KillAura.ParryColor.Default,
@@ -1385,7 +1388,8 @@ function KillAura.Init(UI, Core, notify)
             'EnabledLH'
         })
         UI.Sections.LegitHelper:Divider()
-        UI.Sections.LegitHelper:Header({ Name = "AutoKick" })
+        UI.Sections.LegitHelper:Paragraph({
+            Header = "Auto Kick" })
         UI.Sections.LegitHelper:Toggle({
             Name = "Enabled",
             Default = State.LegitHelper.AutoKick.Default,
@@ -1401,7 +1405,7 @@ function KillAura.Init(UI, Core, notify)
         })
         UI.Sections.LegitHelper:Slider({
             Name = "Range",
-            Minimum = 4,
+            Minimum = 2,
             Maximum = 20,
             Default = State.LegitHelper.Range.Default,
             Precision = 0,
@@ -1453,6 +1457,7 @@ function KillAura.Init(UI, Core, notify)
 
         UI.Sections.ToolExploit = UI.Sections.ToolExploit or UI.Tabs.Combat:Section({ Name = "ToolExploit", Side = "Right" })
         UI.Sections.ToolExploit:Header({ Name = "Tool Exploit" })
+        UI.Sections.ToolExploit:SubLabel({ Text = "Only for KillAura, reduces the preparation time for an attack"})
         UI.Sections.ToolExploit:Slider({
             Name = "Minus Windup",
             Minimum = 0.1,
@@ -1612,6 +1617,7 @@ function KillAura.Init(UI, Core, notify)
             end,
             'IdleSpoofAD'
         })
+        UI.Sections.AutoDodge:SubLabel({ Text = "[❗] Recommend use Idle Spoof ONLY with Block mode, parry mode may cause crashes "})
         UI.Sections.AutoDodge:Toggle({
             Name = "Use Client Idle",
             Default = State.AutoDodge.UseClientIdle.Default,
@@ -1624,6 +1630,8 @@ function KillAura.Init(UI, Core, notify)
             end,
             'UseClientIdleAD'
         })
+        UI.Sections.AutoDodge:Divider()
+        
         UI.Sections.AutoDodge:Toggle({
             Name = "Warning Text",
             Default = State.AutoDodge.WarningText.Default,
@@ -1657,7 +1665,7 @@ function KillAura.Init(UI, Core, notify)
         })
         UI.Sections.AutoDodge:Dropdown({
             Name = "Blocking Mode",
-            Options = {"Parrying", "Riposte", "Chance"},
+            Options = {"Block", "Parry", "Chance"},
             Default = State.AutoDodge.BlockingMode.Default,
             Callback = function(value)
                 State.AutoDodge.BlockingMode.Value = value
@@ -1670,11 +1678,12 @@ function KillAura.Init(UI, Core, notify)
         })
         UI.Sections.AutoDodge:Divider()
         UI.Sections.AutoDodge:Slider({
-            Name = "Parrying Chance",
+            Name = "Block Chance",
             Minimum = 0,
             Maximum = 100,
-            Default = State.AutoDodge.ParryingChance.Default,
+            Precision = 0,
             Suffix = "%",
+            Default = State.AutoDodge.ParryingChance.Default,
             Callback = function(value)
                 State.AutoDodge.ParryingChance.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -1685,11 +1694,12 @@ function KillAura.Init(UI, Core, notify)
             'ParryingChanceAD'
         })
         UI.Sections.AutoDodge:Slider({
-            Name = "Riposte Chance",
+            Name = "Parry Chance",
             Minimum = 0,
             Maximum = 100,
-            Default = State.AutoDodge.RiposteChance.Default,
+            Precision = 0,
             Suffix = "%",
+            Default = State.AutoDodge.RiposteChance.Default,
             Callback = function(value)
                 State.AutoDodge.RiposteChance.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
