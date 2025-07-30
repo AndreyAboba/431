@@ -1,0 +1,172 @@
+```lua
+local LegitHelper = {}
+
+function LegitHelper.Init(UI, Core, notify)
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    local LocalPlayer = Players.LocalPlayer
+    local lastNotificationTime = 0
+    local notificationDelay = 5
+
+    local State = {
+        LegitHelper = {
+            ToolExploit = {
+                Enabled = { Value = false, Default = false }
+            }
+        }
+    }
+
+    local originalSettings = {} -- Хранит исходные настройки для каждого оружия
+    local currentWeapon = nil -- Текущее оружие для отслеживания изменений
+
+    -- Получение настроек текущего оружия
+    local function getLocalWeaponSettings()
+        local character = LocalPlayer.Character
+        if not character then
+            return nil, nil
+        end
+        local weapon
+        for _, child in pairs(character:GetChildren()) do
+            if child:IsA("Tool") then
+                weapon = child
+                break
+            end
+        end
+        if not weapon then
+            return nil, nil
+        end
+        local settingsModule = weapon:FindFirstChild("Settings")
+        if not settingsModule then
+            return nil, nil
+        end
+        local success, settings = pcall(require, settingsModule)
+        if not success or not settings or not settings.Type then
+            warn("Failed to load weapon settings for " .. weapon.Name)
+            return nil, nil
+        end
+        return settings, weapon
+    end
+
+    -- Сохранение исходных настроек оружия
+    local function saveOriginalSettings(settings, weapon)
+        if settings and weapon then
+            originalSettings[weapon.Name] = {
+                Damage = settings.Damage,
+                Windup = settings.Windup,
+                Release = settings.Release,
+                Recovery = settings.Recovery,
+                MissCost = settings.MissCost,
+                StamDrain = settings.StamDrain,
+                StamNegate = settings.StamNegate,
+                Lunge = settings.Lunge
+            }
+        end
+    end
+
+    -- Восстановление исходных настроек
+    local function restoreOriginalSettings(weapon)
+        if weapon and originalSettings[weapon.Name] then
+            local settingsModule = weapon:FindFirstChild("Settings")
+            if settingsModule then
+                local settings = require(settingsModule)
+                for key, value in pairs(originalSettings[weapon.Name]) do
+                    settings[key] = value
+                end
+                warn("Restored original settings for " .. weapon.Name)
+            end
+        end
+    end
+
+    -- Обновление Label в UI
+    local function updateWeaponSettingsLabels()
+        local settings, weapon = getLocalWeaponSettings()
+        if not settings or not weapon then
+            UI.Sections.LegitHelper.WeaponName:SetVisibility(false)
+            UI.Sections.LegitHelper.DamageLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.WindupLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.MissCostLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(false)
+            UI.Sections.LegitHelper.LungeLabel:SetVisibility(false)
+            return
+        end
+
+        -- Сохраняем настройки при смене оружия
+        if weapon ~= currentWeapon then
+            saveOriginalSettings(settings, weapon)
+            currentWeapon = weapon
+        end
+
+        -- Обновляем текст и видимость Label
+        UI.Sections.LegitHelper.WeaponName:UpdateName({ Text = "Weapon name: " .. weapon.Name })
+        UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
+        UI.Sections.LegitHelper.DamageLabel:UpdateName({ Text = "Damage: " .. tostring(settings.Damage or "not found") })
+        UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.WindupLabel:UpdateName({ Text = "Windup: " .. tostring(settings.Windup or "not found") })
+        UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.ReleaseLabel:UpdateName({ Text = "Release: " .. tostring(settings.Release or "not found") })
+        UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.RecoveryLabel:UpdateName({ Text = "Recovery: " .. tostring(settings.Recovery or "not found") })
+        UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.MissCostLabel:UpdateName({ Text = "MissCost: " .. tostring(settings.MissCost or "not found") })
+        UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.StamDrainLabel:UpdateName({ Text = "StamDrain: " .. tostring(settings.StamDrain or "not found") })
+        UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.StamNegateLabel:UpdateName({ Text = "StamNegate: " .. tostring(settings.StamNegate or "not found") })
+        UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.LungeLabel:UpdateName({ Text = "Lunge: " .. tostring(settings.Lunge or "not found") })
+        UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
+    end
+
+    -- Мониторинг текущего оружия
+    local function runWeaponSettingsMonitor()
+        while true do
+            RunService.Heartbeat:Wait()
+            updateWeaponSettingsLabels()
+            if not State.LegitHelper.ToolExploit.Enabled.Value and currentWeapon then
+                restoreOriginalSettings(currentWeapon)
+            end
+        end
+    end
+
+    task.spawn(runWeaponSettingsMonitor)
+
+    -- Настройка UI
+    if UI.Tabs and UI.Tabs.Combat then
+        UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
+        UI.Sections.LegitHelper:Header({ Name = "Tool Exploit" })
+        UI.Sections.LegitHelper:Toggle({
+            Name = "Enabled",
+            Default = State.LegitHelper.ToolExploit.Enabled.Default,
+            Callback = function(value)
+                State.LegitHelper.ToolExploit.Enabled.Value = value
+                local settings, weapon = getLocalWeaponSettings()
+                if not value and weapon then
+                    restoreOriginalSettings(weapon)
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("ToolExploit", "Tool Exploit " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'ToolExploitEnabledLH'
+        })
+        UI.Sections.LegitHelper:Divider()
+        UI.Sections.LegitHelper:Header({ Name = "Weapon Settings" })
+        UI.Sections.LegitHelper.WeaponName = UI.Sections.LegitHelper:Label({ Text = "Weapon name: None" })
+        UI.Sections.LegitHelper.DamageLabel = UI.Sections.LegitHelper:Label({ Text = "Damage: not found" })
+        UI.Sections.LegitHelper.WindupLabel = UI.Sections.LegitHelper:Label({ Text = "Windup: not found" })
+        UI.Sections.LegitHelper.ReleaseLabel = UI.Sections.LegitHelper:Label({ Text = "Release: not found" })
+        UI.Sections.LegitHelper.RecoveryLabel = UI.Sections.LegitHelper:Label({ Text = "Recovery: not found" })
+        UI.Sections.LegitHelper.MissCostLabel = UI.Sections.LegitHelper:Label({ Text = "MissCost: not found" })
+        UI.Sections.LegitHelper.StamDrainLabel = UI.Sections.LegitHelper:Label({ Text = "StamDrain: not found" })
+        UI.Sections.LegitHelper.StamNegateLabel = UI.Sections.LegitHelper:Label({ Text = "StamNegate: not found" })
+        UI.Sections.LegitHelper.LungeLabel = UI.Sections.LegitHelper:Label({ Text = "Lunge: not found" })
+    end
+end
+
+return LegitHelper
+```
