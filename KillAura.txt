@@ -335,18 +335,6 @@ function KillAura.Init(UI, Core, notify)
         end)
     end
 
-    local function determineNextDodgeAction()
-        if State.AutoDodge.BlockingMode.Value == "Parrying" then
-            return "Parrying"
-        elseif State.AutoDodge.BlockingMode.Value == "Riposte" then
-            return "Riposte"
-        else
-            local totalChance = State.AutoDodge.ParryingChance.Value + State.AutoDodge.RiposteChance.Value
-            local normalizedParryChance = totalChance > 0 and (State.AutoDodge.ParryingChance.Value / totalChance) or 0.5
-            return math.random() < normalizedParryChance and "Parrying" or "Riposte"
-        end
-    end
-
     local function updateWarningText(action, waitTime)
         if not State.AutoDodge.Enabled.Value or not State.AutoDodge.WarningText.Value or not warningTextLabel then
             if warningTextLabel then
@@ -355,9 +343,11 @@ function KillAura.Init(UI, Core, notify)
             end
             return
         end
-        local nextActionText = ""
+        local nextAction = ""
         if State.AutoDodge.BlockingMode.Value == "Chance" then
-            nextActionText = "Next: " .. nextDodgeAction
+            local totalChance = State.AutoDodge.ParryingChance.Value + State.AutoDodge.RiposteChance.Value
+            local normalizedParryChance = totalChance > 0 and (State.AutoDodge.ParryingChance.Value / totalChance) or 0.5
+            nextAction = nextDodgeAction or (math.random() < normalizedParryChance and "Block (Parrying)" or "Parry (Riposte)")
         end
         local startTime = tick()
         local endTime = startTime + waitTime
@@ -365,38 +355,38 @@ function KillAura.Init(UI, Core, notify)
 
         if action == "Parrying" then
             warningTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-            warningTextLabel.Text = string.format("Parrying | Start: %.2fs\n%s", waitTime, nextActionText)
+            warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Blocking | Start: %.2fs\nNext: %s", waitTime, nextAction) or string.format("Blocking | Start: %.2fs", waitTime)
             task.spawn(function()
                 while tick() < endTime and warningTextLabel and State.AutoDodge.Enabled.Value and State.AutoDodge.WarningText.Value do
                     local remaining = endTime - tick()
                     if remaining > 0 then
-                        warningTextLabel.Text = string.format("Parrying | End: %.2fs\n%s", remaining, nextActionText)
+                        warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Blocking | End: %.2fs\nNext: %s", remaining, nextAction) or string.format("Blocking | End: %.2fs", remaining)
                     end
                     task.wait()
                 end
                 if warningTextLabel and State.AutoDodge.Enabled.Value and State.AutoDodge.WarningText.Value then
-                    warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and ("Nothing\nNext: " .. nextDodgeAction) or "Nothing"
+                    warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Nothing\nNext: %s", nextAction) or "Nothing"
                     warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
                 end
             end)
         elseif action == "Riposte" then
             warningTextLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
-            warningTextLabel.Text = string.format("Riposte | Start: %.2fs\nDONT PUNCH | %.2fs\n%s", waitTime, waitTime + riposteDuration, nextActionText)
+            warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Parrying | Start: %.2fs\nDONT PUNCH | %.2fs\nNext: %s", waitTime, waitTime + riposteDuration, nextAction) or string.format("Parrying | Start: %.2fs\nDONT PUNCH | %.2fs", waitTime, waitTime + riposteDuration)
             task.spawn(function()
                 while tick() < endTime + riposteDuration and warningTextLabel and State.AutoDodge.Enabled.Value and State.AutoDodge.WarningText.Value do
                     local remaining = endTime + riposteDuration - tick()
                     if remaining > 0 then
-                        warningTextLabel.Text = string.format("Riposte | End: %.2fs\nDONT PUNCH | %.2fs\n%s", remaining, remaining, nextActionText)
+                        warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Parrying | End: %.2fs\nDONT PUNCH | %.2fs\nNext: %s", remaining, remaining, nextAction) or string.format("Parrying | End: %.2fs\nDONT PUNCH | %.2fs", remaining, remaining)
                     end
                     task.wait()
                 end
                 if warningTextLabel and State.AutoDodge.Enabled.Value and State.AutoDodge.WarningText.Value then
-                    warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and ("Nothing\nNext: " .. nextDodgeAction) or "Nothing"
+                    warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Nothing\nNext: %s", nextAction) or "Nothing"
                     warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
                 end
             end)
         else
-            warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and ("Nothing\nNext: " .. nextDodgeAction) or "Nothing"
+            warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and string.format("Nothing\nNext: %s", nextAction) or "Nothing"
             warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
         end
     end
@@ -411,7 +401,6 @@ function KillAura.Init(UI, Core, notify)
         isDodgePending = true
         desiredDodgeAction = action
         lastDodgeAction = action
-        nextDodgeAction = determineNextDodgeAction()
         if not (localHumanoid and localHumanoid.Health > 0) then
             isPerformingAction = false
             isDodgePending = false
@@ -560,6 +549,16 @@ function KillAura.Init(UI, Core, notify)
         return true
     end
 
+    local function determineNextDodgeAction()
+        if State.AutoDodge.BlockingMode.Value == "Chance" then
+            local totalChance = State.AutoDodge.ParryingChance.Value + State.AutoDodge.RiposteChance.Value
+            local normalizedParryChance = totalChance > 0 and (State.AutoDodge.ParryingChance.Value / totalChance) or 0.5
+            nextDodgeAction = math.random() < normalizedParryChance and "Block (Parrying)" or "Parry (Riposte)"
+        else
+            nextDodgeAction = nil
+        end
+    end
+
     local function collectDodgeData()
         while true do
             task.wait(State.AutoDodge.Delay.Value)
@@ -608,6 +607,7 @@ function KillAura.Init(UI, Core, notify)
                 isDodgePending = false
                 desiredDodgeAction = nil
                 lastDodgeAction = nil
+                nextDodgeAction = nil
                 updateWarningText(nil, 0)
                 continue
             end
@@ -616,6 +616,7 @@ function KillAura.Init(UI, Core, notify)
                 isDodgePending = false
                 desiredDodgeAction = nil
                 lastDodgeAction = nil
+                nextDodgeAction = nil
                 updateWarningText(nil, 0)
                 continue
             end
@@ -628,6 +629,7 @@ function KillAura.Init(UI, Core, notify)
                 lastStance = nil
                 isDodgePending = false
                 desiredDodgeAction = nil
+                nextDodgeAction = nil
                 updateWarningText(nil, 0)
                 continue
             end
@@ -637,6 +639,7 @@ function KillAura.Init(UI, Core, notify)
                 lastStance = nil
                 isDodgePending = false
                 desiredDodgeAction = nil
+                nextDodgeAction = nil
                 updateWarningText(nil, 0)
                 continue
             end
@@ -648,6 +651,7 @@ function KillAura.Init(UI, Core, notify)
                         lastStance = stance
                         isDodgePending = false
                         desiredDodgeAction = nil
+                        nextDodgeAction = nil
                         updateWarningText(nil, 0)
                         continue
                     end
@@ -699,6 +703,7 @@ function KillAura.Init(UI, Core, notify)
                             lastStance = stance
                             isDodgePending = false
                             desiredDodgeAction = nil
+                            nextDodgeAction = nil
                             updateWarningText(nil, 0)
                             continue
                         end
@@ -709,6 +714,7 @@ function KillAura.Init(UI, Core, notify)
                             lastStance = stance
                             isDodgePending = false
                             desiredDodgeAction = nil
+                            nextDodgeAction = nil
                             updateWarningText(nil, 0)
                             continue
                         end
@@ -722,6 +728,7 @@ function KillAura.Init(UI, Core, notify)
                             lastStance = stance
                             isDodgePending = false
                             desiredDodgeAction = nil
+                            nextDodgeAction = nil
                             updateWarningText(nil, 0)
                             continue
                         elseif rand < normalizedParryChance * (1 - State.AutoDodge.MissChance.Value) then
@@ -729,9 +736,14 @@ function KillAura.Init(UI, Core, notify)
                         else
                             action = "Riposte"
                         end
+                        nextDodgeAction = action == "Parrying" and "Parry (Riposte)" or "Block (Parrying)"
                     end
                     if performDodgeAction(action, waitTime) then
                         lastDodgeTime = tick()
+                        if State.AutoDodge.BlockingMode.Value == "Chance" then
+                            determineNextDodgeAction()
+                            updateWarningText(nil, 0)
+                        end
                     end
                 elseif stance == "punching" and State.AutoDodge.Blocking.Value and State.AutoDodge.BlockingAntiStun.Value then
                     ChangeStance:FireServer("UnParry")
@@ -764,6 +776,7 @@ function KillAura.Init(UI, Core, notify)
                     isDodgePending = false
                     desiredDodgeAction = nil
                     lastDodgeAction = nil
+                    nextDodgeAction = nil
                     updateWarningText(nil, 0)
                 end
             end
@@ -852,11 +865,11 @@ function KillAura.Init(UI, Core, notify)
             return false
         end
         if State.LegitHelper.AutoDodgeSync.Value and State.AutoDodge.Enabled.Value and lastDodgeAction then
-            if lastDodgeAction == "Riposte" then
-                print("AutoKick skipped: Riposte mode active")
-                return false
-            elseif lastDodgeAction == "Parrying" then
+            if lastDodgeAction == "Parrying" then
                 task.wait(0.01)
+            elseif lastDodgeAction == "Riposte" and State.AutoDodge.BlockingMode.Value ~= "Riposte" then
+                print("AutoKick skipped: Riposte active and not in Riposte-only mode")
+                return false
             end
         end
         local settings = getWeaponSettings()
@@ -995,7 +1008,24 @@ function KillAura.Init(UI, Core, notify)
             if not (targetCharacter and targetHumanoid) then
                 continue
             end
-            if performAutoKick(closestTarget, targetCharacter, settings.weapon) then
+            if State.AutoDodge.BlockingMode.Value == "Riposte" and State.LegitHelper.AutoDodgeSync.Value and State.AutoDodge.Enabled.Value then
+                local stance = getPlayerStance(closestTarget)
+                if stance == "windup" and not isPerformingAction then
+                    if performAutoKick(closestTarget, targetCharacter, settings.weapon) then
+                        lastKickTime = tick()
+                        task.wait(0.1)
+                        if canTargetPlayer(closestTarget, State.AutoDodge.Range.Value, State.AutoDodge.TeamCheck.Value) then
+                            local releaseTime = lastReleaseTime or 0.3
+                            local dmgPointDistance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
+                            local waitTime = math.max(0.1, releaseTime * (State.AutoDodge.BaseMultiplier.Value + dmgPointDistance * State.AutoDodge.DistanceFactor.Value))
+                            if waitTime > State.AutoDodge.MaxWaitTime.Value then
+                                waitTime = releaseTime / 2
+                            end
+                            performDodgeAction("Riposte", waitTime)
+                        end
+                    end
+                end
+            elseif performAutoKick(closestTarget, targetCharacter, settings.weapon) then
                 lastKickTime = tick()
             end
         end
@@ -1131,6 +1161,7 @@ function KillAura.Init(UI, Core, notify)
             isDodgePending = false
             desiredDodgeAction = nil
             lastDodgeAction = nil
+            nextDodgeAction = nil
         end
     end)
 
@@ -1150,6 +1181,7 @@ function KillAura.Init(UI, Core, notify)
                         isDodgePending = false
                         desiredDodgeAction = nil
                         lastDodgeAction = nil
+                        nextDodgeAction = nil
                     end
                 end)
             end
@@ -1176,7 +1208,7 @@ function KillAura.Init(UI, Core, notify)
         warningTextLabel.TextScaled = true
         warningTextLabel.TextTransparency = 0
         warningTextLabel.Font = Enum.Font.SourceSansBold
-        warningTextLabel.Text = State.AutoDodge.BlockingMode.Value == "Chance" and ("Nothing\nNext: " .. determineNextDodgeAction()) or "Nothing"
+        warningTextLabel.Text = "Nothing"
         warningTextLabel.Parent = screenGui
 
         warningTextLabel.InputBegan:Connect(function(input)
@@ -1315,7 +1347,42 @@ function KillAura.Init(UI, Core, notify)
             end,
             'HighlightParryKA'
         })
-
+        UI.Sections.KillAura:Colorpicker({
+            Name = "Parry Color",
+            Default = State.KillAura.ParryColor.Default,
+            Callback = function(value)
+                State.KillAura.ParryColor.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Parry Color set to: R=" .. math.floor(value.R * 255) .. ", G=" .. math.floor(value.G * 255) .. ", B=" .. math.floor(value.B * 255))
+                end
+            end,
+            'ParryColorKA'
+        })
+        UI.Sections.KillAura:Colorpicker({
+            Name = "Block Color",
+            Default = State.KillAura.BlockColor.Default,
+            Callback = function(value)
+                State.KillAura.BlockColor.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Block Color set to: R=" .. math.floor(value.R * 255) .. ", G=" .. math.floor(value.G * 255) .. ", B=" .. math.floor(value.B * 255))
+                end
+            end,
+            'BlockColorKA'
+        })
+        UI.Sections.KillAura:Colorpicker({
+            Name = "Default Color",
+            Default = State.KillAura.DefaultColor.Default,
+            Callback = function(value)
+                State.KillAura.DefaultColor.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Default Color set to: R=" .. math.floor(value.R * 255) .. ", G=" .. math.floor(value.G * 255) .. ", B=" .. math.floor(value.B * 255))
+                end
+            end,
+            'DefaultColorKA'
+        })
 
         UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
         UI.Sections.LegitHelper:Header({ Name = "Legit Helper" })
@@ -1609,8 +1676,6 @@ function KillAura.Init(UI, Core, notify)
             Default = State.AutoDodge.BlockingMode.Default,
             Callback = function(value)
                 State.AutoDodge.BlockingMode.Value = value
-                nextDodgeAction = determineNextDodgeAction()
-                updateWarningText(nil, 0)
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("AutoDodge", "Blocking Mode set to: " .. value)
@@ -1627,8 +1692,6 @@ function KillAura.Init(UI, Core, notify)
             Suffix = "%",
             Callback = function(value)
                 State.AutoDodge.ParryingChance.Value = value
-                nextDodgeAction = determineNextDodgeAction()
-                updateWarningText(nil, 0)
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
                     notify("AutoDodge", "Parrying Chance set to: " .. value .. "%")
