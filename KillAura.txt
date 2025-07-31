@@ -63,9 +63,8 @@ function KillAura.Init(UI, Core, notify)
             RiposteMouseLockDuration = { Value = 1.5, Default = 1.5 },
             MaxWaitTime = { Value = 2.0, Default = 2.0 },
             ResolveAngle = { Value = false, Default = false },
-            AngleDelay = { Value = 0.1, Default = 0.1 },
-            PredictionTime = { Value = 0.1, Default = 0.1 },
-            DynamicPredictionTime = { Value = true, Default = true }
+            AngleDelay = { Value = 0.05, Default = 0.05 },
+            PredictionTime = { Value = 0.08, Default = 0.08 }
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -409,7 +408,7 @@ function KillAura.Init(UI, Core, notify)
 
     local function predictDamagePointPosition(dp, predictionTime)
         if not damagePointHistory[dp] then
-            damagePointHistory[dp] = {position = dp.WorldPosition, time = tick()}
+            damagePointHistory[dp] = {position = dp.WorldPosition, time = tick(), velocity = Vector3.new(0, 0, 0)}
             return dp.WorldPosition
         end
         local history = damagePointHistory[dp]
@@ -417,10 +416,12 @@ function KillAura.Init(UI, Core, notify)
         if deltaTime <= 0 then
             return dp.WorldPosition
         end
-        local velocity = (dp.WorldPosition - history.position) / deltaTime
+        local newVelocity = (dp.WorldPosition - history.position) / deltaTime
+        local acceleration = (newVelocity - history.velocity) / deltaTime
         history.position = dp.WorldPosition
+        history.velocity = newVelocity
         history.time = tick()
-        return dp.WorldPosition + velocity * predictionTime
+        return dp.WorldPosition + newVelocity * predictionTime + 0.5 * acceleration * predictionTime * predictionTime
     end
 
     local function findClosestDamagePoint(damagePoints, predictionTime)
@@ -438,10 +439,11 @@ function KillAura.Init(UI, Core, notify)
         return closestDP, minDistance
     end
 
-    local function calculateTimeToImpact(closestDP, predictionTime)
+    local function calculateTimeToImpact(closestDP, predictionTime, releaseTime)
         local playerPos = localRootPart.Position
         local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
-        local velocity = (predictedPos - closestDP.WorldPosition) / predictionTime
+        local history = damagePointHistory[closestDP]
+        local velocity = history and history.velocity or (predictedPos - closestDP.WorldPosition) / predictionTime
         local relativePos = playerPos - closestDP.WorldPosition
         local a = velocity:Dot(velocity)
         local b = 2 * relativePos:Dot(velocity)
@@ -459,52 +461,38 @@ function KillAura.Init(UI, Core, notify)
         if t < 0 then
             return math.huge
         end
-        return t
-    end
-
-    local function adjustPredictionTime(targetPlayer)
-        if not State.AutoDodge.DynamicPredictionTime.Value then
-            return State.AutoDodge.PredictionTime.Value
-        end
-        local weapon, settings = getTargetWeaponSettings(targetPlayer)
-        if settings and settings.Release then
-            return math.clamp(settings.Release * 0.5, 0.05, 0.2)
-        end
-        return State.AutoDodge.PredictionTime.Value
+        return math.min(t, releaseTime * 0.9) -- Ограничиваем временем Release
     end
 
     local function rotatePlayerToPosition(targetPos)
         if not localRootPart then
             return
         end
-        local playerPos = localRootPart.Position
-        local direction = (targetPos - playerPos).Unit
-        local lookAtCFrame = CFrame.new(Vector3.new(0, 0, 0), direction)
-        local currentPos = localRootPart.Position
-        localRootPart.CFrame = CFrame.new(currentPos) * lookAtCFrame
+        local direction = (targetPos - localRootPart.Position).Unit
+        local lookAtCFrame = CFrame.new(Vector3.new(0, 0, 0), Vector3.new(direction.X, 0, direction.Z))
+        localRootPart.CFrame = localRootPart.CFrame:Lerp(CFrame.new(localRootPart.Position) * lookAtCFrame, 0.5)
     end
 
-    local function trackDamagePoints(targetPlayer)
+    local function trackDamagePoints(targetPlayer, releaseTime)
         if not State.AutoDodge.ResolveAngle.Value then
             return
         end
         local weapon, settings = getTargetWeaponSettings(targetPlayer)
-        if not weapon then
+        if not weapon or not settings then
             return
         end
         local damagePoints = getBladeDamagePoints(weapon)
         if #damagePoints == 0 then
             return
         end
-        local predictionTime = adjustPredictionTime(targetPlayer)
-        local closestDP, minDistance = findClosestDamagePoint(damagePoints, predictionTime)
+        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
         if closestDP then
-            local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
+            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
             rotatePlayerToPosition(predictedPos)
         end
     end
 
-    local function performDodgeAction(action, waitTime)
+    local function performDodgeAction(action, waitTime, releaseTime)
         if isPerformingAction or tick() - lastDodgeTime < State.AutoDodge.DodgeCooldown.Value then
             isDodgePending = false
             desiredDodgeAction = nil
@@ -555,16 +543,15 @@ function KillAura.Init(UI, Core, notify)
         end
         if State.AutoDodge.ResolveAngle.Value then
             local weapon, settings = getTargetWeaponSettings(closestTarget)
-            if weapon then
+            if weapon and settings then
                 local damagePoints = getBladeDamagePoints(weapon)
                 if #damagePoints > 0 then
-                    local predictionTime = adjustPredictionTime(closestTarget)
-                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, predictionTime)
+                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
                     if closestDP then
-                        local timeToImpact = calculateTimeToImpact(closestDP, predictionTime)
+                        local timeToImpact = calculateTimeToImpact(closestDP, State.AutoDodge.PredictionTime.Value, settings.Release)
                         if timeToImpact < math.huge then
-                            waitTime = math.min(waitTime, timeToImpact * 0.8)
-                            local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
+                            waitTime = math.min(waitTime, timeToImpact * 0.85) -- Уменьшаем время для более быстрой реакции
+                            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
                             rotatePlayerToPosition(predictedPos)
                         end
                     end
@@ -757,7 +744,7 @@ function KillAura.Init(UI, Core, notify)
                 continue
             end
             if State.AutoDodge.ResolveAngle.Value then
-                trackDamagePoints(closestTarget)
+                trackDamagePoints(closestTarget, lastReleaseTime or 0.3)
             end
             local stance = getPlayerStance(closestTarget)
             if stance and stance ~= lastStance then
@@ -804,12 +791,12 @@ function KillAura.Init(UI, Core, notify)
                     if type(releaseTime) == "number" and releaseTime > 0 and dmgPointDistance ~= math.huge and dmgPointDistance == dmgPointDistance then
                         waitTime = math.max(0.1, releaseTime * (State.AutoDodge.BaseMultiplier.Value + dmgPointDistance * State.AutoDodge.DistanceFactor.Value))
                         if waitTime > State.AutoDodge.MaxWaitTime.Value then
-                            waitTime = releaseTime / 2
-                            warn("Complex waitTime calculation failed, using fallback: releaseTime / 2 = " .. waitTime)
+                            waitTime = releaseTime * 0.5
+                            warn("Complex waitTime calculation failed, using fallback: releaseTime * 0.5 = " .. waitTime)
                         end
                     else
-                        waitTime = releaseTime / 2
-                        warn("Invalid releaseTime or dmgPointDistance, using fallback: releaseTime / 2 = " .. waitTime)
+                        waitTime = releaseTime * 0.5
+                        warn("Invalid releaseTime or dmgPointDistance, using fallback: releaseTime * 0.5 = " .. waitTime)
                     end
                     local action
                     if State.AutoDodge.BlockingMode.Value == "Riposte" then
@@ -849,7 +836,7 @@ function KillAura.Init(UI, Core, notify)
                             action = "Riposte"
                         end
                     end
-                    if performDodgeAction(action, waitTime) then
+                    if performDodgeAction(action, waitTime, releaseTime) then
                         lastDodgeTime = tick()
                     end
                 elseif stance == "punching" and State.AutoDodge.Blocking.Value and State.AutoDodge.BlockingAntiStun.Value then
@@ -1094,7 +1081,6 @@ function KillAura.Init(UI, Core, notify)
 
     local function runAutoKick()
         while true do
-2500
             RunService.Heartbeat:Wait()
             if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
                 Core.BulwarkTarget.isAutoKick = false
