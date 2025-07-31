@@ -2,7 +2,6 @@ local LegitHelper = {}
 
 function LegitHelper.Init(UI, Core, notify)
     local Players = game:GetService("Players")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
     local LocalPlayer = Players.LocalPlayer
     local lastNotificationTime = 0
@@ -108,9 +107,9 @@ function LegitHelper.Init(UI, Core, notify)
         end
     end
 
-    -- Обновление Label и слайдеров в UI
+    -- Обновление UI элементов
     local function updateWeaponSettingsLabels()
-        if not UI.Sections.WeaponStat then
+        if not UI.Sections or not UI.Sections.WeaponStat then
             return
         end
         local settings, weapon = getLocalWeaponSettings()
@@ -128,11 +127,10 @@ function LegitHelper.Init(UI, Core, notify)
             return
         end
 
-        -- Сохраняем настройки при смене оружия
+        -- Сохраняем настройки и восстанавливаем значения слайдеров
         if weapon ~= currentWeapon then
             saveOriginalSettings(settings, weapon)
             currentWeapon = weapon
-            -- Восстанавливаем значения слайдеров из customSettings
             local custom = customSettings[weapon.Name] or {}
             UI.Sections.WeaponStat.DamageSlider:UpdateValue(custom.Damage or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Damage) or 0)
             UI.Sections.WeaponStat.WindupSlider:UpdateValue(custom.MinusWindup or 0.1)
@@ -142,10 +140,8 @@ function LegitHelper.Init(UI, Core, notify)
             UI.Sections.WeaponStat.StamDrainSlider:UpdateValue(custom.StamDrain or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamDrain) or 1)
             UI.Sections.WeaponStat.StamNegateSlider:UpdateValue(custom.StamNegate or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamNegate) or 1)
             UI.Sections.WeaponStat.LungeSlider:UpdateValue(custom.Lunge or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Lunge) or 1)
+            applyCustomSettings(settings, weapon)
         end
-
-        -- Применяем пользовательские настройки
-        applyCustomSettings(settings, weapon)
 
         -- Обновляем текст и видимость
         UI.Sections.WeaponStat.WeaponName:UpdateName("Weapon name: " .. weapon.Name)
@@ -188,7 +184,7 @@ function LegitHelper.Init(UI, Core, notify)
     task.wait(1)
 
     -- Настройка UI для LegitHelper
-    UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
+    UI.Sections.LegitHelper = UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
     UI.Sections.LegitHelper:Header({ Name = "Tool Exploit" })
     UI.Sections.LegitHelper:Toggle({
         Name = "Enabled",
@@ -209,7 +205,7 @@ function LegitHelper.Init(UI, Core, notify)
     })
 
     -- Настройка UI для WeaponStat
-    UI.Sections.WeaponStat = UI.Sections.WeaponStat or UI.Tabs.Combat:Section({ Name = "WeaponStat", Side = "Right" })
+    UI.Sections.WeaponStat = UI.Tabs.Combat:Section({ Name = "WeaponStat", Side = "Right" })
     UI.Sections.WeaponStat:Header({ Name = "Weapon Statistic" })
     UI.Sections.WeaponStat.WeaponName = UI.Sections.WeaponStat:Label({ Text = "Weapon name: Not found" }, "WeaponNameWS")
     UI.Sections.WeaponStat.WeaponName:SetVisibility(false)
@@ -223,8 +219,8 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].Damage = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
                     settings.Damage = value
                     updateWeaponSettingsLabels()
                 end
@@ -247,9 +243,9 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].MinusWindup = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
-                    settings.Windup = math.max(0, (originalSettings[currentWeapon.Name].Windup or settings.Windup) - value)
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Windup = math.max(0, (originalSettings[weapon.Name].Windup or settings.Windup) - value)
                     updateWeaponSettingsLabels()
                 end
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -271,9 +267,9 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].MinusRelease = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
-                    settings.Release = math.max(0, (originalSettings[currentWeapon.Name].Release or settings.Release) - value)
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Release = math.max(0, (originalSettings[weapon.Name].Release or settings.Release) - value)
                     updateWeaponSettingsLabels()
                 end
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -295,9 +291,9 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].MinusRecovery = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
-                    settings.Recovery = math.max(0, (originalSettings[currentWeapon.Name].Recovery or settings.Recovery) - value)
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Recovery = math.max(0, (originalSettings[weapon.Name].Recovery or settings.Recovery) - value)
                     updateWeaponSettingsLabels()
                 end
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -319,8 +315,8 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].MissCost = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
                     settings.MissCost = value
                     updateWeaponSettingsLabels()
                 end
@@ -343,8 +339,8 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].StamDrain = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
                     settings.StamDrain = value
                     updateWeaponSettingsLabels()
                 end
@@ -364,18 +360,17 @@ function LegitHelper.Init(UI, Core, notify)
         Default = 1,
         Precision = 0,
         Callback = function(value)
-            if currentWeapon then
-                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
-                customSettings[currentWeapon.Name].StamNegate = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
-                    settings.StamNegate = value
-                    updateWeaponSettingsLabels()
-                end
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("WeaponStat", "StamNegate set to: " .. value)
-                end
+            if not currentWeapon then return end
+            customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+            customSettings[currentWeapon.Name].StamNegate = value
+            local settings, weapon = getLocalWeaponSettings()
+            if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
+                settings.StamNegate = value
+                updateWeaponSettingsLabels()
+            end
+            if tick() - lastNotificationTime >= notificationDelay then
+                lastNotificationTime = tick()
+                notify("WeaponStat", "StamNegate set to: " .. value)
             end
         end,
         "StamNegateSliderWS"
@@ -391,8 +386,8 @@ function LegitHelper.Init(UI, Core, notify)
             if currentWeapon then
                 customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
                 customSettings[currentWeapon.Name].Lunge = value
-                local settings = getLocalWeaponSettings()
-                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                local settings, weapon = getLocalWeaponSettings()
+                if settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value then
                     settings.Lunge = value
                     updateWeaponSettingsLabels()
                 end
