@@ -64,7 +64,8 @@ function KillAura.Init(UI, Core, notify)
             MaxWaitTime = { Value = 2.0, Default = 2.0 },
             ResolveAngle = { Value = false, Default = false },
             AngleDelay = { Value = 0.1, Default = 0.1 },
-            PredictionTime = { Value = 0.1, Default = 0.1 }
+            PredictionTime = { Value = 0.1, Default = 0.1 },
+            DynamicPredictionTime = { Value = true, Default = true }
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -461,11 +462,33 @@ function KillAura.Init(UI, Core, notify)
         return t
     end
 
+    local function adjustPredictionTime(targetPlayer)
+        if not State.AutoDodge.DynamicPredictionTime.Value then
+            return State.AutoDodge.PredictionTime.Value
+        end
+        local weapon, settings = getTargetWeaponSettings(targetPlayer)
+        if settings and settings.Release then
+            return math.clamp(settings.Release * 0.5, 0.05, 0.2)
+        end
+        return State.AutoDodge.PredictionTime.Value
+    end
+
+    local function rotatePlayerToPosition(targetPos)
+        if not localRootPart then
+            return
+        end
+        local playerPos = localRootPart.Position
+        local direction = (targetPos - playerPos).Unit
+        local lookAtCFrame = CFrame.new(Vector3.new(0, 0, 0), direction)
+        local currentPos = localRootPart.Position
+        localRootPart.CFrame = CFrame.new(currentPos) * lookAtCFrame
+    end
+
     local function trackDamagePoints(targetPlayer)
         if not State.AutoDodge.ResolveAngle.Value then
             return
         end
-        local weapon, _ = getTargetWeaponSettings(targetPlayer)
+        local weapon, settings = getTargetWeaponSettings(targetPlayer)
         if not weapon then
             return
         end
@@ -473,11 +496,11 @@ function KillAura.Init(UI, Core, notify)
         if #damagePoints == 0 then
             return
         end
-        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
+        local predictionTime = adjustPredictionTime(targetPlayer)
+        local closestDP, minDistance = findClosestDamagePoint(damagePoints, predictionTime)
         if closestDP then
-            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
-            local camera = workspace.CurrentCamera
-            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPos)
+            local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
+            rotatePlayerToPosition(predictedPos)
         end
     end
 
@@ -531,18 +554,18 @@ function KillAura.Init(UI, Core, notify)
             warn("waitTime exceeded MaxWaitTime, using fallback: 0.3")
         end
         if State.AutoDodge.ResolveAngle.Value then
-            local weapon, _ = getTargetWeaponSettings(closestTarget)
+            local weapon, settings = getTargetWeaponSettings(closestTarget)
             if weapon then
                 local damagePoints = getBladeDamagePoints(weapon)
                 if #damagePoints > 0 then
-                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
+                    local predictionTime = adjustPredictionTime(closestTarget)
+                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, predictionTime)
                     if closestDP then
-                        local timeToImpact = calculateTimeToImpact(closestDP, State.AutoDodge.PredictionTime.Value)
+                        local timeToImpact = calculateTimeToImpact(closestDP, predictionTime)
                         if timeToImpact < math.huge then
-                            waitTime = math.min(waitTime, timeToImpact * 0.9) -- Уменьшаем время для реакции
-                            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
-                            local camera = workspace.CurrentCamera
-                            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPos)
+                            waitTime = math.min(waitTime, timeToImpact * 0.8)
+                            local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
+                            rotatePlayerToPosition(predictedPos)
                         end
                     end
                 end
@@ -1071,6 +1094,7 @@ function KillAura.Init(UI, Core, notify)
 
     local function runAutoKick()
         while true do
+2500
             RunService.Heartbeat:Wait()
             if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
                 Core.BulwarkTarget.isAutoKick = false
