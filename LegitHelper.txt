@@ -42,7 +42,6 @@ function LegitHelper.Init(UI, Core, notify)
         end
         local success, settings = pcall(require, settingsModule)
         if not success or not settings or not settings.Type then
-            warn("Failed to load weapon settings for " .. weapon.Name)
             return nil, nil
         end
         return settings, weapon
@@ -61,7 +60,6 @@ function LegitHelper.Init(UI, Core, notify)
                 StamNegate = settings.StamNegate,
                 Lunge = settings.Lunge
             }
-            warn("Saved original settings for " .. weapon.Name)
         end
     end
 
@@ -74,7 +72,6 @@ function LegitHelper.Init(UI, Core, notify)
                 for key, value in pairs(originalSettings[weapon.Name]) do
                     settings[key] = value
                 end
-                warn("Restored original settings for " .. weapon.Name)
             end
         end
     end
@@ -109,16 +106,14 @@ function LegitHelper.Init(UI, Core, notify)
         if custom.Lunge then
             settings.Lunge = custom.Lunge
         end
-        warn("Applied custom settings for " .. weapon.Name)
     end
 
     -- Обновление Label и слайдеров в UI
     local function updateWeaponSettingsLabels()
-        local settings, weapon = getLocalWeaponSettings()
         if not UI.Sections.WeaponStat then
             return
         end
-
+        local settings, weapon = getLocalWeaponSettings()
         if not settings or not weapon then
             UI.Sections.WeaponStat.WeaponName:SetVisibility(false)
             UI.Sections.WeaponStat.DamageSlider:SetVisibility(false)
@@ -137,19 +132,19 @@ function LegitHelper.Init(UI, Core, notify)
         if weapon ~= currentWeapon then
             saveOriginalSettings(settings, weapon)
             currentWeapon = weapon
-            -- Восстанавливаем значения слайдеров из customSettings, если они есть
+            -- Восстанавливаем значения слайдеров из customSettings
             local custom = customSettings[weapon.Name] or {}
-            UI.Sections.WeaponStat.DamageSlider:SetValue(custom.Damage or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Damage) or 0)
-            UI.Sections.WeaponStat.WindupSlider:SetValue(custom.MinusWindup or 0.1)
-            UI.Sections.WeaponStat.ReleaseSlider:SetValue(custom.MinusRelease or 0.1)
-            UI.Sections.WeaponStat.RecoverySlider:SetValue(custom.MinusRecovery or 0.1)
-            UI.Sections.WeaponStat.MissCostSlider:SetValue(custom.MissCost or (originalSettings[weapon.Name] and originalSettings[weapon.Name].MissCost) or 1)
-            UI.Sections.WeaponStat.StamDrainSlider:SetValue(custom.StamDrain or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamDrain) or 1)
-            UI.Sections.WeaponStat.StamNegateSlider:SetValue(custom.StamNegate or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamNegate) or 1)
-            UI.Sections.WeaponStat.LungeSlider:SetValue(custom.Lunge or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Lunge) or 1)
+            UI.Sections.WeaponStat.DamageSlider:UpdateValue(custom.Damage or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Damage) or 0)
+            UI.Sections.WeaponStat.WindupSlider:UpdateValue(custom.MinusWindup or 0.1)
+            UI.Sections.WeaponStat.ReleaseSlider:UpdateValue(custom.MinusRelease or 0.1)
+            UI.Sections.WeaponStat.RecoverySlider:UpdateValue(custom.MinusRecovery or 0.1)
+            UI.Sections.WeaponStat.MissCostSlider:UpdateValue(custom.MissCost or (originalSettings[weapon.Name] and originalSettings[weapon.Name].MissCost) or 1)
+            UI.Sections.WeaponStat.StamDrainSlider:UpdateValue(custom.StamDrain or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamDrain) or 1)
+            UI.Sections.WeaponStat.StamNegateSlider:UpdateValue(custom.StamNegate or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamNegate) or 1)
+            UI.Sections.WeaponStat.LungeSlider:UpdateValue(custom.Lunge or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Lunge) or 1)
         end
 
-        -- Применяем пользовательские настройки, если ToolExploit включён
+        -- Применяем пользовательские настройки
         applyCustomSettings(settings, weapon)
 
         -- Обновляем текст и видимость
@@ -186,9 +181,11 @@ function LegitHelper.Init(UI, Core, notify)
 
     -- Проверка существования UI.Tabs.Combat
     if not UI.Tabs or not UI.Tabs.Combat then
-        warn("Combat tab not found in UI.Tabs. Please ensure it is initialized.")
         return
     end
+
+    -- Ожидание 1 секунды перед созданием секций
+    task.wait(1)
 
     -- Настройка UI для LegitHelper
     UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
