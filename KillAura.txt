@@ -64,8 +64,7 @@ function KillAura.Init(UI, Core, notify)
             MaxWaitTime = { Value = 2.0, Default = 2.0 },
             ResolveAngle = { Value = false, Default = false },
             AngleDelay = { Value = 0.1, Default = 0.1 },
-            PredictionTime = { Value = 0.1, Default = 0.1 },
-            HitboxRadius = { Value = 3, Default = 3 } -- Радиус хитбокса игрока
+            PredictionTime = { Value = 0.1, Default = 0.1 }
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -107,7 +106,7 @@ function KillAura.Init(UI, Core, notify)
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
 
-    local damagePointHistory = {} -- Хранение истории позиций DamagePoint
+    local damagePointHistory = {} -- Таблица для хранения истории позиций DamagePoint'ов
 
     local function getPlayerStance(player)
         local character = player.Character
@@ -420,67 +419,66 @@ function KillAura.Init(UI, Core, notify)
         local velocity = (dp.WorldPosition - history.position) / deltaTime
         history.position = dp.WorldPosition
         history.time = tick()
-        return dp.WorldPosition + velocity * predictionTime, velocity
+        return dp.WorldPosition + velocity * predictionTime
     end
 
-    local function willDamagePointHitPlayer(dp, predictionTime, playerPos, hitboxRadius)
-        local predictedPos, velocity = predictDamagePointPosition(dp, predictionTime)
-        if not velocity then
-            return false, predictedPos
-        end
-        local direction = velocity.Unit
-        local dpPos = dp.WorldPosition
-        local relativePos = playerPos - dpPos
-        local projection = relativePos:Dot(direction)
-        local closestPointOnLine = dpPos + direction * projection
-        local distanceToLine = (playerPos - closestPointOnLine).Magnitude
-        if distanceToLine < hitboxRadius then
-            local timeToClosest = projection / velocity.Magnitude
-            if timeToClosest >= 0 and timeToClosest <= predictionTime then
-                return true, predictedPos
-            end
-        end
-        return false, predictedPos
-    end
-
-    local function findClosestDamagePoint(damagePoints, predictionTime, playerPos, hitboxRadius)
+    local function findClosestDamagePoint(damagePoints, predictionTime)
         local minDistance = math.huge
         local closestDP = nil
-        local willHit = false
-        local predictedPos = nil
+        local playerPos = localRootPart.Position
         for _, dp in pairs(damagePoints) do
-            local hit, pos = willDamagePointHitPlayer(dp, predictionTime, playerPos, hitboxRadius)
-            if hit then
-                local distance = (playerPos - pos).Magnitude
-                if distance < minDistance then
-                    minDistance = distance
-                    closestDP = dp
-                    willHit = true
-                    predictedPos = pos
-                end
+            local predictedPos = predictDamagePointPosition(dp, predictionTime)
+            local distance = (playerPos - predictedPos).Magnitude
+            if distance < minDistance then
+                minDistance = distance
+                closestDP = dp
             end
         end
-        if not willHit then
-            for _, dp in pairs(damagePoints) do
-                local pos = predictDamagePointPosition(dp, predictionTime)
-                local distance = (playerPos - pos).Magnitude
-                if distance < minDistance then
-                    minDistance = distance
-                    closestDP = dp
-                    predictedPos = pos
-                end
-            end
-        end
-        return closestDP, minDistance, willHit, predictedPos
+        return closestDP, minDistance
     end
 
-    local function rotatePlayerToPosition(position)
-        if not localRootPart then
+    local function calculateTimeToImpact(closestDP, predictionTime)
+        local playerPos = localRootPart.Position
+        local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
+        local velocity = (predictedPos - closestDP.WorldPosition) / predictionTime
+        local relativePos = playerPos - closestDP.WorldPosition
+        local a = velocity:Dot(velocity)
+        local b = 2 * relativePos:Dot(velocity)
+        local c = relativePos:Dot(relativePos)
+        local discriminant = b*b - 4*a*c
+        if discriminant < 0 then
+            return math.huge
+        end
+        local t1 = (-b + math.sqrt(discriminant)) / (2*a)
+        local t2 = (-b - math.sqrt(discriminant)) / (2*a)
+        local t = math.min(t1, t2)
+        if t < 0 then
+            t = math.max(t1, t2)
+        end
+        if t < 0 then
+            return math.huge
+        end
+        return t
+    end
+
+    local function trackDamagePoints(targetPlayer)
+        if not State.AutoDodge.ResolveAngle.Value then
             return
         end
-        local direction = (position - localRootPart.Position).Unit
-        local newCFrame = CFrame.new(localRootPart.Position, localRootPart.Position + direction * Vector3.new(1, 0, 1))
-        localRootPart.CFrame = newCFrame
+        local weapon, _ = getTargetWeaponSettings(targetPlayer)
+        if not weapon then
+            return
+        end
+        local damagePoints = getBladeDamagePoints(weapon)
+        if #damagePoints == 0 then
+            return
+        end
+        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
+        if closestDP then
+            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
+            local camera = workspace.CurrentCamera
+            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPos)
+        end
     end
 
     local function performDodgeAction(action, waitTime)
@@ -537,20 +535,14 @@ function KillAura.Init(UI, Core, notify)
             if weapon then
                 local damagePoints = getBladeDamagePoints(weapon)
                 if #damagePoints > 0 then
-                    local playerPos = localRootPart.Position
-                    local closestDP, minDistance, willHit, predictedPos = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value, playerPos, State.AutoDodge.HitboxRadius.Value)
+                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
                     if closestDP then
-                        if willHit then
-                            rotatePlayerToPosition(predictedPos)
-                            local velocity = (predictedPos - closestDP.WorldPosition).Magnitude / State.AutoDodge.PredictionTime.Value
-                            if velocity > 0 then
-                                waitTime = math.min(waitTime, minDistance / velocity * 0.9)
-                            end
-                        else
-                            isPerformingAction = false
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            return false
+                        local timeToImpact = calculateTimeToImpact(closestDP, State.AutoDodge.PredictionTime.Value)
+                        if timeToImpact < math.huge then
+                            waitTime = math.min(waitTime, timeToImpact * 0.9) -- Уменьшаем время для реакции
+                            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
+                            local camera = workspace.CurrentCamera
+                            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPos)
                         end
                     end
                 end
@@ -740,6 +732,9 @@ function KillAura.Init(UI, Core, notify)
                 desiredDodgeAction = nil
                 Core.BulwarkTarget.CombatState = nil
                 continue
+            end
+            if State.AutoDodge.ResolveAngle.Value then
+                trackDamagePoints(closestTarget)
             end
             local stance = getPlayerStance(closestTarget)
             if stance and stance ~= lastStance then
@@ -1851,46 +1846,6 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'RiposteChanceAD'
-        })
-        UI.Sections.AutoDodge:Slider({
-            Name = "Miss Chance",
-            Minimum = 0,
-            Maximum = 1,
-            Default = State.AutoDodge.MissChance.Default,
-            Precision = 1,
-            Callback = function(value)
-                State.AutoDodge.MissChance.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("AutoDodge", "Miss Chance set to: " .. value)
-                end
-            end,
-            'MissChanceAD'
-        })
-        UI.Sections.AutoDodge:Divider()
-        UI.Sections.AutoDodge:Toggle({
-            Name = "Legit Block",
-            Default = State.AutoDodge.LegitBlock.Default,
-            Callback = function(value)
-                State.AutoDodge.LegitBlock.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("AutoDodge", "Legit Block " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'LegitBlockAD'
-        })
-        UI.Sections.AutoDodge:Toggle({
-            Name = "Legit Parry",
-            Default = State.AutoDodge.LegitParry.Default,
-            Callback = function(value)
-                State.AutoDodge.LegitParry.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("AutoDodge", "Legit Parry " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'LegitParryAD'
         })
     end
 end
