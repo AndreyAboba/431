@@ -81,11 +81,30 @@ function LegitHelper.Init(UI, Core, notify)
     -- Обновление Label в UI
     local function updateWeaponSettingsLabels()
         local settings, weapon = getLocalWeaponSettings()
-        if not settings or not weapon or not UI.Sections.LegitHelper then
-            if UI.Sections.LegitHelper then
-                UI.Sections.LegitHelper.WeaponName:SetVisibility(false)
-                UI.Sections.LegitHelper.SettingsLabel:SetVisibility(false)
-            end
+        if not UI.Sections.LegitHelper then
+            return
+        end
+
+        if not settings or not weapon then
+            UI.Sections.LegitHelper.WeaponName:UpdateName("Weapon name: Not found")
+            UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
+            UI.Sections.LegitHelper.DamageLabel:UpdateName("Damage: Not found")
+            UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.WindupLabel:UpdateName("Windup: Not found")
+            UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.ReleaseLabel:UpdateName("Release: Not found")
+            UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.RecoveryLabel:UpdateName("Recovery: Not found")
+            UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.MissCostLabel:UpdateName("MissCost: Not found")
+            UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.StamDrainLabel:UpdateName("StamDrain: Not found")
+            UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.StamNegateLabel:UpdateName("StamNegate: Not found")
+            UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
+            UI.Sections.LegitHelper.LungeLabel:UpdateName("Lunge: Not found")
+            UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
+            currentWeapon = nil
             return
         end
 
@@ -95,24 +114,25 @@ function LegitHelper.Init(UI, Core, notify)
             currentWeapon = weapon
         end
 
-        -- Формируем строку для всех характеристик
-        local settingsText = string.format(
-            "Damage: %s\nWindup: %s\nRelease: %s\nRecovery: %s\nMissCost: %s\nStamDrain: %s\nStamNegate: %s\nLunge: %s",
-            tostring(settings.Damage or "not found"),
-            tostring(settings.Windup or "not found"),
-            tostring(settings.Release or "not found"),
-            tostring(settings.Recovery or "not found"),
-            tostring(settings.MissCost or "not found"),
-            tostring(settings.StamDrain or "not found"),
-            tostring(settings.StamNegate or "not found"),
-            tostring(settings.Lunge or "not found")
-        )
-
         -- Обновляем текст и видимость Label
         UI.Sections.LegitHelper.WeaponName:UpdateName("Weapon name: " .. weapon.Name)
         UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
-        UI.Sections.LegitHelper.SettingsLabel:UpdateName(settingsText)
-        UI.Sections.LegitHelper.SettingsLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.DamageLabel:UpdateName("Damage: " .. tostring(settings.Damage or "Not found"))
+        UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.WindupLabel:UpdateName("Windup: " .. tostring(settings.Windup or "Not found"))
+        UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.ReleaseLabel:UpdateName("Release: " .. tostring(settings.Release or "Not found"))
+        UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.RecoveryLabel:UpdateName("Recovery: " .. tostring(settings.Recovery or "Not found"))
+        UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.MissCostLabel:UpdateName("MissCost: " .. tostring(settings.MissCost or "Not found"))
+        UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.StamDrainLabel:UpdateName("StamDrain: " .. tostring(settings.StamDrain or "Not found"))
+        UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.StamNegateLabel:UpdateName("StamNegate: " .. tostring(settings.StamNegate or "Not found"))
+        UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
+        UI.Sections.LegitHelper.LungeLabel:UpdateName("Lunge: " .. tostring(settings.Lunge or "Not found"))
+        UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
     end
 
     -- Мониторинг текущего оружия
@@ -127,7 +147,6 @@ function LegitHelper.Init(UI, Core, notify)
     end
 
     -- Проверка существования секции LegitHelper
-    wait(1)
     if not UI.Tabs or not UI.Tabs.Combat or not UI.Sections.LegitHelper then
         warn("LegitHelper section not found in UI.Tabs.Combat. Please ensure it is initialized.")
         return
@@ -149,11 +168,28 @@ function LegitHelper.Init(UI, Core, notify)
                 notify("ToolExploit", "Tool Exploit " .. (value and "Enabled" or "Disabled"), true)
             end
         end,
-    }, "ToolExploitEnabledLH" )
+        "ToolExploitEnabledLH"
+    })
     UI.Sections.LegitHelper:Divider()
     UI.Sections.LegitHelper:Header({ Name = "Weapon Settings" })
-    UI.Sections.LegitHelper.WeaponName = UI.Sections.LegitHelper:Label({ Text = "Weapon name: None" }, "WeaponNameLH")
-    UI.Sections.LegitHelper.SettingsLabel = UI.Sections.LegitHelper:Label({ Text = "No settings available" }, "SettingsLabelLH")
+    UI.Sections.LegitHelper.WeaponName = UI.Sections.LegitHelper:Label({ Text = "Weapon name: Not found" }, "WeaponNameLH")
+    UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
+    UI.Sections.LegitHelper.DamageLabel = UI.Sections.LegitHelper:Label({ Text = "Damage: Not found" }, "DamageLabelLH")
+    UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.WindupLabel = UI.Sections.LegitHelper:Label({ Text = "Windup: Not found" }, "WindupLabelLH")
+    UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.ReleaseLabel = UI.Sections.LegitHelper:Label({ Text = "Release: Not found" }, "ReleaseLabelLH")
+    UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.RecoveryLabel = UI.Sections.LegitHelper:Label({ Text = "Recovery: Not found" }, "RecoveryLabelLH")
+    UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.MissCostLabel = UI.Sections.LegitHelper:Label({ Text = "MissCost: Not found" }, "MissCostLabelLH")
+    UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.StamDrainLabel = UI.Sections.LegitHelper:Label({ Text = "StamDrain: Not found" }, "StamDrainLabelLH")
+    UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.StamNegateLabel = UI.Sections.LegitHelper:Label({ Text = "StamNegate: Not found" }, "StamNegateLabelLH")
+    UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
+    UI.Sections.LegitHelper.LungeLabel = UI.Sections.LegitHelper:Label({ Text = "Lunge: Not found" }, "LungeLabelLH")
+    UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
 
     task.spawn(runWeaponSettingsMonitor)
 end
