@@ -28,7 +28,7 @@ function KillAura.Init(UI, Core, notify)
             HighlightParry = { Value = true, Default = true },
             TeamCheck = { Value = true, Default = true },
             DynamicCooldown = { Value = false, Default = false },
-            CooldownValues = { Value = {0.1, 0.15, 0.2, 0.3}, Default = {0.1, 0.15, 0.2, 0.3} },
+            DynamicDelays = { Value = {0.05, 0.1, 0.15, 0.2}, Default = {0.05, 0.1, 0.15, 0.2} },
             ParryColor = { Value = Color3.fromRGB(0, 162, 255), Default = Color3.fromRGB(0, 162, 255) },
             BlockColor = { Value = Color3.fromRGB(0, 255, 0), Default = Color3.fromRGB(0, 255, 0) },
             DefaultColor = { Value = Color3.fromRGB(255, 0, 0), Default = Color3.fromRGB(255, 0, 0) },
@@ -61,7 +61,9 @@ function KillAura.Init(UI, Core, notify)
             Blocking = { Value = true, Default = true },
             BlockingAntiStun = { Value = true, Default = true },
             RiposteMouseLockDuration = { Value = 1.5, Default = 1.5 },
-            MaxWaitTime = { Value = 2.0, Default = 2.0 }
+            MaxWaitTime = { Value = 2.0, Default = 2.0 },
+            ResolveAngle = { Value = false, Default = false },
+            AngleDelay = { Value = 0.1, Default = 0.1 }
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -388,6 +390,32 @@ function KillAura.Init(UI, Core, notify)
         end
     end
 
+    local function trackDamagePoints(targetPlayer)
+        if not State.AutoDodge.ResolveAngle.Value then
+            return
+        end
+        local weapon, _ = getTargetWeaponSettings(targetPlayer)
+        if not weapon then
+            return
+        end
+        local damagePoints = {}
+        for _, part in pairs(weapon:GetDescendants()) do
+            if part.Name == "DmgPoint" and part:IsA("Attachment") then
+                table.insert(damagePoints, part)
+            end
+        end
+        if #damagePoints == 0 then
+            return
+        end
+        local totalPosition = Vector3.new(0, 0, 0)
+        for _, dp in pairs(damagePoints) do
+            totalPosition = totalPosition + dp.WorldPosition
+        end
+        local centerPosition = totalPosition / #damagePoints
+        local camera = workspace.CurrentCamera
+        camera.CFrame = CFrame.new(camera.CFrame.Position, centerPosition)
+    end
+
     local function performDodgeAction(action, waitTime)
         if isPerformingAction or tick() - lastDodgeTime < State.AutoDodge.DodgeCooldown.Value then
             isDodgePending = false
@@ -436,6 +464,9 @@ function KillAura.Init(UI, Core, notify)
         if waitTime > State.AutoDodge.MaxWaitTime.Value then
             waitTime = 0.3
             warn("waitTime exceeded MaxWaitTime, using fallback: 0.3")
+        end
+        if State.AutoDodge.ResolveAngle.Value then
+            waitTime = waitTime + State.AutoDodge.AngleDelay.Value
         end
 
         local animationTrack
@@ -621,6 +652,9 @@ function KillAura.Init(UI, Core, notify)
                 desiredDodgeAction = nil
                 Core.BulwarkTarget.CombatState = nil
                 continue
+            end
+            if State.AutoDodge.ResolveAngle.Value then
+                trackDamagePoints(closestTarget)
             end
             local stance = getPlayerStance(closestTarget)
             if stance and stance ~= lastStance then
@@ -1072,16 +1106,17 @@ function KillAura.Init(UI, Core, notify)
             end
             if not attacked then
                 if State.KillAura.DynamicCooldown.Value then
-                    local cooldown = (stance == "riposte") and math.max(table.unpack(State.KillAura.CooldownValues.Value)) or State.KillAura.CooldownValues.Value[math.random(1, #State.KillAura.CooldownValues.Value)]
-                    warn("Dynamic Cooldown: Waiting " .. cooldown .. " seconds before attack")
-                    task.wait(cooldown)
+                    local delays = State.KillAura.DynamicDelays.Value
+                    local randomDelay = delays[math.random(1, #delays)]
+                    warn("Dynamic Cooldown: Waiting " .. randomDelay .. " seconds before attack")
+                    task.wait(randomDelay)
                 end
                 Core.BulwarkTarget.CombatState = "KillAura"
                 ChangeStance:FireServer("Windup")
                 task.wait(settings.windupTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to Riposte")
+                    warn("Attack cancelled due to target invalidation")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1092,7 +1127,7 @@ function KillAura.Init(UI, Core, notify)
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to Riposte")
+                    warn("Attack cancelled due to stance change")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1100,7 +1135,7 @@ function KillAura.Init(UI, Core, notify)
                 task.wait(settings.releaseTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to Riposte")
+                    warn("Attack cancelled due to target invalidation")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1111,7 +1146,7 @@ function KillAura.Init(UI, Core, notify)
                 end
                 if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to Riposte")
+                    warn("Attack cancelled due to stance change")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1120,7 +1155,7 @@ function KillAura.Init(UI, Core, notify)
                     targetCharacter:FindFirstChild("HumanoidRootPart")
                 if not targetHandle then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to Riposte")
+                    warn("Attack cancelled due to missing target handle")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1282,6 +1317,18 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'AttackCooldownKA'
+        })
+        UI.Sections.KillAura:Toggle({
+            Name = "Dynamic Cooldown",
+            Default = State.KillAura.DynamicCooldown.Default,
+            Callback = function(value)
+                State.KillAura.DynamicCooldown.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("KillAura", "Dynamic Cooldown " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'DynamicCooldownKA'
         })
         UI.Sections.KillAura:Divider()
         UI.Sections.KillAura:Toggle({
@@ -1628,6 +1675,18 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'UseClientIdleAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Resolve Angle",
+            Default = State.AutoDodge.ResolveAngle.Default,
+            Callback = function(value)
+                State.AutoDodge.ResolveAngle.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Resolve Angle " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'ResolveAngleAD'
         })
         UI.Sections.AutoDodge:Divider()
 
