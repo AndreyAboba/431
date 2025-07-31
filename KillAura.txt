@@ -48,7 +48,7 @@ function KillAura.Init(UI, Core, notify)
             UseClientIdle = { Value = false, Default = false },
             WarningText = { Value = false, Default = false },
             WarningTextScale = { Value = 1, Default = 1 },
-            WarningTextPosition = { Value = UDim2.new(0.5, -100, 0.1, 0), Default = UDim2.new(0.5, -100, 0.1, 0) },
+            WarningTextPosition = { Value = UDim2.new(0.5, -100, 0-1, 0), Default = UDim2.new(0.5, -100, 0.1, 0) },
             BlockingMode = { Value = "Chance", Default = "Chance" },
             ParryingChance = { Value = 50, Default = 50 },
             RiposteChance = { Value = 50, Default = 50 },
@@ -218,6 +218,7 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function getDistanceToPlayer(targetPlayer)
+       an's
         local targetRootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         if targetRootPart and localRootPart then
             local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
@@ -294,14 +295,15 @@ function KillAura.Init(UI, Core, notify)
                 targetHighlight = nil
             end
             currentTarget = player
-            Core.BulwarkTarget.CurrentTarget = player.Name
-            Core.BulwarkTarget.UniversalTarget = player.Name
+            local character = player.Character
             targetHighlight = Instance.new("Highlight")
             targetHighlight.Name = "TargetHighlight"
-            targetHighlight.Parent = player.Character
-            targetHighlight.Adornee = player.Character
+            targetHighlight.Parent = character
+            targetHighlight.Adornee = character
             targetHighlight.FillTransparency = 0.5
             targetHighlight.OutlineTransparency = 0
+            Core.BulwarkTarget.CurrentTarget = player.Name
+            Core.BulwarkTarget.UniversalTarget = player.Name
         end
         local stance = getPlayerStance(player)
         if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.HighlightBlock.Value then
@@ -422,6 +424,18 @@ function KillAura.Init(UI, Core, notify)
         return dp.WorldPosition + velocity * predictionTime
     end
 
+    local function willDamagePointHit(dp, predictionTime, playerPos)
+        local predictedPos = predictDamagePointPosition(dp, predictionTime)
+        local velocity = (predictedPos - dp.WorldPosition) / predictionTime
+        local direction = velocity.Unit
+        local ray = Ray.new(dp.WorldPosition, direction * 100)
+        local hit, position = workspace:FindPartOnRay(ray, localCharacter, false, true)
+        if hit and hit:IsDescendantOf(localCharacter) then
+            return true, (position - playerPos).Magnitude / velocity.Magnitude
+        end
+        return false, math.huge
+    end
+
     local function findClosestDamagePoint(damagePoints, predictionTime)
         local minDistance = math.huge
         local closestDP = nil
@@ -437,48 +451,14 @@ function KillAura.Init(UI, Core, notify)
         return closestDP, minDistance
     end
 
-    local function calculateTimeToImpact(closestDP, predictionTime)
-        local playerPos = localRootPart.Position
-        local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
-        local velocity = (predictedPos - closestDP.WorldPosition) / predictionTime
-        local relativePos = playerPos - closestDP.WorldPosition
-        local a = velocity:Dot(velocity)
-        local b = 2 * relativePos:Dot(velocity)
-        local c = relativePos:Dot(relativePos)
-        local discriminant = b*b - 4*a*c
-        if discriminant < 0 then
-            return math.huge
-        end
-        local t1 = (-b + math.sqrt(discriminant)) / (2*a)
-        local t2 = (-b - math.sqrt(discriminant)) / (2*a)
-        local t = math.min(t1, t2)
-        if t < 0 then
-            t = math.max(t1, t2)
-        end
-        if t < 0 then
-            return math.huge
-        end
-        return t
-    end
-
-    local function trackDamagePoints(targetPlayer)
-        if not State.AutoDodge.ResolveAngle.Value then
-            return
-        end
-        local weapon, _ = getTargetWeaponSettings(targetPlayer)
-        if not weapon then
-            return
-        end
-        local damagePoints = getBladeDamagePoints(weapon)
-        if #damagePoints == 0 then
-            return
-        end
-        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
-        if closestDP then
-            local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
-            local camera = workspace.CurrentCamera
-            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPos)
-        end
+    local function rotateModelToFace(position)
+        local lookAt = CFrame.new(localRootPart.Position, position)
+        localHumanoid.AutoRotate = false
+        localRootPart.CFrame = CFrame.new(localRootPart.Position, position)
+        task.spawn(function()
+            task.wait(0.1)
+            localHumanoid.AutoRotate = true
+        end)
     end
 
     local function performDodgeAction(action, waitTime)
@@ -537,12 +517,17 @@ function KillAura.Init(UI, Core, notify)
                 if #damagePoints > 0 then
                     local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
                     if closestDP then
-                        local timeToImpact = calculateTimeToImpact(closestDP, State.AutoDodge.PredictionTime.Value)
-                        if timeToImpact < math.huge then
+                        local willHit, timeToImpact = willDamagePointHit(closestDP, State.AutoDodge.PredictionTime.Value, localRootPart.Position)
+                        if willHit then
                             waitTime = math.min(waitTime, timeToImpact * 0.9) -- Уменьшаем время для реакции
                             local predictedPos = predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
-                            local camera = workspace.CurrentCamera
-                            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPos)
+                            rotateModelToFace(predictedPos)
+                        else
+                            warn("DamagePoint will not hit, skipping dodge")
+                            isPerformingAction = false
+                            isDodgePending = false
+                            desiredDodgeAction = nil
+                            return false
                         end
                     end
                 end
@@ -733,9 +718,6 @@ function KillAura.Init(UI, Core, notify)
                 Core.BulwarkTarget.CombatState = nil
                 continue
             end
-            if State.AutoDodge.ResolveAngle.Value then
-                trackDamagePoints(closestTarget)
-            end
             local stance = getPlayerStance(closestTarget)
             if stance and stance ~= lastStance then
                 if stance == "release" and State.AutoDodge.Blocking.Value then
@@ -790,37 +772,14 @@ function KillAura.Init(UI, Core, notify)
                     end
                     local action
                     if State.AutoDodge.BlockingMode.Value == "Riposte" then
-                        if math.random() < State.AutoDodge.MissChance.Value then
-                            print("Missed Riposte due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
-                            lastStance = stance
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            Core.BulwarkTarget.CombatState = nil
-                            continue
-                        end
                         action = "Riposte"
                     elseif State.AutoDodge.BlockingMode.Value == "Parrying" then
-                        if math.random() < State.AutoDodge.MissChance.Value then
-                            print("Missed Parrying due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
-                            lastStance = stance
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            Core.BulwarkTarget.CombatState = nil
-                            continue
-                        end
                         action = "Parrying"
                     elseif State.AutoDodge.BlockingMode.Value == "Chance" then
                         local totalChance = State.AutoDodge.ParryingChance.Value + State.AutoDodge.RiposteChance.Value
                         local normalizedParryChance = totalChance > 0 and (State.AutoDodge.ParryingChance.Value / totalChance) or 0.5
                         local rand = math.random()
-                        if rand < State.AutoDodge.MissChance.Value then
-                            print("Missed action due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
-                            lastStance = stance
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            Core.BulwarkTarget.CombatState = nil
-                            continue
-                        elseif rand < normalizedParryChance * (1 - State.AutoDodge.MissChance.Value) then
+                        if rand < normalizedParryChance then
                             action = "Parrying"
                         else
                             action = "Riposte"
