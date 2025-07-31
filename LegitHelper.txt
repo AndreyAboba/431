@@ -17,6 +17,7 @@ function LegitHelper.Init(UI, Core, notify)
     }
 
     local originalSettings = {} -- Хранит исходные настройки для каждого оружия
+    local customSettings = {} -- Хранит пользовательские значения слайдеров для каждого оружия
     local currentWeapon = nil -- Текущее оружие для отслеживания изменений
 
     -- Получение настроек текущего оружия
@@ -78,32 +79,56 @@ function LegitHelper.Init(UI, Core, notify)
         end
     end
 
-    -- Обновление Label в UI
+    -- Применение пользовательских настроек из слайдеров
+    local function applyCustomSettings(settings, weapon)
+        if not (settings and weapon and State.LegitHelper.ToolExploit.Enabled.Value) then
+            return
+        end
+        local custom = customSettings[weapon.Name] or {}
+        if custom.Damage then
+            settings.Damage = custom.Damage
+        end
+        if custom.MinusWindup then
+            settings.Windup = math.max(0, (originalSettings[weapon.Name].Windup or settings.Windup) - custom.MinusWindup)
+        end
+        if custom.MinusRelease then
+            settings.Release = math.max(0, (originalSettings[weapon.Name].Release or settings.Release) - custom.MinusRelease)
+        end
+        if custom.MinusRecovery then
+            settings.Recovery = math.max(0, (originalSettings[weapon.Name].Recovery or settings.Recovery) - custom.MinusRecovery)
+        end
+        if custom.MissCost then
+            settings.MissCost = custom.MissCost
+        end
+        if custom.StamDrain then
+            settings.StamDrain = custom.StamDrain
+        end
+        if custom.StamNegate then
+            settings.StamNegate = custom.StamNegate
+        end
+        if custom.Lunge then
+            settings.Lunge = custom.Lunge
+        end
+        warn("Applied custom settings for " .. weapon.Name)
+    end
+
+    -- Обновление Label и слайдеров в UI
     local function updateWeaponSettingsLabels()
         local settings, weapon = getLocalWeaponSettings()
-        if not UI.Sections.LegitHelper then
+        if not UI.Sections.WeaponStat then
             return
         end
 
         if not settings or not weapon then
-            UI.Sections.LegitHelper.WeaponName:UpdateName("Weapon name: Not found")
-            UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
-            UI.Sections.LegitHelper.DamageLabel:UpdateName("Damage: Not found")
-            UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.WindupLabel:UpdateName("Windup: Not found")
-            UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.ReleaseLabel:UpdateName("Release: Not found")
-            UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.RecoveryLabel:UpdateName("Recovery: Not found")
-            UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.MissCostLabel:UpdateName("MissCost: Not found")
-            UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.StamDrainLabel:UpdateName("StamDrain: Not found")
-            UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.StamNegateLabel:UpdateName("StamNegate: Not found")
-            UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
-            UI.Sections.LegitHelper.LungeLabel:UpdateName("Lunge: Not found")
-            UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
+            UI.Sections.WeaponStat.WeaponName:SetVisibility(false)
+            UI.Sections.WeaponStat.DamageSlider:SetVisibility(false)
+            UI.Sections.WeaponStat.WindupSlider:SetVisibility(false)
+            UI.Sections.WeaponStat.ReleaseSlider:SetVisibility(false)
+            UI.Sections.WeaponStat.RecoverySlider:SetVisibility(false)
+            UI.Sections.WeaponStat.MissCostSlider:SetVisibility(false)
+            UI.Sections.WeaponStat.StamDrainSlider:SetVisibility(false)
+            UI.Sections.WeaponStat.StamNegateSlider:SetVisibility(false)
+            UI.Sections.WeaponStat.LungeSlider:SetVisibility(false)
             currentWeapon = nil
             return
         end
@@ -112,27 +137,40 @@ function LegitHelper.Init(UI, Core, notify)
         if weapon ~= currentWeapon then
             saveOriginalSettings(settings, weapon)
             currentWeapon = weapon
+            -- Восстанавливаем значения слайдеров из customSettings, если они есть
+            local custom = customSettings[weapon.Name] or {}
+            UI.Sections.WeaponStat.DamageSlider:SetValue(custom.Damage or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Damage) or 0)
+            UI.Sections.WeaponStat.WindupSlider:SetValue(custom.MinusWindup or 0.1)
+            UI.Sections.WeaponStat.ReleaseSlider:SetValue(custom.MinusRelease or 0.1)
+            UI.Sections.WeaponStat.RecoverySlider:SetValue(custom.MinusRecovery or 0.1)
+            UI.Sections.WeaponStat.MissCostSlider:SetValue(custom.MissCost or (originalSettings[weapon.Name] and originalSettings[weapon.Name].MissCost) or 1)
+            UI.Sections.WeaponStat.StamDrainSlider:SetValue(custom.StamDrain or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamDrain) or 1)
+            UI.Sections.WeaponStat.StamNegateSlider:SetValue(custom.StamNegate or (originalSettings[weapon.Name] and originalSettings[weapon.Name].StamNegate) or 1)
+            UI.Sections.WeaponStat.LungeSlider:SetValue(custom.Lunge or (originalSettings[weapon.Name] and originalSettings[weapon.Name].Lunge) or 1)
         end
 
-        -- Обновляем текст и видимость Label
-        UI.Sections.LegitHelper.WeaponName:UpdateName("Weapon name: " .. weapon.Name)
-        UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
-        UI.Sections.LegitHelper.DamageLabel:UpdateName("Damage: " .. tostring(settings.Damage or "Not found"))
-        UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.WindupLabel:UpdateName("Windup: " .. tostring(settings.Windup or "Not found"))
-        UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.ReleaseLabel:UpdateName("Release: " .. tostring(settings.Release or "Not found"))
-        UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.RecoveryLabel:UpdateName("Recovery: " .. tostring(settings.Recovery or "Not found"))
-        UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.MissCostLabel:UpdateName("MissCost: " .. tostring(settings.MissCost or "Not found"))
-        UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.StamDrainLabel:UpdateName("StamDrain: " .. tostring(settings.StamDrain or "Not found"))
-        UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.StamNegateLabel:UpdateName("StamNegate: " .. tostring(settings.StamNegate or "Not found"))
-        UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
-        UI.Sections.LegitHelper.LungeLabel:UpdateName("Lunge: " .. tostring(settings.Lunge or "Not found"))
-        UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
+        -- Применяем пользовательские настройки, если ToolExploit включён
+        applyCustomSettings(settings, weapon)
+
+        -- Обновляем текст и видимость
+        UI.Sections.WeaponStat.WeaponName:UpdateName("Weapon name: " .. weapon.Name)
+        UI.Sections.WeaponStat.WeaponName:SetVisibility(true)
+        UI.Sections.WeaponStat.DamageSlider:UpdateName("Damage: " .. tostring(settings.Damage or "Not found"))
+        UI.Sections.WeaponStat.DamageSlider:SetVisibility(true)
+        UI.Sections.WeaponStat.WindupSlider:UpdateName("Windup: " .. tostring(settings.Windup or "Not found"))
+        UI.Sections.WeaponStat.WindupSlider:SetVisibility(true)
+        UI.Sections.WeaponStat.ReleaseSlider:UpdateName("Release: " .. tostring(settings.Release or "Not found"))
+        UI.Sections.WeaponStat.ReleaseSlider:SetVisibility(true)
+        UI.Sections.WeaponStat.RecoverySlider:UpdateName("Recovery: " .. tostring(settings.Recovery or "Not found"))
+        UI.Sections.WeaponStat.RecoverySlider:SetVisibility(true)
+        UI.Sections.WeaponStat.MissCostSlider:UpdateName("MissCost: " .. tostring(settings.MissCost or "Not found"))
+        UI.Sections.WeaponStat.MissCostSlider:SetVisibility(true)
+        UI.Sections.WeaponStat.StamDrainSlider:UpdateName("StamDrain: " .. tostring(settings.StamDrain or "Not found"))
+        UI.Sections.WeaponStat.StamDrainSlider:SetVisibility(true)
+        UI.Sections.WeaponStat.StamNegateSlider:UpdateName("StamNegate: " .. tostring(settings.StamNegate or "Not found"))
+        UI.Sections.WeaponStat.StamNegateSlider:SetVisibility(true)
+        UI.Sections.WeaponStat.LungeSlider:UpdateName("Lunge: " .. tostring(settings.Lunge or "Not found"))
+        UI.Sections.WeaponStat.LungeSlider:SetVisibility(true)
     end
 
     -- Мониторинг текущего оружия
@@ -146,14 +184,14 @@ function LegitHelper.Init(UI, Core, notify)
         end
     end
 
-    -- Проверка существования секции LegitHelper
-    wait(1)
-    if not UI.Tabs or not UI.Tabs.Combat or not UI.Sections.LegitHelper then
-        warn("LegitHelper section not found in UI.Tabs.Combat. Please ensure it is initialized.")
+    -- Проверка существования UI.Tabs.Combat
+    if not UI.Tabs or not UI.Tabs.Combat then
+        warn("Combat tab not found in UI.Tabs. Please ensure it is initialized.")
         return
     end
 
-    -- Настройка UI
+    -- Настройка UI для LegitHelper
+    UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
     UI.Sections.LegitHelper:Header({ Name = "Tool Exploit" })
     UI.Sections.LegitHelper:Toggle({
         Name = "Enabled",
@@ -168,29 +206,208 @@ function LegitHelper.Init(UI, Core, notify)
                 lastNotificationTime = tick()
                 notify("ToolExploit", "Tool Exploit " .. (value and "Enabled" or "Disabled"), true)
             end
+            updateWeaponSettingsLabels()
         end,
         "ToolExploitEnabledLH"
     })
-    UI.Sections.LegitHelper:Divider()
-    UI.Sections.LegitHelper:Header({ Name = "Weapon Settings" })
-    UI.Sections.LegitHelper.WeaponName = UI.Sections.LegitHelper:Label({ Text = "Weapon name: Not found" }, "WeaponNameLH")
-    UI.Sections.LegitHelper.WeaponName:SetVisibility(true)
-    UI.Sections.LegitHelper.DamageLabel = UI.Sections.LegitHelper:Label({ Text = "Damage: Not found" }, "DamageLabelLH")
-    UI.Sections.LegitHelper.DamageLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.WindupLabel = UI.Sections.LegitHelper:Label({ Text = "Windup: Not found" }, "WindupLabelLH")
-    UI.Sections.LegitHelper.WindupLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.ReleaseLabel = UI.Sections.LegitHelper:Label({ Text = "Release: Not found" }, "ReleaseLabelLH")
-    UI.Sections.LegitHelper.ReleaseLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.RecoveryLabel = UI.Sections.LegitHelper:Label({ Text = "Recovery: Not found" }, "RecoveryLabelLH")
-    UI.Sections.LegitHelper.RecoveryLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.MissCostLabel = UI.Sections.LegitHelper:Label({ Text = "MissCost: Not found" }, "MissCostLabelLH")
-    UI.Sections.LegitHelper.MissCostLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.StamDrainLabel = UI.Sections.LegitHelper:Label({ Text = "StamDrain: Not found" }, "StamDrainLabelLH")
-    UI.Sections.LegitHelper.StamDrainLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.StamNegateLabel = UI.Sections.LegitHelper:Label({ Text = "StamNegate: Not found" }, "StamNegateLabelLH")
-    UI.Sections.LegitHelper.StamNegateLabel:SetVisibility(true)
-    UI.Sections.LegitHelper.LungeLabel = UI.Sections.LegitHelper:Label({ Text = "Lunge: Not found" }, "LungeLabelLH")
-    UI.Sections.LegitHelper.LungeLabel:SetVisibility(true)
+
+    -- Настройка UI для WeaponStat
+    UI.Sections.WeaponStat = UI.Sections.WeaponStat or UI.Tabs.Combat:Section({ Name = "WeaponStat", Side = "Right" })
+    UI.Sections.WeaponStat:Header({ Name = "Weapon Statistic" })
+    UI.Sections.WeaponStat.WeaponName = UI.Sections.WeaponStat:Label({ Text = "Weapon name: Not found" }, "WeaponNameWS")
+    UI.Sections.WeaponStat.WeaponName:SetVisibility(false)
+    UI.Sections.WeaponStat.DamageSlider = UI.Sections.WeaponStat:Slider({
+        Name = "Damage value",
+        Minimum = 0,
+        Maximum = 100,
+        Default = 0,
+        Precision = 0,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].Damage = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Damage = value
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "Damage set to: " .. value)
+                end
+            end
+        end,
+        "DamageSliderWS"
+    })
+    UI.Sections.WeaponStat.DamageSlider:SetVisibility(false)
+    UI.Sections.WeaponStat.WindupSlider = UI.Sections.WeaponStat:Slider({
+        Name = "Minus Windup",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = 0.1,
+        Precision = 1,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].MinusWindup = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Windup = math.max(0, (originalSettings[currentWeapon.Name].Windup or settings.Windup) - value)
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "Minus Windup set to: " .. value)
+                end
+            end
+        end,
+        "WindupSliderWS"
+    })
+    UI.Sections.WeaponStat.WindupSlider:SetVisibility(false)
+    UI.Sections.WeaponStat.ReleaseSlider = UI.Sections.WeaponStat:Slider({
+        Name = "Minus Release",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = 0.1,
+        Precision = 1,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].MinusRelease = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Release = math.max(0, (originalSettings[currentWeapon.Name].Release or settings.Release) - value)
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "Minus Release set to: " .. value)
+                end
+            end
+        end,
+        "ReleaseSliderWS"
+    })
+    UI.Sections.WeaponStat.ReleaseSlider:SetVisibility(false)
+    UI.Sections.WeaponStat.RecoverySlider = UI.Sections.WeaponStat:Slider({
+        Name = "Minus Recovery",
+        Minimum = 0.1,
+        Maximum = 2,
+        Default = 0.1,
+        Precision = 1,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].MinusRecovery = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Recovery = math.max(0, (originalSettings[currentWeapon.Name].Recovery or settings.Recovery) - value)
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "Minus Recovery set to: " .. value)
+                end
+            end
+        end,
+        "RecoverySliderWS"
+    })
+    UI.Sections.WeaponStat.RecoverySlider:SetVisibility(false)
+    UI.Sections.WeaponStat.MissCostSlider = UI.Sections.WeaponStat:Slider({
+        Name = "MissCost value",
+        Minimum = 1,
+        Maximum = 40,
+        Default = 1,
+        Precision = 0,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].MissCost = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.MissCost = value
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "MissCost set to: " .. value)
+                end
+            end
+        end,
+        "MissCostSliderWS"
+    })
+    UI.Sections.WeaponStat.MissCostSlider:SetVisibility(false)
+    UI.Sections.WeaponStat.StamDrainSlider = UI.Sections.WeaponStat:Slider({
+        Name = "StamDrain value",
+        Minimum = 1,
+        Maximum = 40,
+        Default = 1,
+        Precision = 0,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].StamDrain = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.StamDrain = value
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "StamDrain set to: " .. value)
+                end
+            end
+        end,
+        "StamDrainSliderWS"
+    })
+    UI.Sections.WeaponStat.StamDrainSlider:SetVisibility(false)
+    UI.Sections.WeaponStat.StamNegateSlider = UI.Sections.WeaponStat:Slider({
+        Name = "StamNegate value",
+        Minimum = 1,
+        Maximum = 40,
+        Default = 1,
+        Precision = 0,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].StamNegate = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.StamNegate = value
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "StamNegate set to: " .. value)
+                end
+            end
+        end,
+        "StamNegateSliderWS"
+    })
+    UI.Sections.WeaponStat.StamNegateSlider:SetVisibility(false)
+    UI.Sections.WeaponStat.LungeSlider = UI.Sections.WeaponStat:Slider({
+        Name = "Lunge value",
+        Minimum = 1,
+        Maximum = 100,
+        Default = 1,
+        Precision = 0,
+        Callback = function(value)
+            if currentWeapon then
+                customSettings[currentWeapon.Name] = customSettings[currentWeapon.Name] or {}
+                customSettings[currentWeapon.Name].Lunge = value
+                local settings = getLocalWeaponSettings()
+                if settings and State.LegitHelper.ToolExploit.Enabled.Value then
+                    settings.Lunge = value
+                    updateWeaponSettingsLabels()
+                end
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("WeaponStat", "Lunge set to: " .. value)
+                end
+            end
+        end,
+        "LungeSliderWS"
+    })
+    UI.Sections.WeaponStat.LungeSlider:SetVisibility(false)
 
     task.spawn(runWeaponSettingsMonitor)
 end
