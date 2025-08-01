@@ -1,5 +1,5 @@
 local KillAura = {}
-print('3')
+print('2')
 
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
@@ -67,7 +67,7 @@ function KillAura.Init(UI, Core, notify)
             AngleDelay = { Value = 0.01, Default = 0.01 },
             PredictionTime = { Value = 0.3, Default = 0.3 },
             FastWeaponHoldMultiplier = { Value = 1.9, Default = 1.9 },
-            HitboxRadius = { Value = 2, Default = 2 }
+            HitboxRadius = { Value = 7.142, Default = 7.142 } -- 2 meters ≈ 7.142 studs
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -442,27 +442,44 @@ function KillAura.Init(UI, Core, notify)
 
     local function isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
         if not localCharacter or not localRootPart then
+            warn("isDamagePointInRange: Local character or root part missing")
             return false, math.huge
         end
         local minDistance = math.huge
         local closestDP = nil
         for _, dp in pairs(damagePoints) do
+            if not dp:IsA("Attachment") or not dp.WorldPosition then
+                warn("Invalid DamagePoint or WorldPosition for " .. tostring(dp))
+                continue
+            end
             local predictedPos = predictDamagePointPosition(dp, predictionTime)
+            if predictedPos == Vector3.new(0, 0, 0) or predictedPos.Magnitude == math.huge or predictedPos ~= predictedPos then
+                warn("Invalid predicted position for " .. tostring(dp) .. ": " .. tostring(predictedPos))
+                continue
+            end
             for _, partName in ipairs(PLAYER_PARTS) do
                 local part = localCharacter:FindFirstChild(partName)
-                if part and part:IsA("BasePart") then
+                if part and part:IsA("BasePart") and part.Position then
                     local distance = (part.Position - predictedPos).Magnitude
+                    if distance == math.huge or distance ~= distance then
+                        warn(string.format("Invalid distance calculation for %s to %s: pos=(%.2f, %.2f, %.2f)", partName, dp.Name, predictedPos.X, predictedPos.Y, predictedPos.Z))
+                        continue
+                    end
                     if distance < minDistance then
                         minDistance = distance
                         closestDP = dp
                     end
                     if distance <= hitboxRadius then
+                        warn(string.format("DamagePoint %s within %.2f studs of %s at distance %.2f", dp.Name, hitboxRadius, partName, distance))
                         return true, distance
                     end
+                else
+                    warn("Player part " .. partName .. " not found or invalid")
                 end
             end
         end
-        return minDistance <= hitboxRadius, minDistance
+        warn(string.format("Closest DamagePoint %s distance: %.2f studs", closestDP and closestDP.Name or "none", minDistance))
+        return false, minDistance
     end
 
     local function calculatePredictionTime(releaseTime, distance)
@@ -475,6 +492,7 @@ function KillAura.Init(UI, Core, notify)
     local function monitorDamagePoints(weapon, predictionTime, hitboxRadius, duration)
         local damagePoints = getBladeDamagePoints(weapon)
         if #damagePoints == 0 then
+            warn("No DamagePoints found for weapon " .. tostring(weapon))
             return false, math.huge
         end
         local endTime = tick() + duration
@@ -483,10 +501,12 @@ function KillAura.Init(UI, Core, notify)
             local isInRange, distance = isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
             minDistance = math.min(minDistance, distance)
             if isInRange then
+                warn(string.format("DamagePoint within %.2f studs, triggering dodge", hitboxRadius))
                 return true, distance
             end
             task.wait(State.AutoDodge.AngleDelay.Value)
         end
+        warn(string.format("No DamagePoint within %.2f studs during monitoring, closest distance: %.2f", hitboxRadius, minDistance))
         return false, minDistance
     end
 
@@ -773,7 +793,7 @@ function KillAura.Init(UI, Core, notify)
                         if weapon and settings then
                             local isInRange, minDistance = monitorDamagePoints(weapon, predictionTime, State.AutoDodge.HitboxRadius.Value, releaseTime)
                             if not isInRange then
-                                print("DamagePoint not within 2 studs during monitoring, skipping dodge. Closest distance: " .. minDistance)
+                                print(string.format("DamagePoint not within %.2f studs during monitoring, skipping dodge. Closest distance: %.2f", State.AutoDodge.HitboxRadius.Value, minDistance))
                                 lastStance = stance
                                 isDodgePending = false
                                 desiredDodgeAction = nil
@@ -1607,8 +1627,6 @@ function KillAura.Init(UI, Core, notify)
                     notify("ToolExploit", "Kick Delay set to: " .. value)
                 end
             end,
-            'KickDelayTE'
-        })
         UI.Sections.ToolExploit:Slider({
             Name = "Kick State Delay",
             Minimum = 0.01,
