@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('1')
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -55,17 +55,17 @@ function KillAura.Init(UI, Core, notify)
             MissChance = { Value = 0, Default = 0 },
             LegitBlock = { Value = true, Default = true },
             LegitParry = { Value = true, Default = true },
-            BaseMultiplier = { Value = 0.15, Default = 0.15 },
-            DistanceFactor = { Value = 0.03, Default = 0.03 },
+            BaseMultiplier = { Value = 0.17, Default = 0.17 },
+            DistanceFactor = { Value = 0.04, Default = 0.04 },
             Delay = { Value = 0.01, Default = 0.01 },
             Blocking = { Value = true, Default = true },
             BlockingAntiStun = { Value = true, Default = true },
             RiposteMouseLockDuration = { Value = 1.5, Default = 1.5 },
             MaxWaitTime = { Value = 2.0, Default = 2.0 },
             ResolveAngle = { Value = true, Default = true },
-            AngleDelay = { Value = 0.05, Default = 0.05 },
-            PredictionTime = { Value = 0.15, Default = 0.15 }, -- Увеличено для drag-атак
-            FastWeaponHoldMultiplier = { Value = 1.8, Default = 1.8 } -- Скорректировано для плавности
+            AngleDelay = { Value = 0.01, Default = 0.01 },
+            PredictionTime = { Value = 0.2, Default = 0.2 }, -- Увеличено для drag-атак
+            FastWeaponHoldMultiplier = { Value = 1.9, Default = 1.9 } -- Скорректировано для плавности
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
