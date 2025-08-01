@@ -1,5 +1,5 @@
 local KillAura = {}
-print('2')
+print('3')
 
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
@@ -67,7 +67,7 @@ function KillAura.Init(UI, Core, notify)
             AngleDelay = { Value = 0.01, Default = 0.01 },
             PredictionTime = { Value = 0.3, Default = 0.3 },
             FastWeaponHoldMultiplier = { Value = 1.9, Default = 1.9 },
-            HitboxRadius = { Value = 2, Default = 2 } -- Радиус хитбокса для проверки касания
+            HitboxRadius = { Value = 2, Default = 2 }
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -110,7 +110,7 @@ function KillAura.Init(UI, Core, notify)
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
     local PLAYER_PARTS = {"HumanoidRootPart", "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"}
 
-    local damagePointHistory = {} -- История позиций DamagePoint'ов
+    local damagePointHistory = {}
 
     local function getPlayerStance(player)
         local character = player.Character
@@ -420,7 +420,7 @@ function KillAura.Init(UI, Core, notify)
         end
         local history = damagePointHistory[dp]
         table.insert(history.positions, { pos = dp.WorldPosition, time = tick() })
-        if #history.positions > 5 then
+        if #history.positions > 10 then
             table.remove(history.positions, 1)
         end
 
@@ -462,14 +462,32 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         end
-        return false, minDistance
+        return minDistance <= hitboxRadius, minDistance
     end
 
     local function calculatePredictionTime(releaseTime, distance)
-        local baseTime = releaseTime / 2 + 0.1
-        local distanceFactor = math.clamp(distance / 10, 0.5, 1.5) -- Чем ближе, тем меньше, чем дальше, тем больше
+        local baseTime = releaseTime / 2 + 0.2
+        local distanceFactor = math.clamp(distance / 10, 0.5, 1.5)
         local adjustedTime = baseTime * distanceFactor
         return math.clamp(adjustedTime, 0.1, State.AutoDodge.MaxWaitTime.Value)
+    end
+
+    local function monitorDamagePoints(weapon, predictionTime, hitboxRadius, duration)
+        local damagePoints = getBladeDamagePoints(weapon)
+        if #damagePoints == 0 then
+            return false, math.huge
+        end
+        local endTime = tick() + duration
+        local minDistance = math.huge
+        while tick() < endTime do
+            local isInRange, distance = isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
+            minDistance = math.min(minDistance, distance)
+            if isInRange then
+                return true, distance
+            end
+            task.wait(State.AutoDodge.AngleDelay.Value)
+        end
+        return false, minDistance
     end
 
     local function performDodgeAction(action, waitTime, releaseTime)
@@ -748,32 +766,22 @@ function KillAura.Init(UI, Core, notify)
                     local releaseTime = lastReleaseTime or 0.3
                     local distance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
                     local predictionTime = State.AutoDodge.PredictionTime.Value
-                    local waitTime = releaseTime / 2 + 0.1
+                    local waitTime = releaseTime / 2 + 0.2
 
                     if State.AutoDodge.ResolveAngle.Value then
                         local weapon, settings = getTargetWeaponSettings(closestTarget)
                         if weapon and settings then
-                            local damagePoints = getBladeDamagePoints(weapon)
-                            if #damagePoints > 0 then
-                                local isInRange, minDistance = isDamagePointInRange(damagePoints, predictionTime, State.AutoDodge.HitboxRadius.Value)
-                                if not isInRange then
-                                    print("DamagePoint not within 2 studs, skipping dodge. Closest distance: " .. minDistance)
-                                    lastStance = stance
-                                    isDodgePending = false
-                                    desiredDodgeAction = nil
-                                    Core.BulwarkTarget.CombatState = nil
-                                    continue
-                                end
-                                predictionTime = calculatePredictionTime(releaseTime, minDistance)
-                                waitTime = math.min(waitTime, predictionTime)
-                            else
-                                print("No DamagePoints found, skipping dodge")
+                            local isInRange, minDistance = monitorDamagePoints(weapon, predictionTime, State.AutoDodge.HitboxRadius.Value, releaseTime)
+                            if not isInRange then
+                                print("DamagePoint not within 2 studs during monitoring, skipping dodge. Closest distance: " .. minDistance)
                                 lastStance = stance
                                 isDodgePending = false
                                 desiredDodgeAction = nil
                                 Core.BulwarkTarget.CombatState = nil
                                 continue
                             end
+                            predictionTime = calculatePredictionTime(releaseTime, minDistance)
+                            waitTime = math.min(waitTime, predictionTime)
                         else
                             print("No valid weapon or settings, skipping dodge")
                             lastStance = stance
