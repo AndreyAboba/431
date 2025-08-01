@@ -53,7 +53,7 @@ function KillAura.Init(UI, Core, notify)
             LegitBlock = { Value = true, Default = true },
             LegitParry = { Value = true, Default = true },
             ResolveAngle = { Value = true, Default = true },
-            HitboxRadius = { Value = 6, Default = 6 } -- Increased to 6 studs for ping compensation
+            HitboxRadius = { Value = 7, Default = 7 } -- Increased to 7 studs for earlier detection
         }
     }
 
@@ -81,6 +81,7 @@ function KillAura.Init(UI, Core, notify)
     local dragStart = nil
     local startPos = nil
     local lastReleaseTime = nil
+    local DEFAULT_WEAPON_SPEED = 50 -- Default speed in studs/second
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
@@ -321,10 +322,10 @@ function KillAura.Init(UI, Core, notify)
         if not localCharacter or not localRootPart then
             return false
         end
+        local localPos = localRootPart.Position
         for _, dp in ipairs(damagePoints) do
             if dp and dp.Parent and dp.WorldPosition then
-                local distance = (localRootPart.Position - dp.WorldPosition).Magnitude
-                if distance <= hitboxRadius then
+                if (localPos - dp.WorldPosition).Magnitude <= hitboxRadius then
                     return true
                 end
             end
@@ -444,9 +445,16 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         end
+
+        local postActionDelay = 0.01
         if action == "Riposte" then
+            local distance = closestTarget and closestTarget.Character and closestTarget.Character:FindFirstChild("HumanoidRootPart") and 
+                (localRootPart.Position - closestTarget.Character.HumanoidRootPart.Position).Magnitude or State.AutoDodge.Range.Value
+            local weaponSpeed = lastTargetWeaponSettings and lastTargetWeaponSettings.Speed or DEFAULT_WEAPON_SPEED
+            local dodgeDelay = (lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.5) / 2 + 0.4 + (distance / weaponSpeed)
             ChangeStance:FireServer("RiposteDelay")
-            task.wait(0.7)
+            task.wait(dodgeDelay)
+            postActionDelay = 1.5
         else
             ChangeStance:FireServer("UnParry")
             task.wait(0.01)
@@ -460,7 +468,7 @@ function KillAura.Init(UI, Core, notify)
 
         ChangeStance:FireServer("Idle")
         if action == "Riposte" then
-            task.wait(1.5)
+            task.wait(postActionDelay)
             isRiposteActive = false
         end
         lastDodgeTime = tick()
@@ -566,7 +574,9 @@ function KillAura.Init(UI, Core, notify)
                 end
             else
                 if lastTargetWeaponSettings and lastReleaseTime and canTargetPlayer(closestTarget, State.AutoDodge.Range.Value, State.AutoDodge.TeamCheck.Value) then
-                    local dodgeDelay = (lastTargetWeaponSettings.Release / 2) + 0.4
+                    local distance = (localRootPart.Position - targetCharacter.HumanoidRootPart.Position).Magnitude
+                    local weaponSpeed = lastTargetWeaponSettings.Speed or DEFAULT_WEAPON_SPEED
+                    local dodgeDelay = (lastTargetWeaponSettings.Release / 2) + 0.4 + (distance / weaponSpeed)
                     if tick() - lastReleaseTime >= dodgeDelay then
                         shouldDodge = true
                     end
@@ -648,7 +658,7 @@ function KillAura.Init(UI, Core, notify)
                 Core.BulwarkTarget.CombatState = nil
                 continue
             end
-            if tick() - lastAttackTime < State.KillAura.AttackCooldown.Value then
+            if tick() - lastAttackTime < State.KillAura.AttackCooldown.Value or isDodgePending then
                 continue
             end
             local closestKillAuraTarget = nil
@@ -698,7 +708,7 @@ function KillAura.Init(UI, Core, notify)
                 Core.BulwarkTarget.CombatState = "KillAura"
                 ChangeStance:FireServer("Windup")
                 task.wait(settings.windupTime)
-                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") or isDodgePending then
                     removeTargetHighlight()
                     Core.BulwarkTarget.CombatState = nil
                     continue
@@ -715,7 +725,7 @@ function KillAura.Init(UI, Core, notify)
                 end
                 ChangeStance:FireServer("Release")
                 task.wait(settings.releaseTime)
-                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
+                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") or isDodgePending then
                     removeTargetHighlight()
                     Core.BulwarkTarget.CombatState = nil
                     continue
