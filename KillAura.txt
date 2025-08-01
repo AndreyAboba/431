@@ -1,5 +1,4 @@
 local KillAura = {}
-print('2')
 
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
@@ -12,7 +11,6 @@ function KillAura.Init(UI, Core, notify)
     local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer")
     local ChangeStance = RemoteEvents:WaitForChild("ChangeStance")
     local Hit = RemoteEvents:WaitForChild("Hit")
-    local Kick = RemoteEvents:WaitForChild("Kick")
     local Punch = RemoteEvents:WaitForChild("Punch")
 
     local LocalPlayer = Players.LocalPlayer
@@ -67,15 +65,7 @@ function KillAura.Init(UI, Core, notify)
             AngleDelay = { Value = 0.01, Default = 0.01 },
             PredictionTime = { Value = 0.3, Default = 0.3 },
             FastWeaponHoldMultiplier = { Value = 1.9, Default = 1.9 },
-            HitboxRadius = { Value = 7.142, Default = 7.142 } -- 2 meters ≈ 7.142 studs
-        },
-        LegitHelper = {
-            Enabled = { Value = false, Default = false },
-            AutoKick = { Value = false, Default = false },
-            Range = { Value = 10, Default = 10 },
-            TeamCheck = { Value = true, Default = true },
-            AutoDodgeSync = { Value = false, Default = false },
-            LegitKick = { Value = true, Default = true }
+            HitboxRadius = { Value = 4, Default = 4 } -- 4 studs as specified
         }
     }
 
@@ -99,8 +89,6 @@ function KillAura.Init(UI, Core, notify)
     local riposteEndTime = 0
     local isDodgePending = false
     local desiredDodgeAction = nil
-    local lastKickTime = 0
-    local kickCooldown = 0.3
     local warningTextLabel = nil
     local isDragging = false
     local dragStart = nil
@@ -221,57 +209,17 @@ function KillAura.Init(UI, Core, notify)
         return settings, weapon
     end
 
-    local function getDistanceToPlayer(targetPlayer)
-        local targetRootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if targetRootPart and localRootPart then
-            local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
-            if distance == math.huge or distance ~= distance then
-                warn("Invalid distance to player: " .. tostring(targetPlayer.Name))
-                return math.huge
-            end
-            return distance
-        end
-        warn("Missing root part for player: " .. tostring(targetPlayer.Name))
-        return math.huge
-    end
-
-    local function getDmgPointDistance(targetPlayer, weapon)
-        if not (weapon and targetPlayer.Character and localRootPart and localRootPart.Position) then
-            warn("Missing required components for damage point distance calculation")
-            return math.huge
-        end
-        local blade = weapon:FindFirstChild("Blade")
-        if not blade or not blade:IsA("MeshPart") then
-            warn("No valid blade found for weapon")
-            return math.huge
-        end
-        local dmgPoint = blade:FindFirstChild("DmgPoint")
-        if not dmgPoint or not dmgPoint:IsA("Attachment") then
-            warn("No valid DmgPoint found for weapon")
-            return math.huge
-        end
-        local distance = (localRootPart.Position - dmgPoint.WorldPosition).Magnitude
-        if distance == math.huge or distance ~= distance then
-            warn("Invalid damage point distance calculation")
-            return math.huge
-        end
-        return distance
-    end
-
     local function canTargetPlayer(targetPlayer, range, teamCheck)
         if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0 and targetPlayer.Character) then
-            warn("Local player or target character invalid")
             return false
         end
         local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
         if not (targetRootPart and targetHumanoid) or targetHumanoid.Health <= 0 or targetHumanoid:GetState() ~= Enum.HumanoidStateType.Running then
-            warn("Target player invalid: " .. tostring(targetPlayer.Name))
             return false
         end
         local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
-        if distance > range or distance == math.huge or distance ~= distance then
-            warn("Target out of range or invalid distance: " .. tostring(targetPlayer.Name) .. ", Distance: " .. tostring(distance))
+        if distance > range then
             return false
         end
         if teamCheck and targetPlayer.Team and LocalPlayer.Team then
@@ -342,21 +290,18 @@ function KillAura.Init(UI, Core, notify)
         ContextActionService:BindActionAtPriority("BlockMouseButton1", function()
             return Enum.ContextActionResult.Sink
         end, false, Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseButton1)
-        warn("Blocking MouseButton1 for Riposte")
         task.spawn(function()
             while isRiposteActive and tick() <= riposteEndTime do
                 task.wait()
             end
             isRiposteActive = false
             ContextActionService:UnbindAction("BlockMouseButton1")
-            warn("MouseButton1 block ended")
         end)
     end
 
     local function updateWarningText(action, waitTime)
         if not State.AutoDodge.WarningText.Value or not warningTextLabel then
             Core.BulwarkTarget.CombatState = nil
-            warn("WarningText disabled or warningTextLabel is nil, skipping text update")
             return
         end
         local startTime = tick()
@@ -415,8 +360,6 @@ function KillAura.Init(UI, Core, notify)
                     table.insert(damagePoints, part)
                 end
             end
-        else
-            warn("No valid blade or damage points found for weapon")
         end
         return damagePoints
     end
@@ -446,21 +389,15 @@ function KillAura.Init(UI, Core, notify)
             end
         end
         history.velocity = count > 0 and totalVelocity / count or history.velocity
-        local predictedPos = dp.WorldPosition + history.velocity * predictionTime
-        warn(string.format("Predicted position for %s: (%.2f, %.2f, %.2f), Speed=%.2f", dp.Name, predictedPos.X, predictedPos.Y, predictedPos.Z, history.velocity.Magnitude))
-        return predictedPos
+        return dp.WorldPosition + history.velocity * predictionTime
     end
 
     local function isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
         if not localCharacter or not localRootPart then
-            warn("Local character or root part missing")
-            return false, math.huge
+            return false
         end
-        local minDistance = math.huge
-        local closestDP = nil
         for _, dp in pairs(damagePoints) do
             if not dp or not dp.Parent or not dp.WorldPosition then
-                warn("Invalid damage point or missing WorldPosition")
                 continue
             end
             local predictedPos = predictDamagePointPosition(dp, predictionTime)
@@ -468,25 +405,13 @@ function KillAura.Init(UI, Core, notify)
                 local part = localCharacter:FindFirstChild(partName)
                 if part and part:IsA("BasePart") then
                     local distance = (part.Position - predictedPos).Magnitude
-                    if distance == math.huge or distance ~= distance then
-                        warn("Invalid distance calculation for part: " .. partName .. ", DP: " .. dp.Name)
-                        continue
-                    end
-                    if distance < minDistance then
-                        minDistance = distance
-                        closestDP = dp
-                    end
                     if distance <= hitboxRadius then
-                        warn(string.format("DamagePoint %s within range: %.2f studs", dp.Name, distance))
-                        return true, distance
+                        return true
                     end
-                else
-                    warn("Missing or invalid part: " .. partName)
                 end
             end
         end
-        warn(string.format("Closest DamagePoint distance: %.2f studs", minDistance))
-        return false, minDistance
+        return false
     end
 
     local function calculatePredictionTime(releaseTime, distance)
@@ -499,26 +424,19 @@ function KillAura.Init(UI, Core, notify)
     local function monitorDamagePoints(weapon, predictionTime, hitboxRadius, duration)
         local damagePoints = getBladeDamagePoints(weapon)
         if #damagePoints == 0 then
-            warn("No damage points found for weapon")
-            return false, math.huge
+            return false
         end
         local endTime = tick() + duration
-        local minDistance = math.huge
         while tick() < endTime do
             if not weapon or not weapon.Parent then
-                warn("Weapon or parent missing during monitoring")
-                return false, math.huge
+                return false
             end
-            local isInRange, distance = isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
-            minDistance = math.min(minDistance, distance)
-            if isInRange then
-                warn(string.format("DamagePoint within %.2f studs, triggering dodge", hitboxRadius))
-                return true, distance
+            if isDamagePointInRange(damagePoints, predictionTime, hitboxRadius) then
+                return true
             end
             task.wait(State.AutoDodge.AngleDelay.Value)
         end
-        warn(string.format("No DamagePoint within %.2f studs during monitoring, closest distance: %.2f", hitboxRadius, minDistance))
-        return false, minDistance
+        return false
     end
 
     local function performDodgeAction(action, waitTime, releaseTime)
@@ -564,11 +482,9 @@ function KillAura.Init(UI, Core, notify)
         end
         if waitTime == math.huge or waitTime ~= waitTime then
             waitTime = 0.3
-            warn("Invalid waitTime, using fallback: 0.3")
         end
         if waitTime > State.AutoDodge.MaxWaitTime.Value then
             waitTime = 0.3
-            warn("waitTime exceeded MaxWaitTime, using fallback: 0.3")
         end
 
         local animationTrack
@@ -576,7 +492,7 @@ function KillAura.Init(UI, Core, notify)
         if settings then
             local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
             if not animationsModule then
-                warn("WeaponAnimations not found at ReplicatedStorage.ClientModule.WeaponAnimations")
+                warn("WeaponAnimations not found")
             end
             local animations = animationsModule and require(animationsModule)[settings.Type]
             if not animations then
@@ -589,7 +505,6 @@ function KillAura.Init(UI, Core, notify)
                 animationTrack:Play(0.1)
                 animationTrack:AdjustSpeed(1)
                 localHumanoid.WalkSpeed = 7
-                print("Playing Parrying animation: " .. animations.Parry)
             elseif action == "Riposte" and State.AutoDodge.LegitParry.Value and animations and animations.Riposte then
                 ChangeStance:FireServer("Riposte")
                 blockMouseButton1()
@@ -601,7 +516,6 @@ function KillAura.Init(UI, Core, notify)
                 localHumanoid.WalkSpeed = 1
                 isRiposteActive = true
                 riposteEndTime = tick() + waitTime + State.AutoDodge.RiposteMouseLockDuration.Value
-                print("Playing Riposte animation: " .. animations.Riposte)
                 task.spawn(function()
                     task.wait(0.5)
                     if animationTrack and animationTrack.IsPlaying and animationTrack.TimePosition == 0 then
@@ -609,8 +523,6 @@ function KillAura.Init(UI, Core, notify)
                     end
                 end)
             end
-        else
-            warn("Settings or weapon not found for local player")
         end
 
         if action ~= "Riposte" then
@@ -621,7 +533,6 @@ function KillAura.Init(UI, Core, notify)
         if State.AutoDodge.IdleSpoof.Value then
             local currentStance = getPlayerStance(LocalPlayer)
             if currentStance and table.find(INVALID_STANCES, currentStance) then
-                print("IdleSpoof: Restoring dodge action after stance change")
                 ChangeStance:FireServer("Idle")
                 if State.AutoDodge.UseClientIdle.Value and settings and settings.Type then
                     local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
@@ -632,7 +543,6 @@ function KillAura.Init(UI, Core, notify)
                         local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
                         idleAnimTrack:Play(0.1)
                         idleAnimTrack:AdjustSpeed(1)
-                        print("Playing Client Idle animation: " .. animations.Idle)
                         task.spawn(function()
                             task.wait(0.5)
                             if idleAnimTrack and idleAnimTrack.IsPlaying then
@@ -692,10 +602,13 @@ function KillAura.Init(UI, Core, notify)
             local minDistance = math.huge
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and canTargetPlayer(player, State.AutoDodge.PreRange.Value, State.AutoDodge.TeamCheck.Value) then
-                    local distance = getDistanceToPlayer(player)
-                    if distance < minDistance then
-                        minDistance = distance
-                        closestTarget = player
+                    local targetRootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                    if targetRootPart then
+                        local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
+                        if distance < minDistance then
+                            minDistance = distance
+                            closestTarget = player
+                        end
                     end
                 end
             end
@@ -759,7 +672,6 @@ function KillAura.Init(UI, Core, notify)
             if stance and stance ~= lastStance then
                 if stance == "release" and State.AutoDodge.Blocking.Value then
                     if math.random() < State.AutoDodge.MissChance.Value then
-                        print("Missed action due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
                         lastStance = stance
                         isDodgePending = false
                         desiredDodgeAction = nil
@@ -768,7 +680,6 @@ function KillAura.Init(UI, Core, notify)
                     end
                     local localStance = getPlayerStance(LocalPlayer)
                     if State.AutoDodge.IdleSpoof.Value and localStance and table.find(INVALID_STANCES, localStance) then
-                        print("IdleSpoof activated, sent ChangeStance('Idle')")
                         ChangeStance:FireServer("Idle")
                         if State.AutoDodge.UseClientIdle.Value then
                             local settings, weapon = getLocalWeaponSettings()
@@ -781,7 +692,6 @@ function KillAura.Init(UI, Core, notify)
                                     local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
                                     idleAnimTrack:Play(0.1)
                                     idleAnimTrack:AdjustSpeed(1)
-                                    print("Playing Client Idle animation: " .. animations.Idle)
                                     task.spawn(function()
                                         task.wait(0.5)
                                         if idleAnimTrack and idleAnimTrack.IsPlaying then
@@ -795,28 +705,23 @@ function KillAura.Init(UI, Core, notify)
                         task.wait(0.05)
                     end
                     local releaseTime = lastReleaseTime or 0.3
-                    local distance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
+                    local distance = lastTargetWeapon and (localRootPart.Position - lastTargetWeapon.Position).Magnitude or (localRootPart.Position - targetCharacter.HumanoidRootPart.Position).Magnitude
                     local predictionTime = State.AutoDodge.PredictionTime.Value
                     local waitTime = releaseTime / 2 + 0.2
 
                     if State.AutoDodge.ResolveAngle.Value then
                         local weapon, settings = getTargetWeaponSettings(closestTarget)
                         if weapon and settings then
-                            local isInRange, minDistance = monitorDamagePoints(weapon, predictionTime, State.AutoDodge.HitboxRadius.Value, releaseTime)
-                            if not isInRange then
-                                warn(string.format("No DamagePoint within %.2f studs (%.2f meters), skipping dodge. Closest distance: %.2f studs", 
-                                    State.AutoDodge.HitboxRadius.Value, State.AutoDodge.HitboxRadius.Value / 3.571, minDistance))
+                            if not monitorDamagePoints(weapon, predictionTime, State.AutoDodge.HitboxRadius.Value, releaseTime) then
                                 lastStance = stance
                                 isDodgePending = false
                                 desiredDodgeAction = nil
                                 Core.BulwarkTarget.CombatState = nil
                                 continue
                             end
-                            predictionTime = calculatePredictionTime(releaseTime, minDistance)
+                            predictionTime = calculatePredictionTime(releaseTime, distance)
                             waitTime = math.min(waitTime, predictionTime)
-                            warn(string.format("Dodge triggered: Distance=%.2f studs, PredictionTime=%.2f, WaitTime=%.2f", minDistance, predictionTime, waitTime))
                         else
-                            warn("No valid weapon or settings, skipping dodge")
                             lastStance = stance
                             isDodgePending = false
                             desiredDodgeAction = nil
@@ -826,7 +731,6 @@ function KillAura.Init(UI, Core, notify)
                     else
                         predictionTime = calculatePredictionTime(releaseTime, distance)
                         waitTime = math.min(waitTime, predictionTime)
-                        warn(string.format("ResolveAngle disabled: Using distance=%.2f studs, PredictionTime=%.2f, WaitTime=%.2f", distance, predictionTime, waitTime))
                     end
 
                     local action
@@ -857,7 +761,6 @@ function KillAura.Init(UI, Core, notify)
                                 local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
                                 idleAnimTrack:Play(0.1)
                                 idleAnimTrack:AdjustSpeed(1)
-                                print("Playing Client Idle animation: " .. animations.Idle)
                                 task.spawn(function()
                                     task.wait(0.5)
                                     if idleAnimTrack and idleAnimTrack.IsPlaying then
@@ -910,230 +813,9 @@ function KillAura.Init(UI, Core, notify)
         return true
     end
 
-    local function performKick(targetPlayer, targetCharacter, weapon)
-        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
-            return false
-        end
-        local stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
-            return false
-        end
-        Core.BulwarkTarget.CombatState = "KillAura"
-        ChangeStance:FireServer("KickWindup")
-        task.wait(State.KillAura.KickDelay.Value)
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            Core.BulwarkTarget.CombatState = nil
-            return false
-        end
-        stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
-            Core.BulwarkTarget.CombatState = nil
-            return false
-        end
-        ChangeStance:FireServer("Kicking")
-        task.wait(State.KillAura.KickStateDelay.Value)
-        if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            Core.BulwarkTarget.CombatState = nil
-            return false
-        end
-        stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "riposte" or not State.KillAura.AntiParry.Value then
-            Core.BulwarkTarget.CombatState = nil
-            return false
-        end
-        local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
-        if not targetHandle then
-            Core.BulwarkTarget.CombatState = nil
-            return false
-        end
-        Kick:FireServer(weapon, targetHandle, targetHumanoid)
-        Core.BulwarkTarget.CombatState = nil
-        return true
-    end
-
-    local function performAutoKick(targetPlayer, targetCharacter, weapon)
-        if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
-            return false
-        end
-        if tick() - lastKickTime < kickCooldown then
-            return false
-        end
-        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid or targetHumanoid.Health <= 0 then
-            return false
-        end
-        local localStance = getPlayerStance(LocalPlayer)
-        if localStance and table.find(INVALID_STANCES, localStance) then
-            return false
-        end
-        local stance = getPlayerStance(targetPlayer)
-        if not stance or stance ~= "windup" then
-            return false
-        end
-        local settings = getWeaponSettings()
-        if not settings or not settings.Type then
-            return false
-        end
-        local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
-        if not animationsModule then
-            warn("WeaponAnimations not found at ReplicatedStorage.ClientModule.WeaponAnimations")
-            return false
-        end
-        local animations = animationsModule and require(animationsModule)[settings.Type]
-        if not animations then
-            warn("Animations not found for weapon type: " .. tostring(settings.Type))
-            return false
-        end
-
-        Core.BulwarkTarget.CombatState = "AutoKick"
-        Core.BulwarkTarget.UniversalTarget = targetPlayer.Name
-        if State.LegitHelper.LegitKick.Value then
-            localHumanoid.WalkSpeed = 1
-            ChangeStance:FireServer("KickWindup")
-            local kickAnimation = Instance.new("Animation")
-            kickAnimation.AnimationId = "rbxassetid://" .. animations.Kick
-            local kickAnimTrack = localHumanoid:LoadAnimation(kickAnimation)
-            kickAnimTrack:Play(0.05, 1, kickAnimTrack.Length / 0.5)
-            print("Playing Kick animation: " .. animations.Kick)
-            kickAnimTrack:GetMarkerReachedSignal("Kick"):Wait()
-            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-                kickAnimTrack:Stop()
-                kickAnimTrack:Destroy()
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            stance = getPlayerStance(targetPlayer)
-            if not stance or stance ~= "windup" then
-                kickAnimTrack:Stop()
-                kickAnimTrack:Destroy()
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            ChangeStance:FireServer("Kicking")
-            localHumanoid.WalkSpeed = 5
-            local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
-            if not targetHandle then
-                kickAnimTrack:Stop()
-                kickAnimTrack:Destroy()
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            Kick:FireServer(weapon, targetHandle, targetHumanoid)
-            warn("AutoKick: Performed kick on target in Windup")
-            kickAnimTrack.Stopped:Wait()
-            task.wait(0.1)
-            ChangeStance:FireServer("Idle")
-            localHumanoid.WalkSpeed = 9
-            kickAnimTrack:Destroy()
-            lastKickTime = tick()
-            Core.BulwarkTarget.CombatState = nil
-            return true
-        else
-            ChangeStance:FireServer("KickWindup")
-            task.wait(State.KillAura.KickDelay.Value / 2)
-            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            stance = getPlayerStance(targetPlayer)
-            if not stance or stance ~= "windup" then
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            ChangeStance:FireServer("Kicking")
-            task.wait(State.KillAura.KickStateDelay.Value / 2)
-            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            stance = getPlayerStance(targetPlayer)
-            if not stance or stance ~= "windup" then
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            local targetHandle = targetCharacter:FindFirstChild("CollisionBubble") or targetCharacter:FindFirstChild("HumanoidRootPart")
-            if not targetHandle then
-                localHumanoid.WalkSpeed = 9
-                lastKickTime = tick()
-                Core.BulwarkTarget.CombatState = nil
-                return false
-            end
-            Kick:FireServer(weapon, targetHandle, targetHumanoid)
-            warn("AutoKick: Performed kick on target in Windup")
-            localHumanoid.WalkSpeed = 9
-            lastKickTime = tick()
-            Core.BulwarkTarget.CombatState = nil
-            return true
-        end
-    end
-
-    local function runAutoKick()
-        while true do
-            RunService.Heartbeat:Wait()
-            if not State.LegitHelper.Enabled.Value or not State.LegitHelper.AutoKick.Value then
-                Core.BulwarkTarget.isAutoKick = false
-                Core.BulwarkTarget.CombatState = nil
-                continue
-            end
-            Core.BulwarkTarget.isAutoKick = true
-            localCharacter = LocalPlayer.Character
-            localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-            localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
-            if not (localCharacter and localRootPart and localHumanoid) then
-                Core.BulwarkTarget.CombatState = nil
-                continue
-            end
-            local settings = getWeaponSettings()
-            if not settings or not settings.weapon then
-                Core.BulwarkTarget.CombatState = nil
-                continue
-            end
-            local closestTarget = nil
-            local minDistance = math.huge
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and canTargetPlayer(player, State.LegitHelper.Range.Value, State.LegitHelper.TeamCheck.Value) then
-                    local distance = getDistanceToPlayer(player)
-                    if distance < minDistance then
-                        minDistance = distance
-                        closestTarget = player
-                    end
-                end
-            end
-            if not closestTarget then
-                Core.BulwarkTarget.CombatState = nil
-                continue
-            end
-            local targetCharacter = closestTarget.Character
-            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
-            if not (targetCharacter and targetHumanoid) then
-                Core.BulwarkTarget.CombatState = nil
-                continue
-            end
-            if performAutoKick(closestTarget, targetCharacter, settings.weapon) then
-                lastKickTime = tick()
-            end
-        end
-    end
-
     local function runKillAura()
         task.spawn(collectDodgeData)
         task.spawn(runAutoDodge)
-        task.spawn(runAutoKick)
         while true do
             RunService.Heartbeat:Wait()
             if not State.KillAura.Enabled.Value then
@@ -1164,10 +846,13 @@ function KillAura.Init(UI, Core, notify)
             local minDistance = math.huge
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and canTargetPlayer(player, State.KillAura.Range.Value, State.KillAura.TeamCheck.Value) then
-                    local distance = getDistanceToPlayer(player)
-                    if distance < minDistance then
-                        minDistance = distance
-                        closestKillAuraTarget = player
+                    local targetRootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                    if targetRootPart then
+                        local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
+                        if distance < minDistance then
+                            minDistance = distance
+                            closestKillAuraTarget = player
+                        end
                     end
                 end
             end
@@ -1193,15 +878,12 @@ function KillAura.Init(UI, Core, notify)
             if stance then
                 if (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
                     attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
-                elseif stance == "riposte" and State.KillAura.AntiParry.Value then
-                    attacked = performKick(closestKillAuraTarget, targetCharacter, settings.weapon)
                 end
             end
             if not attacked then
                 if State.KillAura.DynamicCooldown.Value then
                     local delays = State.KillAura.DynamicDelays.Value
                     local randomDelay = delays[math.random(1, #delays)]
-                    warn("Dynamic Cooldown: Waiting " .. randomDelay .. " seconds before attack")
                     task.wait(randomDelay)
                 end
                 Core.BulwarkTarget.CombatState = "KillAura"
@@ -1209,7 +891,6 @@ function KillAura.Init(UI, Core, notify)
                 task.wait(settings.windupTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to target invalidation")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1218,9 +899,8 @@ function KillAura.Init(UI, Core, notify)
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
-                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value) then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to stance change")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1228,7 +908,6 @@ function KillAura.Init(UI, Core, notify)
                 task.wait(settings.releaseTime)
                 if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to target invalidation")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1237,9 +916,8 @@ function KillAura.Init(UI, Core, notify)
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
-                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
+                if stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value) then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to stance change")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1248,7 +926,6 @@ function KillAura.Init(UI, Core, notify)
                     targetCharacter:FindFirstChild("HumanoidRootPart")
                 if not targetHandle then
                     removeTargetHighlight()
-                    warn("Attack cancelled due to missing target handle")
                     Core.BulwarkTarget.CombatState = nil
                     continue
                 end
@@ -1449,7 +1126,6 @@ function KillAura.Init(UI, Core, notify)
             'AntiParryKA'
         })
         UI.Sections.KillAura:Divider()
-
         UI.Sections.KillAura:Toggle({
             Name = "Highlight Block",
             Default = State.KillAura.HighlightBlock.Default,
@@ -1475,7 +1151,6 @@ function KillAura.Init(UI, Core, notify)
             'HighlightParryKA'
         })
         UI.Sections.KillAura:Divider()
-
         UI.Sections.KillAura:Colorpicker({
             Name = "Parry Color",
             Default = State.KillAura.ParryColor.Default,
@@ -1511,87 +1186,6 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'DefaultColorKA'
-        })
-
-        UI.Sections.LegitHelper = UI.Sections.LegitHelper or UI.Tabs.Combat:Section({ Name = "LegitHelper", Side = "Left" })
-        UI.Sections.LegitHelper:Header({ Name = "Legit Helper" })
-        UI.Sections.LegitHelper:Toggle({
-            Name = "Enabled",
-            Default = State.LegitHelper.Enabled.Default,
-            Callback = function(value)
-                State.LegitHelper.Enabled.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "LegitHelper " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'EnabledLH'
-        })
-        UI.Sections.LegitHelper:Divider()
-        UI.Sections.LegitHelper:Label({ Text = "Auto Kick"})
-        UI.Sections.LegitHelper:Toggle({
-            Name = "Enabled",
-            Default = State.LegitHelper.AutoKick.Default,
-            Callback = function(value)
-                State.LegitHelper.AutoKick.Value = value
-                Core.BulwarkTarget.isAutoKick = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "AutoKick " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'AutoKickLH'
-        })
-        UI.Sections.LegitHelper:Slider({
-            Name = "Range",
-            Minimum = 2,
-            Maximum = 20,
-            Default = State.LegitHelper.Range.Default,
-            Precision = 0,
-            Callback = function(value)
-                State.LegitHelper.Range.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "Range set to: " .. value)
-                end
-            end,
-            'RangeLH'
-        })
-        UI.Sections.LegitHelper:Toggle({
-            Name = "Team Check",
-            Default = State.LegitHelper.TeamCheck.Default,
-            Callback = function(value)
-                State.LegitHelper.TeamCheck.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "Team Check " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'TeamCheckLH'
-        })
-        UI.Sections.LegitHelper:Toggle({
-            Name = "KillAura Sync",
-            Default = State.LegitHelper.AutoDodgeSync.Default,
-            Callback = function(value)
-                State.LegitHelper.AutoDodgeSync.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "KillAura Sync " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'KillAuraSyncLH'
-        })
-        UI.Sections.LegitHelper:Toggle({
-            Name = "Legit Kick",
-            Default = State.LegitHelper.LegitKick.Default,
-            Callback = function(value)
-                State.LegitHelper.LegitKick.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("LegitHelper", "Legit Kick " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'LegitKickLH'
         })
 
         UI.Sections.ToolExploit = UI.Sections.ToolExploit or UI.Tabs.Combat:Section({ Name = "ToolExploit", Side = "Right" })
@@ -1677,7 +1271,7 @@ function KillAura.Init(UI, Core, notify)
         UI.Sections.AutoDodge:Slider({
             Name = "Range",
             Minimum = 4,
-            Maximum = 16,
+            Maximum = 20,
             Default = State.AutoDodge.Range.Default,
             Precision = 0,
             Callback = function(value)
@@ -1690,16 +1284,16 @@ function KillAura.Init(UI, Core, notify)
             'RangeAD'
         })
         UI.Sections.AutoDodge:Slider({
-            Name = "PreRange",
-            Minimum = 8,
-            Maximum = 32,
+            Name = "Pre Range",
+            Minimum = 10,
+            Maximum = 30,
             Default = State.AutoDodge.PreRange.Default,
             Precision = 0,
             Callback = function(value)
                 State.AutoDodge.PreRange.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
-                    notify("AutoDodge", "PreRange set to: " .. value)
+                    notify("AutoDodge", "Pre Range set to: " .. value)
                 end
             end,
             'PreRangeAD'
@@ -1707,9 +1301,9 @@ function KillAura.Init(UI, Core, notify)
         UI.Sections.AutoDodge:Slider({
             Name = "Dodge Cooldown",
             Minimum = 0.1,
-            Maximum = 0.5,
+            Maximum = 1,
             Default = State.AutoDodge.DodgeCooldown.Default,
-            Precision = 1,
+            Precision = 2,
             Callback = function(value)
                 State.AutoDodge.DodgeCooldown.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -1719,7 +1313,6 @@ function KillAura.Init(UI, Core, notify)
             end,
             'DodgeCooldownAD'
         })
-        UI.Sections.AutoDodge:Divider()
         UI.Sections.AutoDodge:Toggle({
             Name = "Team Check",
             Default = State.AutoDodge.TeamCheck.Default,
@@ -1756,7 +1349,6 @@ function KillAura.Init(UI, Core, notify)
             end,
             'IdleSpoofAD'
         })
-        UI.Sections.AutoDodge:SubLabel({ Text = "[❗] Recommend use Idle Spoof ONLY with Block mode, parry mode may cause crashes "})
         UI.Sections.AutoDodge:Toggle({
             Name = "Use Client Idle",
             Default = State.AutoDodge.UseClientIdle.Default,
@@ -1769,20 +1361,6 @@ function KillAura.Init(UI, Core, notify)
             end,
             'UseClientIdleAD'
         })
-        UI.Sections.AutoDodge:Toggle({
-            Name = "Resolve Angle",
-            Default = State.AutoDodge.ResolveAngle.Default,
-            Callback = function(value)
-                State.AutoDodge.ResolveAngle.Value = value
-                if tick() - lastNotificationTime >= notificationDelay then
-                    lastNotificationTime = tick()
-                    notify("AutoDodge", "Resolve Angle " .. (value and "Enabled" or "Disabled"), true)
-                end
-            end,
-            'ResolveAngleAD'
-        })
-        UI.Sections.AutoDodge:Divider()
-
         UI.Sections.AutoDodge:Toggle({
             Name = "Warning Text",
             Default = State.AutoDodge.WarningText.Default,
@@ -1798,8 +1376,8 @@ function KillAura.Init(UI, Core, notify)
         })
         UI.Sections.AutoDodge:Slider({
             Name = "Warning Text Scale",
-            Minimum = 0.1,
-            Maximum = 1,
+            Minimum = 0.5,
+            Maximum = 2,
             Default = State.AutoDodge.WarningTextScale.Default,
             Precision = 2,
             Callback = function(value)
@@ -1827,14 +1405,12 @@ function KillAura.Init(UI, Core, notify)
             end,
             'BlockingModeAD'
         })
-        UI.Sections.AutoDodge:Divider()
         UI.Sections.AutoDodge:Slider({
-            Name = "Block Chance",
+            Name = "Parrying Chance",
             Minimum = 0,
             Maximum = 100,
-            Precision = 0,
-            Suffix = "%",
             Default = State.AutoDodge.ParryingChance.Default,
+            Precision = 0,
             Callback = function(value)
                 State.AutoDodge.ParryingChance.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -1845,12 +1421,11 @@ function KillAura.Init(UI, Core, notify)
             'ParryingChanceAD'
         })
         UI.Sections.AutoDodge:Slider({
-            Name = "Parry Chance",
+            Name = "Riposte Chance",
             Minimum = 0,
             Maximum = 100,
-            Precision = 0,
-            Suffix = "%",
             Default = State.AutoDodge.RiposteChance.Default,
+            Precision = 0,
             Callback = function(value)
                 State.AutoDodge.RiposteChance.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
@@ -1859,6 +1434,171 @@ function KillAura.Init(UI, Core, notify)
                 end
             end,
             'RiposteChanceAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Miss Chance",
+            Minimum = 0,
+            Maximum = 100,
+            Default = State.AutoDodge.MissChance.Default,
+            Precision = 0,
+            Callback = function(value)
+                State.AutoDodge.MissChance.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Miss Chance set to: " .. value .. "%")
+                end
+            end,
+            'MissChanceAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Legit Block",
+            Default = State.AutoDodge.LegitBlock.Default,
+            Callback = function(value)
+                State.AutoDodge.LegitBlock.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Legit Block " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'LegitBlockAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Legit Parry",
+            Default = State.AutoDodge.LegitParry.Default,
+            Callback = function(value)
+                State.AutoDodge.LegitParry.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Legit Parry " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'LegitParryAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Blocking",
+            Default = State.AutoDodge.Blocking.Default,
+            Callback = function(value)
+                State.AutoDodge.Blocking.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Blocking " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'BlockingAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Blocking Anti Stun",
+            Default = State.AutoDodge.BlockingAntiStun.Default,
+            Callback = function(value)
+                State.AutoDodge.BlockingAntiStun.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Blocking Anti Stun " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'BlockingAntiStunAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Riposte Mouse Lock Duration",
+            Minimum = 0.5,
+            Maximum = 3,
+            Default = State.AutoDodge.RiposteMouseLockDuration.Default,
+            Precision = 2,
+            Callback = function(value)
+                State.AutoDodge.RiposteMouseLockDuration.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Riposte Mouse Lock Duration set to: " .. value)
+                end
+            end,
+            'RiposteMouseLockDurationAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Max Wait Time",
+            Minimum = 0.5,
+            Maximum = 5,
+            Default = State.AutoDodge.MaxWaitTime.Default,
+            Precision = 2,
+            Callback = function(value)
+                State.AutoDodge.MaxWaitTime.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Max Wait Time set to: " .. value)
+                end
+            end,
+            'MaxWaitTimeAD'
+        })
+        UI.Sections.AutoDodge:Toggle({
+            Name = "Resolve Angle",
+            Default = State.AutoDodge.ResolveAngle.Default,
+            Callback = function(value)
+                State.AutoDodge.ResolveAngle.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Resolve Angle " .. (value and "Enabled" or "Disabled"), true)
+                end
+            end,
+            'ResolveAngleAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Angle Delay",
+            Minimum = 0.01,
+            Maximum = 0.1,
+            Default = State.AutoDodge.AngleDelay.Default,
+            Precision = 3,
+            Callback = function(value)
+                State.AutoDodge.AngleDelay.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Angle Delay set to: " .. value)
+                end
+            end,
+            'AngleDelayAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Prediction Time",
+            Minimum = 0.1,
+            Maximum = 1,
+            Default = State.AutoDodge.PredictionTime.Default,
+            Precision = 2,
+            Callback = function(value)
+                State.AutoDodge.PredictionTime.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Prediction Time set to: " .. value)
+                end
+            end,
+            'PredictionTimeAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Fast Weapon Hold Multiplier",
+            Minimum = 1,
+            Maximum = 3,
+            Default = State.AutoDodge.FastWeaponHoldMultiplier.Default,
+            Precision = 2,
+            Callback = function(value)
+                State.AutoDodge.FastWeaponHoldMultiplier.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Fast Weapon Hold Multiplier set to: " .. value)
+                end
+            end,
+            'FastWeaponHoldMultiplierAD'
+        })
+        UI.Sections.AutoDodge:Slider({
+            Name = "Hitbox Radius",
+            Minimum = 2,
+            Maximum = 10,
+            Default = State.AutoDodge.HitboxRadius.Default,
+            Precision = 2,
+            Callback = function(value)
+                State.AutoDodge.HitboxRadius.Value = value
+                if tick() - lastNotificationTime >= notificationDelay then
+                    lastNotificationTime = tick()
+                    notify("AutoDodge", "Hitbox Radius set to: " .. value)
+                end
+            end,
+            'HitboxRadiusAD'
         })
     end
 end
