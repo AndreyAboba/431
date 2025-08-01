@@ -57,14 +57,15 @@ function KillAura.Init(UI, Core, notify)
             LegitParry = { Value = true, Default = true },
             BaseMultiplier = { Value = 0.15, Default = 0.15 },
             DistanceFactor = { Value = 0.03, Default = 0.03 },
-            Delay = { Value = 0.01, Default = 0.01 }, -- Уменьшенный Delay для более частого обновления
+            Delay = { Value = 0.005, Default = 0.005 }, -- Уменьшенный Delay для более частого обновления
             Blocking = { Value = true, Default = true },
             BlockingAntiStun = { Value = true, Default = true },
             RiposteMouseLockDuration = { Value = 1.5, Default = 1.5 },
             MaxWaitTime = { Value = 2.0, Default = 2.0 },
             ResolveAngle = { Value = true, Default = true },
             AngleDelay = { Value = 0.05, Default = 0.05 },
-            PredictionTime = { Value = 0.08, Default = 0.08 }
+            PredictionTime = { Value = 0.08, Default = 0.08 },
+            FastWeaponHoldMultiplier = { Value = 1.5, Default = 1.5 } -- Множитель удержания для быстрых атак
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -406,50 +407,59 @@ function KillAura.Init(UI, Core, notify)
         return damagePoints
     end
 
-    local function predictDamagePointPosition(dp, predictionTime)
+    local function predictDamagePointPosition(dp, predictionTime, releaseTime)
         if not damagePointHistory[dp] then
             damagePointHistory[dp] = {
                 positions = { { pos = dp.WorldPosition, time = tick() } },
-                velocity = Vector3.new(0, 0, 0)
+                velocity = Vector3.new(0, 0, 0),
+                acceleration = Vector3.new(0, 0, 0)
             }
             return dp.WorldPosition
         end
         local history = damagePointHistory[dp]
         table.insert(history.positions, { pos = dp.WorldPosition, time = tick() })
-        if #history.positions > 5 then -- Ограничиваем историю до 5 точек для сглаживания
+        if #history.positions > 10 then -- Увеличено до 10 точек для более точного сглаживания
             table.remove(history.positions, 1)
         end
 
         -- Сглаживание скорости и ускорения
         local totalVelocity = Vector3.new(0, 0, 0)
+        local totalAcceleration = Vector3.new(0, 0, 0)
         local count = 0
         for i = 2, #history.positions do
             local deltaPos = history.positions[i].pos - history.positions[i-1].pos
             local deltaTime = history.positions[i].time - history.positions[i-1].time
             if deltaTime > 0 then
-                totalVelocity = totalVelocity + (deltaPos / deltaTime)
+                local velocity = deltaPos / deltaTime
+                totalVelocity = totalVelocity + velocity
                 count = count + 1
+                if i > 2 then
+                    local prevVelocity = (history.positions[i-1].pos - history.positions[i-2].pos) / (history.positions[i-1].time - history.positions[i-2].time)
+                    local accel = (velocity - prevVelocity) / deltaTime
+                    totalAcceleration = totalAcceleration + accel
+                end
             end
         end
         local avgVelocity = count > 0 and totalVelocity / count or history.velocity
+        local avgAcceleration = count > 1 and totalAcceleration / (count - 1) or history.acceleration
         history.velocity = avgVelocity
+        history.acceleration = avgAcceleration
 
-        -- Адаптивное время предикции
+        -- Адаптивное время предикции с учетом releaseTime
         local distance = localRootPart and (localRootPart.Position - dp.WorldPosition).Magnitude or 10
         local speed = avgVelocity.Magnitude
-        local adjustedPredictionTime = math.clamp(predictionTime * (1 - speed / 50), 0.02, 0.1) -- Динамическая корректировка
+        local adjustedPredictionTime = math.clamp(predictionTime * (1 - speed / 50) * (releaseTime <= 0.3 and 0.8 or 1.0), 0.01, 0.1) -- Уменьшаем для быстрых атак
 
         -- Предсказание позиции с учетом ускорения
-        local acceleration = count > 1 and (avgVelocity - history.velocity) / (history.positions[#history.positions].time - history.positions[1].time) or Vector3.new(0, 0, 0)
-        return dp.WorldPosition + avgVelocity * adjustedPredictionTime + 0.5 * acceleration * adjustedPredictionTime * adjustedPredictionTime
+        return dp.WorldPosition + avgVelocity * adjustedPredictionTime + 0.5 * avgAcceleration * adjustedPredictionTime * adjustedPredictionTime
     end
 
-    local function findClosestDamagePoint(damagePoints, predictionTime)
+    local function findClosestDamagePoint(damagePoints, predictionTime, releaseTime)
         local minDistance = math.huge
         local closestDP = nil
         local playerPos = localRootPart and localRootPart.Position or Vector3.new(0, 0, 0)
         for _, dp in pairs(damagePoints) do
-            local predictedPos = predictDamagePointPosition(dp, predictionTime)
+            local predictedPos = predictDamagePointPosition(dp, predictionTime, releaseTime)
             local distance = (playerPos - predictedPos).Magnitude
             if distance < minDistance then
                 minDistance = distance
@@ -464,12 +474,13 @@ function KillAura.Init(UI, Core, notify)
             return math.huge
         end
         local playerPos = localRootPart.Position
-        local predictedPos = predictDamagePointPosition(closestDP, predictionTime)
+        local predictedPos = predictDamagePointPosition(closestDP, predictionTime, releaseTime)
         local history = damagePointHistory[closestDP]
         local velocity = history and history.velocity or Vector3.new(0, 0, 0)
+        local acceleration = history and history.acceleration or Vector3.new(0, 0, 0)
         local relativePos = playerPos - closestDP.WorldPosition
         local relativeVelocity = velocity - (localRootPart.Velocity or Vector3.new(0, 0, 0)) -- Учет скорости игрока
-        local a = relativeVelocity:Dot(relativeVelocity)
+        local a = relativeVelocity:Dot(relativeVelocity) + acceleration:Dot(relativePos)
         local b = 2 * relativePos:Dot(relativeVelocity)
         local c = relativePos:Dot(relativePos)
         local discriminant = b*b - 4*a*c
@@ -485,10 +496,10 @@ function KillAura.Init(UI, Core, notify)
         if t < 0 or t ~= t then
             return math.huge
         end
-        -- Корректировка времени с учетом дистанции
+        -- Корректировка времени с учетом releaseTime и дистанции
         local distance = relativePos.Magnitude
-        local adjustedTime = math.min(t, releaseTime * 0.9) * (1 - distance / State.AutoDodge.Range.Value)
-        return math.clamp(adjustedTime, 0.05, releaseTime * 0.9)
+        local adjustedTime = math.clamp(t * (releaseTime <= 0.3 and 0.9 or 0.95) * (1 - distance / State.AutoDodge.Range.Value), 0.05, releaseTime * 0.85)
+        return adjustedTime
     end
 
     local function trackDamagePoints(targetPlayer, releaseTime)
@@ -503,10 +514,9 @@ function KillAura.Init(UI, Core, notify)
         if #damagePoints == 0 then
             return
         end
-        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
+        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value, settings.Release)
         if closestDP then
-            -- Обновляем историю позиций
-            predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value)
+            predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value, settings.Release)
         end
     end
 
@@ -564,11 +574,11 @@ function KillAura.Init(UI, Core, notify)
             if weapon and settings then
                 local damagePoints = getBladeDamagePoints(weapon)
                 if #damagePoints > 0 then
-                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value)
+                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value, settings.Release)
                     if closestDP then
                         local timeToImpact = calculateTimeToImpact(closestDP, State.AutoDodge.PredictionTime.Value, settings.Release)
                         if timeToImpact < math.huge then
-                            waitTime = math.min(waitTime, timeToImpact * 0.85) -- Ускоряем реакцию
+                            waitTime = math.min(waitTime, timeToImpact * (settings.Release <= 0.3 and 0.9 or 0.95)) -- Позднее начало для быстрых атак
                         end
                     end
                 end
@@ -621,7 +631,7 @@ function KillAura.Init(UI, Core, notify)
             ChangeStance:FireServer(action)
         end
         updateWarningText(action, waitTime)
-        task.wait(waitTime)
+        task.wait(waitTime * (releaseTime <= 0.3 and State.AutoDodge.FastWeaponHoldMultiplier.Value or 1.0)) -- Удлиненное удержание для быстрых атак
         if State.AutoDodge.IdleSpoof.Value then
             local currentStance = getPlayerStance(LocalPlayer)
             if currentStance and table.find(INVALID_STANCES, currentStance) then
