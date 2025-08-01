@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('1')
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -53,7 +53,7 @@ function KillAura.Init(UI, Core, notify)
             LegitBlock = { Value = true, Default = true },
             LegitParry = { Value = true, Default = true },
             ResolveAngle = { Value = true, Default = true },
-            HitboxRadius = { Value = 5, Default = 5 } -- Updated to 5 studs
+            HitboxRadius = { Value = 5, Default = 5 }
         }
     }
 
@@ -70,6 +70,7 @@ function KillAura.Init(UI, Core, notify)
     local lastDodgeTime = 0
     local closestTarget = nil
     local lastTargetWeapon = nil
+    local lastTargetWeaponSettings = nil
     local isPerformingAction = false
     local isRiposteActive = false
     local riposteEndTime = 0
@@ -79,6 +80,7 @@ function KillAura.Init(UI, Core, notify)
     local isDragging = false
     local dragStart = nil
     local startPos = nil
+    local lastReleaseTime = nil
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
@@ -99,7 +101,7 @@ function KillAura.Init(UI, Core, notify)
     local function getTargetWeaponSettings(targetPlayer)
         local character = targetPlayer.Character
         if not character then
-            return nil
+            return nil, nil
         end
         local weapon
         for _, child in pairs(character:GetChildren()) do
@@ -108,7 +110,18 @@ function KillAura.Init(UI, Core, notify)
                 break
             end
         end
-        return weapon
+        if not weapon then
+            return nil, nil
+        end
+        local settingsModule = weapon:FindFirstChild("Settings")
+        if not settingsModule then
+            return nil, nil
+        end
+        local success, settings = pcall(require, settingsModule)
+        if not success or not settings or type(settings) ~= "table" or not settings.Release or type(settings.Release) ~= "number" or settings.Release <= 0 then
+            return nil, nil
+        end
+        return weapon, settings
     end
 
     local function getWeaponSettings()
@@ -309,16 +322,15 @@ function KillAura.Init(UI, Core, notify)
         if not localCharacter or not localRootPart then
             return false
         end
-        for _, dp in pairs(damagePoints) do
-            if not dp or not dp.Parent or not dp.WorldPosition then
-                continue
-            end
-            for _, partName in ipairs(PLAYER_PARTS) do
-                local part = localCharacter:FindFirstChild(partName)
-                if part and part:IsA("BasePart") then
-                    local distance = (part.Position - dp.WorldPosition).Magnitude
-                    if distance <= hitboxRadius then
-                        return true
+        for _, dp in ipairs(damagePoints) do
+            if dp and dp.Parent and dp.WorldPosition then
+                for _, partName in ipairs(PLAYER_PARTS) do
+                    local part = localCharacter:FindFirstChild(partName)
+                    if part and part:IsA("BasePart") then
+                        local distance = (part.Position - dp.WorldPosition).Magnitude
+                        if distance <= hitboxRadius then
+                            return true
+                        end
                     end
                 end
             end
@@ -473,7 +485,9 @@ function KillAura.Init(UI, Core, notify)
             if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0) then
                 closestTarget = nil
                 lastTargetWeapon = nil
+                lastTargetWeaponSettings = nil
                 Core.BulwarkTarget.UniversalTarget = nil
+                lastReleaseTime = nil
                 continue
             end
             closestTarget = nil
@@ -492,10 +506,18 @@ function KillAura.Init(UI, Core, notify)
             end
             if closestTarget then
                 Core.BulwarkTarget.UniversalTarget = closestTarget.Name
-                lastTargetWeapon = getTargetWeaponSettings(closestTarget)
+                lastTargetWeapon, lastTargetWeaponSettings = getTargetWeaponSettings(closestTarget)
+                local stance = getPlayerStance(closestTarget)
+                if stance == "release" and lastReleaseTime == nil then
+                    lastReleaseTime = tick()
+                elseif stance ~= "release" then
+                    lastReleaseTime = nil
+                end
             else
                 lastTargetWeapon = nil
+                lastTargetWeaponSettings = nil
                 Core.BulwarkTarget.UniversalTarget = nil
+                lastReleaseTime = nil
             end
         end
     end
@@ -550,7 +572,12 @@ function KillAura.Init(UI, Core, notify)
                     shouldDodge = true
                 end
             else
-                shouldDodge = true -- Dodge if ResolveAngle is disabled and stance is release
+                if lastTargetWeaponSettings and lastReleaseTime then
+                    local dodgeDelay = (lastTargetWeaponSettings.Release / 2) + 0.4
+                    if tick() - lastReleaseTime >= dodgeDelay then
+                        shouldDodge = true
+                    end
+                end
             end
             if shouldDodge and math.random() >= State.AutoDodge.MissChance.Value then
                 local action
@@ -565,6 +592,7 @@ function KillAura.Init(UI, Core, notify)
                 end
                 if performDodgeAction(action) then
                     lastDodgeTime = tick()
+                    lastReleaseTime = nil
                 end
             end
         end
@@ -737,9 +765,11 @@ function KillAura.Init(UI, Core, notify)
         if closestTarget == player then
             closestTarget = nil
             lastTargetWeapon = nil
+            lastTargetWeaponSettings = nil
             isDodgePending = false
             desiredDodgeAction = nil
             Core.BulwarkTarget.UniversalTarget = nil
+            lastReleaseTime = nil
         end
     end)
 
@@ -754,9 +784,11 @@ function KillAura.Init(UI, Core, notify)
                     if closestTarget == player then
                         closestTarget = nil
                         lastTargetWeapon = nil
+                        lastTargetWeaponSettings = nil
                         isDodgePending = false
                         desiredDodgeAction = nil
                         Core.BulwarkTarget.UniversalTarget = nil
+                        lastReleaseTime = nil
                     end
                 end)
             end
