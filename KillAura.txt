@@ -1,5 +1,5 @@
 local KillAura = {}
-print('2')
+
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -53,7 +53,7 @@ function KillAura.Init(UI, Core, notify)
             LegitBlock = { Value = true, Default = true },
             LegitParry = { Value = true, Default = true },
             ResolveAngle = { Value = true, Default = true },
-            HitboxRadius = { Value = 18, Default = 18 }
+            HitboxRadius = { Value = 8, Default = 8 }
         }
     }
 
@@ -81,6 +81,8 @@ function KillAura.Init(UI, Core, notify)
     local dragStart = nil
     local startPos = nil
     local lastReleaseTime = nil
+    local lastDmgPointPos = {}
+    local lastDmgPointTime = {}
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
@@ -317,6 +319,41 @@ function KillAura.Init(UI, Core, notify)
         return damagePoints
     end
 
+    local function predictDmgPointCollision(damagePoints, hitboxRadius)
+        if not localCharacter or not localRootPart then
+            return nil
+        end
+        local localPos = localRootPart.Position
+        local closestCollisionTime = math.huge
+        local deltaTime = RunService.Stepped:Wait()
+        for _, dp in ipairs(damagePoints) do
+            if dp and dp.Parent and dp.WorldPosition then
+                local currentPos = dp.WorldPosition
+                local prevPos = lastDmgPointPos[dp] or currentPos
+                local prevTime = lastDmgPointTime[dp] or tick()
+                local timeDiff = tick() - prevTime
+                if timeDiff > 0 then
+                    local velocity = (currentPos - prevPos) / timeDiff
+                    local relativePos = currentPos - localPos
+                    local distance = relativePos.Magnitude
+                    local relativeVelocity = velocity:Dot(relativePos.Unit)
+                    if relativeVelocity < 0 then -- Moving towards player
+                        local timeToHit = (distance - hitboxRadius) / -relativeVelocity
+                        if timeToHit > 0 and timeToHit < closestCollisionTime then
+                            closestCollisionTime = timeToHit
+                        end
+                    end
+                end
+                lastDmgPointPos[dp] = currentPos
+                lastDmgPointTime[dp] = tick()
+            end
+        end
+        if closestCollisionTime < 0.3 and closestCollisionTime > 0.1 then
+            return closestCollisionTime
+        end
+        return nil
+    end
+
     local function isDamagePointInRange(damagePoints, hitboxRadius)
         if not localCharacter or not localRootPart then
             return false
@@ -473,6 +510,8 @@ function KillAura.Init(UI, Core, notify)
         isDodgePending = false
         desiredDodgeAction = nil
         lastReleaseTime = nil
+        lastDmgPointPos = {}
+        lastDmgPointTime = {}
         return true
     end
 
@@ -488,6 +527,8 @@ function KillAura.Init(UI, Core, notify)
                 lastTargetWeaponSettings = nil
                 Core.BulwarkTarget.UniversalTarget = nil
                 lastReleaseTime = nil
+                lastDmgPointPos = {}
+                lastDmgPointTime = {}
                 continue
             end
             closestTarget = nil
@@ -512,12 +553,25 @@ function KillAura.Init(UI, Core, notify)
                     lastReleaseTime = tick()
                 elseif stance ~= "release" then
                     lastReleaseTime = nil
+                    lastDmgPointPos = {}
+                    lastDmgPointTime = {}
+                end
+                if lastTargetWeapon and stance == "release" then
+                    local damagePoints = getBladeDamagePoints(lastTargetWeapon)
+                    for _, dp in ipairs(damagePoints) do
+                        if dp and dp.Parent and dp.WorldPosition then
+                            lastDmgPointPos[dp] = dp.WorldPosition
+                            lastDmgPointTime[dp] = tick()
+                        end
+                    end
                 end
             else
                 lastTargetWeapon = nil
                 lastTargetWeaponSettings = nil
                 Core.BulwarkTarget.UniversalTarget = nil
                 lastReleaseTime = nil
+                lastDmgPointPos = {}
+                lastDmgPointTime = {}
             end
         end
     end
@@ -565,16 +619,24 @@ function KillAura.Init(UI, Core, notify)
                 return
             end
             local shouldDodge = false
+            local releaseTime = lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.5
             if State.AutoDodge.ResolveAngle.Value and lastTargetWeapon then
                 local damagePoints = getBladeDamagePoints(lastTargetWeapon)
-                if #damagePoints > 0 and isDamagePointInRange(damagePoints, State.AutoDodge.HitboxRadius.Value) then
-                    shouldDodge = true
+                if #damagePoints > 0 then
+                    if isDamagePointInRange(damagePoints, State.AutoDodge.HitboxRadius.Value) then
+                        shouldDodge = true
+                    else
+                        local collisionTime = predictDmgPointCollision(damagePoints, State.AutoDodge.HitboxRadius.Value)
+                        if collisionTime and collisionTime <= 0.3 then
+                            shouldDodge = true
+                        end
+                    end
                 end
             else
                 if lastTargetWeaponSettings and lastReleaseTime and canTargetPlayer(closestTarget, State.AutoDodge.Range.Value, State.AutoDodge.TeamCheck.Value) then
                     local distance = (localRootPart.Position - targetCharacter.HumanoidRootPart.Position).Magnitude
-                    local releaseTime = lastTargetWeaponSettings.Release or 0.5
-                    local dodgeDelay = (releaseTime / 2) + 0.4 + (distance * 0.02)
+                    local collisionTime = lastTargetWeapon and predictDmgPointCollision(getBladeDamagePoints(lastTargetWeapon), State.AutoDodge.HitboxRadius.Value) or 0.4
+                    local dodgeDelay = (releaseTime / 2) + collisionTime + (distance * 0.015)
                     if tick() - lastReleaseTime >= dodgeDelay then
                         shouldDodge = true
                     end
@@ -594,6 +656,8 @@ function KillAura.Init(UI, Core, notify)
                 if performDodgeAction(action) then
                     lastDodgeTime = tick()
                     lastReleaseTime = nil
+                    lastDmgPointPos = {}
+                    lastDmgPointTime = {}
                 end
             end
         end)
@@ -771,6 +835,8 @@ function KillAura.Init(UI, Core, notify)
             desiredDodgeAction = nil
             Core.BulwarkTarget.UniversalTarget = nil
             lastReleaseTime = nil
+            lastDmgPointPos = {}
+            lastDmgPointTime = {}
         end
     end)
 
@@ -790,6 +856,8 @@ function KillAura.Init(UI, Core, notify)
                         desiredDodgeAction = nil
                         Core.BulwarkTarget.UniversalTarget = nil
                         lastReleaseTime = nil
+                        lastDmgPointPos = {}
+                        lastDmgPointTime = {}
                     end
                 end)
             end
