@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('1')
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,7 +37,7 @@ function KillAura.Init(UI, Core, notify)
             Enabled = { Value = false, Default = false },
             Range = { Value = 10, Default = 10 },
             PreRange = { Value = 20, Default = 20 },
-            DodgeCooldown = { Value = 0.2, Default = 0.2 },
+            DodgeCooldown = { Value = 0.3, Default = 0.3 },
             TeamCheck = { Value = true, Default = true },
             KillAuraSync = { Value = false, Default = false },
             IdleSpoof = { Value = false, Default = false },
@@ -53,7 +53,7 @@ function KillAura.Init(UI, Core, notify)
             LegitParry = { Value = true, Default = true },
             ResolveAngle = { Value = true, Default = true },
             HitboxRadius = { Value = 6, Default = 6 },
-            BaseMultiplier = { Value = 0.4, Default = 0.4 },
+            BaseMultiplier = { Value = 0.5, Default = 0.5 },
             DistanceFactor = { Value = 0.02, Default = 0.02 },
             PredictionTime = { Value = 0.15, Default = 0.15 },
             MaxWaitTime = { Value = 1.0, Default = 1.0 }
@@ -367,35 +367,13 @@ function KillAura.Init(UI, Core, notify)
 
     local function performDodgeAction(action)
         if isPerformingAction or tick() - lastDodgeTime < State.AutoDodge.DodgeCooldown.Value or dodgeTriggered then
-            isDodgePending = false
-            desiredDodgeAction = nil
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 9
-            end
             return false
         end
         isPerformingAction = true
-        isDodgePending = true
-        desiredDodgeAction = action
         dodgeTriggered = true
-        if not (localHumanoid and localHumanoid.Health > 0) then
+        if not (localHumanoid and localHumanoid.Health > 0) or not table.find(VALID_HUMANOID_STATES, localHumanoid:GetState()) then
             isPerformingAction = false
-            isDodgePending = false
-            desiredDodgeAction = nil
             dodgeTriggered = false
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 9
-            end
-            return false
-        end
-        if not table.find(VALID_HUMANOID_STATES, localHumanoid:GetState()) then
-            isPerformingAction = false
-            isDodgePending = false
-            desiredDodgeAction = nil
-            dodgeTriggered = false
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 9
-            end
             return false
         end
         local localWeapon
@@ -408,23 +386,13 @@ function KillAura.Init(UI, Core, notify)
         if not localWeapon then
             warn("Dodge failed: No weapon equipped")
             isPerformingAction = false
-            isDodgePending = false
-            desiredDodgeAction = nil
             dodgeTriggered = false
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 9
-            end
             return false
         end
         local localStance = getPlayerStance(LocalPlayer)
         if localStance and table.find(INVALID_STANCES, localStance) and not State.AutoDodge.IdleSpoof.Value then
             isPerformingAction = false
-            isDodgePending = false
-            desiredDodgeAction = nil
             dodgeTriggered = false
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 9
-            end
             return false
         end
         local settings, weapon = getLocalWeaponSettings()
@@ -441,13 +409,6 @@ function KillAura.Init(UI, Core, notify)
                         animationTrack:Play(0.1)
                         animationTrack:AdjustSpeed(1)
                         localHumanoid.WalkSpeed = 7
-                        task.spawn(function()
-                            task.wait(0.3)
-                            if animationTrack and animationTrack.IsPlaying then
-                                animationTrack:Stop(0.2)
-                                animationTrack:Destroy()
-                            end
-                        end)
                     end
                 end)
             elseif action == "Riposte" and State.AutoDodge.LegitParry.Value and animations.Riposte and animations.Riposte ~= "0" then
@@ -461,74 +422,27 @@ function KillAura.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = 1
                         isRiposteActive = true
                         riposteEndTime = tick() + 1.5
-                        task.spawn(function()
-                            task.wait(0.5)
-                            if animationTrack and animationTrack.IsPlaying then
-                                animationTrack:Stop(0.7)
-                                animationTrack:Destroy()
-                            end
-                        end)
                     end
                 end)
             end
         end
         ChangeStance:FireServer(action)
         updateWarningText(action)
-        if State.AutoDodge.IdleSpoof.Value and action ~= "Riposte" then
-            local currentStance = getPlayerStance(LocalPlayer)
-            if currentStance and table.find(INVALID_STANCES, currentStance) then
-                ChangeStance:FireServer("Idle")
-                if localHumanoid then
-                    localHumanoid.WalkSpeed = 9
-                end
-                if State.AutoDodge.UseClientIdle.Value and settings and settings.Type then
-                    local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
-                    local animations = animationsModule and pcall(require, animationsModule) and require(animationsModule)[settings.Type] or { Idle = "0" }
-                    if animations.Idle and animations.Idle ~= "0" then
-                        local idleAnimation = Instance.new("Animation")
-                        idleAnimation.AnimationId = "rbxassetid://" .. animations.Idle
-                        pcall(function()
-                            local idleAnimTrack = localHumanoid:LoadAnimation(idleAnimation)
-                            if idleAnimTrack then
-                                idleAnimTrack:Play(0.1)
-                                idleAnimTrack:AdjustSpeed(1)
-                                task.spawn(function()
-                                    task.wait(0.5)
-                                    if idleAnimTrack and idleAnimTrack.IsPlaying then
-                                        idleAnimTrack:Stop(0.2)
-                                        idleAnimTrack:Destroy()
-                                    end
-                                end)
-                            end
-                        end)
-                    end
-                end
-                task.wait(0.05)
-                if desiredDodgeAction then
-                    ChangeStance:FireServer(desiredDodgeAction)
-                end
-            end
-        end
-        local releaseTime = lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.5
-        task.wait(releaseTime * 0.5)
+        task.wait(0.3) -- Fixed wait to sync with server
         if animationTrack and animationTrack.IsPlaying then
             pcall(function()
                 animationTrack:Stop(action == "Parrying" and 0.2 or 0.7)
                 animationTrack:Destroy()
             end)
         end
-        ChangeStance:FireServer("Idle")
-        if localHumanoid then
-            localHumanoid.WalkSpeed = 9
-        end
         if action == "Riposte" then
-            task.wait(1.5)
+            blockMouseButton1()
+            task.wait(1.2)
             isRiposteActive = false
         end
+        ChangeStance:FireServer("Idle")
         lastDodgeTime = tick()
         isPerformingAction = false
-        isDodgePending = false
-        desiredDodgeAction = nil
         dodgeTriggered = false
         lastReleaseTime = nil
         damagePointHistory = {}
@@ -613,9 +527,6 @@ function KillAura.Init(UI, Core, notify)
                 desiredDodgeAction = nil
                 dodgeTriggered = false
                 Core.BulwarkTarget.CombatState = nil
-                if localHumanoid then
-                    localHumanoid.WalkSpeed = 9
-                end
                 return
             end
             Core.BulwarkTarget.isAutoDodge = true
@@ -654,8 +565,7 @@ function KillAura.Init(UI, Core, notify)
                 return
             end
             local shouldDodge = false
-            local releaseTime = lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.5
-            local dodgeDelay = releaseTime * 0.5
+            local dodgeDelay = 0.3
             if State.AutoDodge.ResolveAngle.Value and lastTargetWeapon then
                 local damagePoints = getBladeDamagePoints(lastTargetWeapon)
                 if #damagePoints > 0 then
@@ -663,7 +573,7 @@ function KillAura.Init(UI, Core, notify)
                         shouldDodge = true
                         dodgeDelay = 0.1
                     else
-                        local collisionTime = predictDmgPointCollision(damagePoints, State.AutoDodge.HitboxRadius.Value, releaseTime)
+                        local collisionTime = predictDmgPointCollision(damagePoints, State.AutoDodge.HitboxRadius.Value, lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.5)
                         if collisionTime and collisionTime <= State.AutoDodge.PredictionTime.Value then
                             shouldDodge = true
                             dodgeDelay = math.min(dodgeDelay, collisionTime)
@@ -671,11 +581,11 @@ function KillAura.Init(UI, Core, notify)
                     end
                 end
             else
-                if lastTargetWeaponSettings and lastReleaseTime and canTargetPlayer(closestTarget, State.AutoDodge.Range.Value, State.AutoDodge.TeamCheck.Value) then
+                if lastTargetWeaponSettings and lastReleaseTime then
                     local distance = (localRootPart.Position - targetCharacter.HumanoidRootPart.Position).Magnitude
-                    dodgeDelay = math.max(0.1, releaseTime * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value))
+                    dodgeDelay = math.max(0.1, (lastTargetWeaponSettings.Release or 0.5) * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value))
                     if dodgeDelay > State.AutoDodge.MaxWaitTime.Value then
-                        dodgeDelay = releaseTime * 0.5
+                        dodgeDelay = 0.3
                     end
                     if tick() - lastReleaseTime >= dodgeDelay then
                         shouldDodge = true
@@ -688,7 +598,7 @@ function KillAura.Init(UI, Core, notify)
                     action = "Riposte"
                 elseif State.AutoDodge.BlockingMode.Value == "Parrying" then
                     action = "Parrying"
-                elseif State.AutoDodge.BlockingMode.Value == "Chance" then
+                else
                     local totalChance = State.AutoDodge.ParryingChance.Value + State.AutoDodge.RiposteChance.Value
                     local normalizedParryChance = totalChance > 0 and (State.AutoDodge.ParryingChance.Value / totalChance) or 0.5
                     action = math.random() < normalizedParryChance and "Parrying" or "Riposte"
@@ -699,14 +609,6 @@ function KillAura.Init(UI, Core, notify)
                         lastDodgeTime = tick()
                         lastReleaseTime = nil
                         damagePointHistory = {}
-                    else
-                        isPerformingAction = false
-                        isDodgePending = false
-                        desiredDodgeAction = nil
-                        dodgeTriggered = false
-                        if localHumanoid then
-                            localHumanoid.WalkSpeed = 9
-                        end
                     end
                 end)
             end
