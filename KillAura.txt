@@ -1,5 +1,6 @@
 local KillAura = {}
 print('2')
+
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -64,8 +65,9 @@ function KillAura.Init(UI, Core, notify)
             MaxWaitTime = { Value = 3.0, Default = 3.0 },
             ResolveAngle = { Value = true, Default = true },
             AngleDelay = { Value = 0.01, Default = 0.01 },
-            PredictionTime = { Value = 0.3, Default = 0.3 }, -- Увеличено для drag-атак
-            FastWeaponHoldMultiplier = { Value = 1.9, Default = 1.9 } -- Скорректировано для плавности
+            PredictionTime = { Value = 0.3, Default = 0.3 },
+            FastWeaponHoldMultiplier = { Value = 1.9, Default = 1.9 },
+            HitboxRadius = { Value = 7.142, Default = 7.142 } -- 2 meters ≈ 7.142 studs
         },
         LegitHelper = {
             Enabled = { Value = false, Default = false },
@@ -106,9 +108,9 @@ function KillAura.Init(UI, Core, notify)
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
-    local PLAYER_PARTS = {"HumanoidRootPart", "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"} -- Части игрока для расчета касания
+    local PLAYER_PARTS = {"HumanoidRootPart", "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"}
 
-    local damagePointHistory = {} -- Таблица для хранения истории позиций DamagePoint'ов
+    local damagePointHistory = {}
 
     local function getPlayerStance(player)
         local character = player.Character
@@ -224,27 +226,33 @@ function KillAura.Init(UI, Core, notify)
         if targetRootPart and localRootPart then
             local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
             if distance == math.huge or distance ~= distance then
+                warn("Invalid distance to player: " .. tostring(targetPlayer.Name))
                 return math.huge
             end
             return distance
         end
+        warn("Missing root part for player: " .. tostring(targetPlayer.Name))
         return math.huge
     end
 
     local function getDmgPointDistance(targetPlayer, weapon)
         if not (weapon and targetPlayer.Character and localRootPart and localRootPart.Position) then
+            warn("Missing required components for damage point distance calculation")
             return math.huge
         end
         local blade = weapon:FindFirstChild("Blade")
         if not blade or not blade:IsA("MeshPart") then
+            warn("No valid blade found for weapon")
             return math.huge
         end
         local dmgPoint = blade:FindFirstChild("DmgPoint")
         if not dmgPoint or not dmgPoint:IsA("Attachment") then
+            warn("No valid DmgPoint found for weapon")
             return math.huge
         end
         local distance = (localRootPart.Position - dmgPoint.WorldPosition).Magnitude
         if distance == math.huge or distance ~= distance then
+            warn("Invalid damage point distance calculation")
             return math.huge
         end
         return distance
@@ -252,15 +260,18 @@ function KillAura.Init(UI, Core, notify)
 
     local function canTargetPlayer(targetPlayer, range, teamCheck)
         if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0 and targetPlayer.Character) then
+            warn("Local player or target character invalid")
             return false
         end
         local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
         if not (targetRootPart and targetHumanoid) or targetHumanoid.Health <= 0 or targetHumanoid:GetState() ~= Enum.HumanoidStateType.Running then
+            warn("Target player invalid: " .. tostring(targetPlayer.Name))
             return false
         end
         local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
         if distance > range or distance == math.huge or distance ~= distance then
+            warn("Target out of range or invalid distance: " .. tostring(targetPlayer.Name) .. ", Distance: " .. tostring(distance))
             return false
         end
         if teamCheck and targetPlayer.Team and LocalPlayer.Team then
@@ -404,141 +415,110 @@ function KillAura.Init(UI, Core, notify)
                     table.insert(damagePoints, part)
                 end
             end
+        else
+            warn("No valid blade or damage points found for weapon")
         end
         return damagePoints
     end
 
-    local function predictDamagePointPosition(dp, predictionTime, releaseTime)
+    local function predictDamagePointPosition(dp, predictionTime)
         if not damagePointHistory[dp] then
             damagePointHistory[dp] = {
-                positions = { { pos = dp.WorldPosition, time = tick(), cframe = dp.WorldCFrame } },
-                velocity = Vector3.new(0, 0, 0),
-                acceleration = Vector3.new(0, 0, 0)
+                positions = { { pos = dp.WorldPosition, time = tick() } },
+                velocity = Vector3.new(0, 0, 0)
             }
             return dp.WorldPosition
         end
         local history = damagePointHistory[dp]
-        table.insert(history.positions, { pos = dp.WorldPosition, time = tick(), cframe = dp.WorldCFrame })
-        if #history.positions > 5 then
+        table.insert(history.positions, { pos = dp.WorldPosition, time = tick() })
+        if #history.positions > 10 then
             table.remove(history.positions, 1)
         end
 
-        -- Расчет средней скорости и ускорения
         local totalVelocity = Vector3.new(0, 0, 0)
-        local totalAcceleration = Vector3.new(0, 0, 0)
         local count = 0
         for i = 2, #history.positions do
             local deltaPos = history.positions[i].pos - history.positions[i-1].pos
             local deltaTime = history.positions[i].time - history.positions[i-1].time
             if deltaTime > 0 then
-                local velocity = deltaPos / deltaTime
-                totalVelocity = totalVelocity + velocity
+                totalVelocity = totalVelocity + (deltaPos / deltaTime)
                 count = count + 1
-                if i > 2 then
-                    local prevVelocity = (history.positions[i-1].pos - history.positions[i-2].pos) / (history.positions[i-1].time - history.positions[i-2].time)
-                    local acceleration = (velocity - prevVelocity) / deltaTime
-                    totalAcceleration = totalAcceleration + acceleration
-                end
             end
         end
-        local avgVelocity = count > 0 and totalVelocity / count or history.velocity
-        local avgAcceleration = count > 1 and totalAcceleration / (count - 1) or history.acceleration
-        history.velocity = avgVelocity
-        history.acceleration = avgAcceleration
-
-        -- Логирование
-        local speed = avgVelocity.Magnitude
-        local accel = avgAcceleration.Magnitude
-        warn(string.format("DamagePoint %s: Speed=%.2f, Acceleration=%.2f, Predicted in %.2fs", dp.Name, speed, accel, predictionTime))
-
-        -- Адаптивное время предикции с учетом замедления
-        local adjustedPredictionTime = predictionTime * (releaseTime <= 0.3 and 0.9 or 1.0)
-        adjustedPredictionTime = math.clamp(adjustedPredictionTime * (accel > 10 and 1.2 or 1.0), 0.01, 0.2)
-
-        -- Предсказание позиции с учетом скорости и ускорения
-        local predictedPos = dp.WorldPosition + avgVelocity * adjustedPredictionTime + 0.5 * avgAcceleration * adjustedPredictionTime^2
-        warn(string.format("Predicted position for %s: (%.2f, %.2f, %.2f)", dp.Name, predictedPos.X, predictedPos.Y, predictedPos.Z))
+        history.velocity = count > 0 and totalVelocity / count or history.velocity
+        local predictedPos = dp.WorldPosition + history.velocity * predictionTime
+        warn(string.format("Predicted position for %s: (%.2f, %.2f, %.2f), Speed=%.2f", dp.Name, predictedPos.X, predictedPos.Y, predictedPos.Z, history.velocity.Magnitude))
         return predictedPos
     end
 
-    local function findClosestDamagePoint(damagePoints, predictionTime, releaseTime)
+    local function isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
+        if not localCharacter or not localRootPart then
+            warn("Local character or root part missing")
+            return false, math.huge
+        end
         local minDistance = math.huge
         local closestDP = nil
-        local playerPos = localRootPart and localRootPart.Position or Vector3.new(0, 0, 0)
         for _, dp in pairs(damagePoints) do
-            local predictedPos = predictDamagePointPosition(dp, predictionTime, releaseTime)
-            local distance = (playerPos - predictedPos).Magnitude
-            if distance < minDistance then
-                minDistance = distance
-                closestDP = dp
+            if not dp or not dp.Parent or not dp.WorldPosition then
+                warn("Invalid damage point or missing WorldPosition")
+                continue
             end
-        end
-        return closestDP, minDistance
-    end
-
-    local function calculateTimeToImpact(closestDP, predictionTime, releaseTime)
-        if not closestDP or not localCharacter or not localRootPart then
-            return math.huge
-        end
-        local history = damagePointHistory[closestDP]
-        if not history then
-            return math.huge
-        end
-        local velocity = history.velocity or Vector3.new(0, 0, 0)
-        local acceleration = history.acceleration or Vector3.new(0, 0, 0)
-        local minTime = math.huge
-        local hitboxRadius = 2 -- Радиус хитбокса игрока
-
-        -- Проверка всех частей игрока
-        for _, partName in ipairs(PLAYER_PARTS) do
-            local part = localCharacter:FindFirstChild(partName)
-            if part and part:IsA("BasePart") then
-                local relativePos = part.Position - closestDP.WorldPosition
-                local relativeVelocity = velocity - (localRootPart.Velocity or Vector3.new(0, 0, 0))
-                local a = relativeVelocity:Dot(relativeVelocity) - acceleration:Dot(relativePos)
-                local b = 2 * relativePos:Dot(relativeVelocity)
-                local c = relativePos:Dot(relativePos) - hitboxRadius * hitboxRadius
-                local discriminant = b * b - 4 * a * c
-                if discriminant >= 0 then
-                    local t1 = (-b + math.sqrt(discriminant)) / (2 * a)
-                    local t2 = (-b - math.sqrt(discriminant)) / (2 * a)
-                    local t = math.min(t1, t2)
-                    if t < 0 then
-                        t = math.max(t1, t2)
+            local predictedPos = predictDamagePointPosition(dp, predictionTime)
+            for _, partName in ipairs(PLAYER_PARTS) do
+                local part = localCharacter:FindFirstChild(partName)
+                if part and part:IsA("BasePart") then
+                    local distance = (part.Position - predictedPos).Magnitude
+                    if distance == math.huge or distance ~= distance then
+                        warn("Invalid distance calculation for part: " .. partName .. ", DP: " .. dp.Name)
+                        continue
                     end
-                    if t >= 0 and t < minTime then
-                        minTime = t
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestDP = dp
                     end
+                    if distance <= hitboxRadius then
+                        warn(string.format("DamagePoint %s within range: %.2f studs", dp.Name, distance))
+                        return true, distance
+                    end
+                else
+                    warn("Missing or invalid part: " .. partName)
                 end
             end
         end
-
-        if minTime == math.huge or minTime ~= minTime then
-            return math.huge
-        end
-
-        -- Корректировка времени с учетом ускорения
-        local adjustedTime = math.clamp(minTime * (acceleration.Magnitude > 10 and 1.2 or 1.0) * (releaseTime <= 0.3 and 0.9 or 0.95), 0.05, releaseTime * 0.9)
-        warn(string.format("Time to impact for %s: %.2fs (Accel=%.2f)", closestDP.Name, adjustedTime, acceleration.Magnitude))
-        return adjustedTime
+        warn(string.format("Closest DamagePoint distance: %.2f studs", minDistance))
+        return false, minDistance
     end
 
-    local function trackDamagePoints(targetPlayer, releaseTime)
-        if not State.AutoDodge.ResolveAngle.Value then
-            return
-        end
-        local weapon, settings = getTargetWeaponSettings(targetPlayer)
-        if not weapon or not settings then
-            return
-        end
+    local function calculatePredictionTime(releaseTime, distance)
+        local baseTime = releaseTime / 2 + 0.2
+        local distanceFactor = math.clamp(distance / 10, 0.5, 1.5)
+        local adjustedTime = baseTime * distanceFactor
+        return math.clamp(adjustedTime, 0.1, State.AutoDodge.MaxWaitTime.Value)
+    end
+
+    local function monitorDamagePoints(weapon, predictionTime, hitboxRadius, duration)
         local damagePoints = getBladeDamagePoints(weapon)
         if #damagePoints == 0 then
-            return
+            warn("No damage points found for weapon")
+            return false, math.huge
         end
-        local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value, settings.Release)
-        if closestDP then
-            predictDamagePointPosition(closestDP, State.AutoDodge.PredictionTime.Value, settings.Release)
+        local endTime = tick() + duration
+        local minDistance = math.huge
+        while tick() < endTime do
+            if not weapon or not weapon.Parent then
+                warn("Weapon or parent missing during monitoring")
+                return false, math.huge
+            end
+            local isInRange, distance = isDamagePointInRange(damagePoints, predictionTime, hitboxRadius)
+            minDistance = math.min(minDistance, distance)
+            if isInRange then
+                warn(string.format("DamagePoint within %.2f studs, triggering dodge", hitboxRadius))
+                return true, distance
+            end
+            task.wait(State.AutoDodge.AngleDelay.Value)
         end
+        warn(string.format("No DamagePoint within %.2f studs during monitoring, closest distance: %.2f", hitboxRadius, minDistance))
+        return false, minDistance
     end
 
     local function performDodgeAction(action, waitTime, releaseTime)
@@ -589,21 +569,6 @@ function KillAura.Init(UI, Core, notify)
         if waitTime > State.AutoDodge.MaxWaitTime.Value then
             waitTime = 0.3
             warn("waitTime exceeded MaxWaitTime, using fallback: 0.3")
-        end
-        if State.AutoDodge.ResolveAngle.Value then
-            local weapon, settings = getTargetWeaponSettings(closestTarget)
-            if weapon and settings then
-                local damagePoints = getBladeDamagePoints(weapon)
-                if #damagePoints > 0 then
-                    local closestDP, minDistance = findClosestDamagePoint(damagePoints, State.AutoDodge.PredictionTime.Value, settings.Release)
-                    if closestDP then
-                        local timeToImpact = calculateTimeToImpact(closestDP, State.AutoDodge.PredictionTime.Value, settings.Release)
-                        if timeToImpact < math.huge then
-                            waitTime = math.min(waitTime, timeToImpact * (settings.Release <= 0.3 and 0.9 or 0.95))
-                        end
-                    end
-                end
-            end
         end
 
         local animationTrack
@@ -739,8 +704,7 @@ function KillAura.Init(UI, Core, notify)
                 local weapon, settings = getTargetWeaponSettings(closestTarget)
                 if weapon and settings and settings.Release then
                     lastTargetWeapon = weapon
-                    lastReleaseTime = math.max(0.1, settings.Release - 0.1)
-                    trackDamagePoints(closestTarget, lastReleaseTime)
+                    lastReleaseTime = math.max(0.1, settings.Release)
                 else
                     lastTargetWeapon = nil
                     lastReleaseTime = nil
@@ -791,9 +755,6 @@ function KillAura.Init(UI, Core, notify)
                 Core.BulwarkTarget.CombatState = nil
                 continue
             end
-            if State.AutoDodge.ResolveAngle.Value then
-                trackDamagePoints(closestTarget, lastReleaseTime or 0.3)
-            end
             local stance = getPlayerStance(closestTarget)
             if stance and stance ~= lastStance then
                 if stance == "release" and State.AutoDodge.Blocking.Value then
@@ -834,55 +795,49 @@ function KillAura.Init(UI, Core, notify)
                         task.wait(0.05)
                     end
                     local releaseTime = lastReleaseTime or 0.3
-                    local dmgPointDistance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
-                    local waitTime
-                    if type(releaseTime) == "number" and releaseTime > 0 and dmgPointDistance ~= math.huge and dmgPointDistance == dmgPointDistance then
-                        waitTime = math.max(0.1, releaseTime * (State.AutoDodge.BaseMultiplier.Value + dmgPointDistance * State.AutoDodge.DistanceFactor.Value))
-                        if waitTime > State.AutoDodge.MaxWaitTime.Value then
-                            waitTime = releaseTime * 0.5
-                            warn("Complex waitTime calculation failed, using fallback: releaseTime * 0.5 = " .. waitTime)
+                    local distance = lastTargetWeapon and getDmgPointDistance(closestTarget, lastTargetWeapon) or getDistanceToPlayer(closestTarget)
+                    local predictionTime = State.AutoDodge.PredictionTime.Value
+                    local waitTime = releaseTime / 2 + 0.2
+
+                    if State.AutoDodge.ResolveAngle.Value then
+                        local weapon, settings = getTargetWeaponSettings(closestTarget)
+                        if weapon and settings then
+                            local isInRange, minDistance = monitorDamagePoints(weapon, predictionTime, State.AutoDodge.HitboxRadius.Value, releaseTime)
+                            if not isInRange then
+                                warn(string.format("No DamagePoint within %.2f studs (%.2f meters), skipping dodge. Closest distance: %.2f studs", 
+                                    State.AutoDodge.HitboxRadius.Value, State.AutoDodge.HitboxRadius.Value / 3.571, minDistance))
+                                lastStance = stance
+                                isDodgePending = false
+                                desiredDodgeAction = nil
+                                Core.BulwarkTarget.CombatState = nil
+                                continue
+                            end
+                            predictionTime = calculatePredictionTime(releaseTime, minDistance)
+                            waitTime = math.min(waitTime, predictionTime)
+                            warn(string.format("Dodge triggered: Distance=%.2f studs, PredictionTime=%.2f, WaitTime=%.2f", minDistance, predictionTime, waitTime))
+                        else
+                            warn("No valid weapon or settings, skipping dodge")
+                            lastStance = stance
+                            isDodgePending = false
+                            desiredDodgeAction = nil
+                            Core.BulwarkTarget.CombatState = nil
+                            continue
                         end
                     else
-                        waitTime = releaseTime * 0.5
-                        warn("Invalid releaseTime or dmgPointDistance, using fallback: releaseTime * 0.5 = " .. waitTime)
+                        predictionTime = calculatePredictionTime(releaseTime, distance)
+                        waitTime = math.min(waitTime, predictionTime)
+                        warn(string.format("ResolveAngle disabled: Using distance=%.2f studs, PredictionTime=%.2f, WaitTime=%.2f", distance, predictionTime, waitTime))
                     end
+
                     local action
                     if State.AutoDodge.BlockingMode.Value == "Riposte" then
-                        if math.random() < State.AutoDodge.MissChance.Value then
-                            print("Missed Riposte due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
-                            lastStance = stance
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            Core.BulwarkTarget.CombatState = nil
-                            continue
-                        end
                         action = "Riposte"
                     elseif State.AutoDodge.BlockingMode.Value == "Parrying" then
-                        if math.random() < State.AutoDodge.MissChance.Value then
-                            print("Missed Parrying due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
-                            lastStance = stance
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            Core.BulwarkTarget.CombatState = nil
-                            continue
-                        end
                         action = "Parrying"
                     elseif State.AutoDodge.BlockingMode.Value == "Chance" then
                         local totalChance = State.AutoDodge.ParryingChance.Value + State.AutoDodge.RiposteChance.Value
                         local normalizedParryChance = totalChance > 0 and (State.AutoDodge.ParryingChance.Value / totalChance) or 0.5
-                        local rand = math.random()
-                        if rand < State.AutoDodge.MissChance.Value then
-                            print("Missed action due to MISS_CHANCE: " .. State.AutoDodge.MissChance.Value)
-                            lastStance = stance
-                            isDodgePending = false
-                            desiredDodgeAction = nil
-                            Core.BulwarkTarget.CombatState = nil
-                            continue
-                        elseif rand < normalizedParryChance * (1 - State.AutoDodge.MissChance.Value) then
-                            action = "Parrying"
-                        else
-                            action = "Riposte"
-                        end
+                        action = math.random() < normalizedParryChance * (1 - State.AutoDodge.MissChance.Value) and "Parrying" or "Riposte"
                     end
                     if performDodgeAction(action, waitTime, releaseTime) then
                         lastDodgeTime = tick()
