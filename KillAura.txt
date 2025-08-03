@@ -82,7 +82,7 @@ function KillAura.Init(UI, Core, notify)
     local dodgeTriggered = false
     local activeAnimationTrack = nil
     local lastStanceChange = 0
-    local stanceChangeCooldown = 0.15 -- Increased to prevent server rejection
+    local stanceChangeCooldown = 0.15
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None, Enum.HumanoidStateType.Landed, Enum.HumanoidStateType.Freefall}
@@ -152,7 +152,6 @@ function KillAura.Init(UI, Core, notify)
         end
         local success, settings = pcall(require, settingsModule)
         if not success or not settings or not settings.Windup or not settings.Release then
-            warn("Failed to load weapon settings")
             cachedSettings = nil
             lastWeapon = nil
             return nil
@@ -191,7 +190,6 @@ function KillAura.Init(UI, Core, notify)
         end
         local success, settings = pcall(require, settingsModule)
         if not success or not settings or type(settings) ~= "table" or not settings.Type then
-            warn("Failed to load local weapon settings")
             return nil, nil
         end
         return settings, weapon
@@ -199,18 +197,15 @@ function KillAura.Init(UI, Core, notify)
 
     local function canTargetPlayer(targetPlayer, range, teamCheck)
         if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0 and targetPlayer.Character) then
-            warn("Local player or target character invalid")
             return false
         end
         local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
         if not (targetRootPart and targetHumanoid) or targetHumanoid.Health <= 0 or not table.find(VALID_HUMANOID_STATES, targetHumanoid:GetState()) then
-            warn("Target player invalid: " .. tostring(targetPlayer.Name))
             return false
         end
         local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
         if distance > range or distance == math.huge or distance ~= distance then
-            warn("Target out of range or invalid distance: " .. tostring(targetPlayer.Name))
             return false
         end
         if teamCheck and targetPlayer.Team and LocalPlayer.Team then
@@ -287,7 +282,6 @@ function KillAura.Init(UI, Core, notify)
             end
             isRiposteActive = false
             ContextActionService:UnbindAction("BlockMouseButton1")
-            warn("MouseButton1 block ended")
         end)
     end
 
@@ -300,21 +294,18 @@ function KillAura.Init(UI, Core, notify)
                     table.insert(damagePoints, part)
                 end
             end
-        else
-            warn("No valid blade or damage points found for weapon")
         end
         return damagePoints
     end
 
     local function predictDmgPointCollision(damagePoints, hitboxRadius, releaseTime)
         if not localCharacter or not localRootPart then
-            warn("Local character or root part missing")
             return nil
         end
         local localPos = localRootPart.Position
         local closestCollisionTime = math.huge
         local isSmallWeapon = lastTargetWeaponSettings and (lastTargetWeaponSettings.Type == "SmallWeapon" or lastTargetWeaponSettings.Type == "Dagger")
-        local adjustmentFactor = isSmallWeapon and 0.75 or 0.85
+        local adjustedHitbox = isSmallWeapon and 3.5 or hitboxRadius
         for _, dp in ipairs(damagePoints) do
             if dp and dp.Parent and dp.WorldPosition then
                 if not damagePointHistory[dp] then
@@ -345,8 +336,8 @@ function KillAura.Init(UI, Core, notify)
                 local distance = relativePos.Magnitude
                 local speed = avgVelocity.Magnitude
                 if speed > 0 then
-                    local timeToHit = (distance - hitboxRadius) / speed
-                    local adjustedTime = math.clamp(timeToHit * adjustmentFactor, 0.02, releaseTime * 0.65)
+                    local timeToHit = (distance - adjustedHitbox) / speed
+                    local adjustedTime = math.clamp(timeToHit * 0.9, 0.01, releaseTime)
                     if timeToHit > 0 and timeToHit < closestCollisionTime then
                         closestCollisionTime = adjustedTime
                     end
@@ -358,15 +349,15 @@ function KillAura.Init(UI, Core, notify)
 
     local function isDamagePointInRange(damagePoints, hitboxRadius)
         if not localCharacter or not localRootPart then
-            warn("Local character or root part missing")
             return false
         end
         local localPos = localRootPart.Position
+        local isSmallWeapon = lastTargetWeaponSettings and (lastTargetWeaponSettings.Type == "SmallWeapon" or lastTargetWeaponSettings.Type == "Dagger")
+        local adjustedHitbox = isSmallWeapon and 3.5 or hitboxRadius
         for _, dp in ipairs(damagePoints) do
             if dp and dp.Parent and dp.WorldPosition then
                 local distance = (localPos - dp.WorldPosition).Magnitude
-                if distance <= hitboxRadius then
-                    warn("Damage point within range: " .. tostring(distance))
+                if distance <= adjustedHitbox then
                     return true
                 end
             end
@@ -376,18 +367,15 @@ function KillAura.Init(UI, Core, notify)
 
     local function performDodgeAction(action)
         if isPerformingAction or tick() - lastDodgeTime < State.AutoDodge.DodgeCooldown.Value or dodgeTriggered then
-            warn("Dodge blocked: isPerformingAction=" .. tostring(isPerformingAction) .. ", Cooldown=" .. tostring(tick() - lastDodgeTime) .. ", dodgeTriggered=" .. tostring(dodgeTriggered))
             return false
         end
         if tick() - lastStanceChange < stanceChangeCooldown then
-            warn("Stance change on cooldown: " .. tostring(tick() - lastStanceChange))
             return false
         end
         isPerformingAction = true
         dodgeTriggered = true
         lastStanceChange = tick()
         if not (localHumanoid and localHumanoid.Health > 0) or not table.find(VALID_HUMANOID_STATES, localHumanoid:GetState()) then
-            warn("Invalid local humanoid state or health")
             isPerformingAction = false
             dodgeTriggered = false
             return false
@@ -400,14 +388,12 @@ function KillAura.Init(UI, Core, notify)
             end
         end
         if not localWeapon then
-            warn("No local weapon found")
             isPerformingAction = false
             dodgeTriggered = false
             return false
         end
         local localStance = getPlayerStance(LocalPlayer)
         if localStance and table.find(INVALID_STANCES, localStance) then
-            warn("Invalid local stance: " .. tostring(localStance))
             isPerformingAction = false
             dodgeTriggered = false
             return false
@@ -473,7 +459,6 @@ function KillAura.Init(UI, Core, notify)
                 task.spawn(function()
                     task.wait(0.1)
                     if localHumanoid and localHumanoid.WalkSpeed ~= 9 then
-                        warn("WalkSpeed override detected, forcing reset to 9")
                         localHumanoid.WalkSpeed = 9
                     end
                 end)
@@ -502,7 +487,6 @@ function KillAura.Init(UI, Core, notify)
                 task.spawn(function()
                     task.wait(0.1)
                     if localHumanoid and localHumanoid.WalkSpeed ~= 9 then
-                        warn("WalkSpeed override detected, forcing reset to 9")
                         localHumanoid.WalkSpeed = 9
                     end
                 end)
@@ -596,7 +580,7 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function runAutoDodge()
-        RunService.Stepped:Connect(function()
+        RunService.RenderStepped:Connect(function() -- Changed to RenderStepped for faster response
             pcall(function()
                 if not State.AutoDodge.Enabled.Value then
                     Core.BulwarkTarget.isAutoDodge = false
@@ -646,14 +630,14 @@ function KillAura.Init(UI, Core, notify)
                     return
                 end
                 local shouldDodge = false
-                local dodgeDelay = 0.2
-                local hitboxRadius = lastTargetWeaponSettings and (lastTargetWeaponSettings.Type == "SmallWeapon" or lastTargetWeaponSettings.Type == "Dagger") and 4 or State.AutoDodge.HitboxRadius.Value
+                local dodgeDelay = 0.1
+                local hitboxRadius = lastTargetWeaponSettings and (lastTargetWeaponSettings.Type == "SmallWeapon" or lastTargetWeaponSettings.Type == "Dagger") and 3.5 or State.AutoDodge.HitboxRadius.Value
                 if State.AutoDodge.ResolveAngle.Value and lastTargetWeapon then
                     local damagePoints = getBladeDamagePoints(lastTargetWeapon)
                     if #damagePoints > 0 then
                         if isDamagePointInRange(damagePoints, hitboxRadius) then
                             shouldDodge = true
-                            dodgeDelay = 0.05
+                            dodgeDelay = 0.02
                         else
                             local collisionTime = predictDmgPointCollision(damagePoints, hitboxRadius, lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.4)
                             if collisionTime and collisionTime <= State.AutoDodge.PredictionTime.Value then
@@ -666,9 +650,9 @@ function KillAura.Init(UI, Core, notify)
                     if lastTargetWeaponSettings and lastReleaseTime then
                         local distance = (localRootPart.Position - targetCharacter.HumanoidRootPart.Position).Magnitude
                         local releaseTime = lastTargetWeaponSettings.Release or 0.4
-                        dodgeDelay = math.max(0.05, releaseTime * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value * 0.5))
+                        dodgeDelay = (releaseTime / 2) + 0.25 + (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value)
                         if dodgeDelay > State.AutoDodge.MaxWaitTime.Value then
-                            dodgeDelay = State.AutoDodge.MaxWaitTime.Value * 0.5
+                            dodgeDelay = State.AutoDodge.MaxWaitTime.Value
                         end
                         if tick() - lastReleaseTime >= dodgeDelay then
                             shouldDodge = true
@@ -738,13 +722,11 @@ function KillAura.Init(UI, Core, notify)
 
     local function performPunch(targetPlayer, targetCharacter, weapon)
         local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if not targetHumanoid then
-            warn("No target humanoid found")
+        if not targetHumanoid or targetHumanoid.Health <= 0 then
             return false
         end
         local stance = getPlayerStance(targetPlayer)
         if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value) then
-            warn("Invalid stance or AntiBlock disabled: " .. tostring(stance))
             return false
         end
         Core.BulwarkTarget.CombatState = "KillAura"
@@ -752,21 +734,18 @@ function KillAura.Init(UI, Core, notify)
             lastStanceChange = tick()
             ChangeStance:FireServer("Punching")
         end
-        task.wait(0.05) -- Increased for server sync
+        task.wait(0.05)
         if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-            warn("Target character invalidated during punch")
             Core.BulwarkTarget.CombatState = nil
             return false
         end
         stance = getPlayerStance(targetPlayer)
         if not stance or not ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value) then
-            warn("Stance changed or AntiBlock disabled during punch: " .. tostring(stance))
             Core.BulwarkTarget.CombatState = nil
             return false
         end
         local targetHandle = targetCharacter:FindFirstChild("HumanoidRootPart")
         if not (weapon and targetHandle) then
-            warn("Missing weapon or target handle")
             Core.BulwarkTarget.CombatState = nil
             return false
         end
@@ -790,7 +769,7 @@ function KillAura.Init(UI, Core, notify)
             localCharacter = LocalPlayer.Character
             localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
             localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
-            if not (localCharacter and localRootPart and localHumanoid) then
+            if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0) then
                 removeTargetHighlight()
                 Core.BulwarkTarget.CombatState = nil
                 continue
@@ -804,7 +783,7 @@ function KillAura.Init(UI, Core, notify)
             if tick() - lastAttackTime < State.KillAura.AttackCooldown.Value then
                 continue
             end
-            if State.AutoDodge.KillAuraSync.Value and dodgeTriggered then
+            if State.AutoDodge.KillAuraSync.Value and isPerformingAction then
                 continue
             end
             local closestKillAuraTarget = nil
@@ -828,66 +807,58 @@ function KillAura.Init(UI, Core, notify)
             end
             local targetCharacter = closestKillAuraTarget.Character
             local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
-            if not (targetCharacter and targetHumanoid) then
+            if not (targetCharacter and targetHumanoid and targetHumanoid.Health > 0) then
                 removeTargetHighlight()
                 Core.BulwarkTarget.CombatState = nil
                 continue
             end
             updateTargetHighlight(closestKillAuraTarget)
-            local stance = getPlayerStance(closestKillAuraTarget)
             local attacked = false
+            local stance = getPlayerStance(closestKillAuraTarget)
             if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
                 attacked = performPunch(closestKillAuraTarget, targetCharacter, settings.weapon)
+                if attacked then
+                    lastAttackTime = tick()
+                end
+                continue
             end
-            if not attacked then
-                if State.KillAura.DynamicCooldown.Value then
-                    local delays = State.KillAura.DynamicDelays.Value
-                    local randomDelay = delays[math.random(1, #delays)]
-                    task.wait(randomDelay)
-                end
-                Core.BulwarkTarget.CombatState = "KillAura"
-                if tick() - lastStanceChange >= stanceChangeCooldown then
-                    lastStanceChange = tick()
-                    ChangeStance:FireServer("Windup")
-                end
-                task.wait(settings.windupTime)
-                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-                    removeTargetHighlight()
-                    warn("Attack cancelled: Target invalidated")
-                    Core.BulwarkTarget.CombatState = nil
-                    continue
-                end
-                if tick() - lastStanceChange >= stanceChangeCooldown then
-                    lastStanceChange = tick()
-                    ChangeStance:FireServer("Release")
-                end
-                task.wait(settings.releaseTime)
-                if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") then
-                    removeTargetHighlight()
-                    warn("Attack cancelled: Target invalidated")
-                    Core.BulwarkTarget.CombatState = nil
-                    continue
-                end
-                stance = getPlayerStance(closestKillAuraTarget)
-                if stance and (stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value then
-                    removeTargetHighlight()
-                    warn("Attack cancelled: Target in blocking stance")
-                    Core.BulwarkTarget.CombatState = nil
-                    continue
-                end
-                local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and
-                    targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or
-                    targetCharacter:FindFirstChild("HumanoidRootPart")
-                if not targetHandle then
-                    removeTargetHighlight()
-                    warn("Attack cancelled: No target handle")
-                    Core.BulwarkTarget.CombatState = nil
-                    continue
-                end
-                Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
-                attacked = true
+            if State.KillAura.DynamicCooldown.Value then
+                local delays = State.KillAura.DynamicDelays.Value
+                local randomDelay = delays[math.random(1, #delays)]
+                task.wait(randomDelay)
+            end
+            Core.BulwarkTarget.CombatState = "KillAura"
+            if tick() - lastStanceChange >= stanceChangeCooldown then
+                lastStanceChange = tick()
+                ChangeStance:FireServer("Windup")
+            end
+            task.wait(settings.windupTime)
+            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") or targetHumanoid.Health <= 0 then
+                removeTargetHighlight()
                 Core.BulwarkTarget.CombatState = nil
+                continue
             end
+            if tick() - lastStanceChange >= stanceChangeCooldown then
+                lastStanceChange = tick()
+                ChangeStance:FireServer("Release")
+            end
+            task.wait(settings.releaseTime)
+            if not targetCharacter or not targetCharacter.Parent or not targetCharacter:FindFirstChild("Humanoid") or targetHumanoid.Health <= 0 then
+                removeTargetHighlight()
+                Core.BulwarkTarget.CombatState = nil
+                continue
+            end
+            local targetHandle = targetCharacter:FindFirstChildOfClass("Accessory") and
+                targetCharacter:FindFirstChildOfClass("Accessory"):FindFirstChild("Handle") or
+                targetCharacter:FindFirstChild("HumanoidRootPart")
+            if not targetHandle then
+                removeTargetHighlight()
+                Core.BulwarkTarget.CombatState = nil
+                continue
+            end
+            Hit:FireServer(settings.weapon, targetHandle, targetHumanoid)
+            attacked = true
+            Core.BulwarkTarget.CombatState = nil
             if attacked then
                 lastAttackTime = tick()
             else
