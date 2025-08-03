@@ -432,7 +432,7 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack:AdjustSpeed(0)
                         localHumanoid.WalkSpeed = 1
                         isRiposteActive = true
-                        riposteEndTime = tick() + 1.5
+                        riposteEndTime = tick() + 0.4
                         print("Playing Riposte animation, WalkSpeed set to 1 at: " .. tick())
                     end
                 end)
@@ -443,22 +443,42 @@ function KillAura.Init(UI, Core, notify)
         if State.AutoDodge.WarningText.Value then
             updateWarningText(action)
         end
-        task.wait(action == "Parrying" and 0.3 or 1.2)
-        if activeAnimationTrack then
-            pcall(function()
-                activeAnimationTrack:Stop(action == "Parrying" and 0.2 or 0.7)
-                activeAnimationTrack:Destroy()
-                activeAnimationTrack = nil
-                print("Stopped animation for " .. action .. " at: " .. tick())
-            end)
-        end
-        if action == "Riposte" then
+        if action == "Parrying" then
+            task.wait(0.3)
+            if activeAnimationTrack then
+                pcall(function()
+                    activeAnimationTrack:Stop(0.2)
+                    activeAnimationTrack:Destroy()
+                    activeAnimationTrack = nil
+                    print("Stopped Parrying animation at: " .. tick())
+                end)
+            end
+            ChangeStance:FireServer("Idle")
+            if localHumanoid then
+                localHumanoid.WalkSpeed = 9
+                print("WalkSpeed reset to 9 after Parrying at: " .. tick())
+            end
+        elseif action == "Riposte" then
+            task.wait(0.4)
+            if localHumanoid then
+                localHumanoid.WalkSpeed = 4
+                print("WalkSpeed set to 4 after Riposte (0.4s) at: " .. tick())
+            end
+            task.wait(0.4)
+            if activeAnimationTrack then
+                pcall(function()
+                    activeAnimationTrack:Stop(0.7)
+                    activeAnimationTrack:Destroy()
+                    activeAnimationTrack = nil
+                    print("Stopped Riposte animation at: " .. tick())
+                end)
+            end
+            ChangeStance:FireServer("Idle")
+            if localHumanoid then
+                localHumanoid.WalkSpeed = 9
+                print("WalkSpeed reset to 9 after Riposte (0.8s) at: " .. tick())
+            end
             blockMouseButton1()
-        end
-        ChangeStance:FireServer("Idle")
-        if localHumanoid then
-            localHumanoid.WalkSpeed = 16
-            print("WalkSpeed reset to 16 at: " .. tick())
         end
         lastDodgeTime = tick()
         isPerformingAction = false
@@ -491,8 +511,8 @@ function KillAura.Init(UI, Core, notify)
                     end)
                 end
                 if localHumanoid then
-                    localHumanoid.WalkSpeed = 16
-                    print("WalkSpeed reset to 16 (no character) at: " .. tick())
+                    localHumanoid.WalkSpeed = 9
+                    print("WalkSpeed reset to 9 (no character) at: " .. tick())
                 end
                 return
             end
@@ -566,8 +586,8 @@ function KillAura.Init(UI, Core, notify)
                     end)
                 end
                 if localHumanoid then
-                    localHumanoid.WalkSpeed = 16
-                    print("WalkSpeed reset to 16 (AutoDodge disabled) at: " .. tick())
+                    localHumanoid.WalkSpeed = 9
+                    print("WalkSpeed reset to 9 (AutoDodge disabled) at: " .. tick())
                 end
                 return
             end
@@ -584,8 +604,8 @@ function KillAura.Init(UI, Core, notify)
                     end)
                 end
                 if localHumanoid then
-                    localHumanoid.WalkSpeed = 16
-                    print("WalkSpeed reset to 16 (no character) at: " .. tick())
+                    localHumanoid.WalkSpeed = 9
+                    print("WalkSpeed reset to 9 (no character) at: " .. tick())
                 end
                 return
             end
@@ -681,7 +701,7 @@ function KillAura.Init(UI, Core, notify)
                 warningTextLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
                 warningTextLabel.Text = "Parrying\nDONT PUNCH"
                 task.spawn(function()
-                    local endTime = tick() + 1.5
+                    local endTime = tick() + 0.8
                     while tick() < endTime and warningTextLabel and State.AutoDodge.WarningText.Value do
                         local remaining = endTime - tick()
                         if remaining > 0 then
