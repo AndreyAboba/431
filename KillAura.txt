@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('1')
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -96,6 +96,7 @@ function KillAura.Init(UI, Core, notify)
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
+    local LATENCY_BUFFER = 0.05 -- Added buffer to account for server latency
 
     local function getPlayerStance(player)
         local character = player.Character
@@ -387,7 +388,7 @@ function KillAura.Init(UI, Core, notify)
 
     local function visualizeDamagePoints(targetPlayer)
         clearDamagePointVisuals()
-        if not State.AutoDodge.ResolveAngle.Value then
+        if not (State.AutoDodge.ResolveAngle.Value and targetPlayer and targetPlayer.Character) then
             return
         end
         local weapon = getTargetWeaponSettings(targetPlayer)
@@ -397,15 +398,24 @@ function KillAura.Init(UI, Core, notify)
         for _, part in pairs(weapon:GetDescendants()) do
             if part.Name == "DmgPoint" and part:IsA("Attachment") then
                 local visual = Instance.new("Part")
-                visual.Size = Vector3.new(0.2, 0.2, 0.2)
+                visual.Size = Vector3.new(0.3, 0.3, 0.3) -- Slightly larger for visibility
                 visual.Shape = Enum.PartType.Ball
                 visual.BrickColor = BrickColor.new("Really red")
-                visual.Transparency = 0.3
+                visual.Transparency = 0.4
                 visual.Anchored = true
                 visual.CanCollide = false
                 visual.Position = part.WorldPosition
                 visual.Parent = workspace
                 table.insert(damagePointVisuals, visual)
+                -- Update position in real-time
+                RunService.Heartbeat:Connect(function()
+                    if visual.Parent and part.Parent then
+                        visual.Position = part.WorldPosition
+                    else
+                        visual:Destroy()
+                        table.remove(damagePointVisuals, table.find(damagePointVisuals, visual))
+                    end
+                end)
             end
         end
     end
@@ -415,8 +425,18 @@ function KillAura.Init(UI, Core, notify)
         if not localCharacter then
             return hitboxes
         end
-        for _, part in pairs(localCharacter:GetChildren()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+        -- R6 specific hitboxes
+        local r6Parts = {
+            "Head",
+            "Torso",
+            "Left Arm",
+            "Right Arm",
+            "Left Leg",
+            "Right Leg"
+        }
+        for _, partName in pairs(r6Parts) do
+            local part = localCharacter:FindFirstChild(partName)
+            if part and part:IsA("BasePart") then
                 table.insert(hitboxes, part)
             end
         end
@@ -441,7 +461,7 @@ function KillAura.Init(UI, Core, notify)
             for _, hitbox in pairs(hitboxes) do
                 local distance = (damagePoint.WorldPosition - hitbox.Position).Magnitude
                 local hitboxSize = hitbox.Size.Magnitude / 2
-                if distance <= hitboxSize then
+                if distance <= hitboxSize + 0.5 then -- Added small buffer for earlier detection
                     return true
                 end
             end
@@ -461,12 +481,12 @@ function KillAura.Init(UI, Core, notify)
         local releaseTime = math.max(0.1, settings.Release - 0.1)
         if State.AutoDodge.ResolveAngle.Value then
             if checkDamagePointCollision(targetPlayer, weapon) then
-                return true, releaseTime
+                return true, releaseTime - LATENCY_BUFFER - State.AutoDodge.PredictionTime.Value
             end
         else
             local distance = getDmgPointDistance(targetPlayer, weapon)
             if distance <= State.AutoDodge.Range.Value then
-                return true, releaseTime * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value)
+                return true, releaseTime * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value) - LATENCY_BUFFER
             end
         end
         return false, 0
@@ -1521,7 +1541,7 @@ function KillAura.Init(UI, Core, notify)
                 State.AutoDodge.RiposteChance.Value = value
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
-                    notify("AutoDodge", "Riposte Chance set to: " .. value .. "%")
+                    notify("AutoDodge", "Parry Chance set to: " .. value .. "%")
                 end
             end,
             'RiposteChanceAD'
