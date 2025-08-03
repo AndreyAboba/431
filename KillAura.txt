@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('1')
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -430,7 +430,9 @@ function KillAura.Init(UI, Core, notify)
             end
         end
         ChangeStance:FireServer(action)
-        updateWarningText(action)
+        if State.AutoDodge.WarningText.Value then
+            updateWarningText(action)
+        end
         task.wait(action == "Parrying" and 0.3 or 1.2)
         if activeAnimationTrack then
             pcall(function()
@@ -544,6 +546,9 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack = nil
                     end)
                 end
+                if localHumanoid then
+                    localHumanoid.WalkSpeed = 16
+                end
                 return
             end
             Core.BulwarkTarget.isAutoDodge = true
@@ -556,6 +561,9 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack:Destroy()
                         activeAnimationTrack = nil
                     end)
+                end
+                if localHumanoid then
+                    localHumanoid.WalkSpeed = 16
                 end
                 return
             end
@@ -636,34 +644,36 @@ function KillAura.Init(UI, Core, notify)
             Core.BulwarkTarget.CombatState = nil
             return
         end
-        if action == "Parrying" then
-            Core.BulwarkTarget.CombatState = "Parrying"
-            warningTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-            warningTextLabel.Text = "Blocking"
-        elseif action == "Riposte" then
-            Core.BulwarkTarget.CombatState = "Riposte"
-            warningTextLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
-            warningTextLabel.Text = "Parrying\nDONT PUNCH"
-            task.spawn(function()
-                local endTime = tick() + 1.5
-                while tick() < endTime and warningTextLabel and State.AutoDodge.WarningText.Value do
-                    local remaining = endTime - tick()
-                    if remaining > 0 then
-                        warningTextLabel.Text = string.format("Parrying\nDONT PUNCH | %.2fs", remaining)
+        pcall(function()
+            if action == "Parrying" then
+                Core.BulwarkTarget.CombatState = "Parrying"
+                warningTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+                warningTextLabel.Text = "Blocking"
+            elseif action == "Riposte" then
+                Core.BulwarkTarget.CombatState = "Riposte"
+                warningTextLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
+                warningTextLabel.Text = "Parrying\nDONT PUNCH"
+                task.spawn(function()
+                    local endTime = tick() + 1.5
+                    while tick() < endTime and warningTextLabel and State.AutoDodge.WarningText.Value do
+                        local remaining = endTime - tick()
+                        if remaining > 0 then
+                            warningTextLabel.Text = string.format("Parrying\nDONT PUNCH | %.2fs", remaining)
+                        end
+                        task.wait()
                     end
-                    task.wait()
-                end
-                if warningTextLabel and State.AutoDodge.WarningText.Value then
-                    warningTextLabel.Text = "Nothing"
-                    warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                    Core.BulwarkTarget.CombatState = nil
-                end
-            end)
-        else
-            warningTextLabel.Text = "Nothing"
-            warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-            Core.BulwarkTarget.CombatState = nil
-        end
+                    if warningTextLabel and State.AutoDodge.WarningText.Value then
+                        warningTextLabel.Text = "Nothing"
+                        warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                        Core.BulwarkTarget.CombatState = nil
+                    end
+                end)
+            else
+                warningTextLabel.Text = "Nothing"
+                warningTextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                Core.BulwarkTarget.CombatState = nil
+            end
+        end)
     end
 
     local function performPunch(targetPlayer, targetCharacter, weapon)
@@ -917,8 +927,10 @@ function KillAura.Init(UI, Core, notify)
         if value and not warningTextLabel then
             setupWarningText()
         elseif not value and warningTextLabel then
-            warningTextLabel.Parent:Destroy()
-            warningTextLabel = nil
+            pcall(function()
+                warningTextLabel.Parent:Destroy()
+                warningTextLabel = nil
+            end)
         end
     end
 
@@ -1239,7 +1251,9 @@ function KillAura.Init(UI, Core, notify)
             Callback = function(value)
                 State.AutoDodge.WarningTextScale.Value = value
                 if warningTextLabel then
-                    warningTextLabel.Size = UDim2.new(0, 200 * value, 0, 100 * value)
+                    pcall(function()
+                        warningTextLabel.Size = UDim2.new(0, 200 * value, 0, 100 * value)
+                    end)
                 end
                 if tick() - lastNotificationTime >= notificationDelay then
                     lastNotificationTime = tick()
