@@ -1,5 +1,5 @@
 local KillAura = {}
-print('1')
+
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -51,10 +51,10 @@ function KillAura.Init(UI, Core, notify)
             LegitParry = { Value = true, Default = true },
             ResolveAngle = { Value = true, Default = true },
             HitboxRadius = { Value = 6, Default = 6 },
-            BaseMultiplier = { Value = 0.5, Default = 0.5 },
-            DistanceFactor = { Value = 0.02, Default = 0.02 },
-            PredictionTime = { Value = 0.15, Default = 0.15 },
-            MaxWaitTime = { Value = 1.0, Default = 1.0 }
+            BaseMultiplier = { Value = 0.7, Default = 0.7 },
+            DistanceFactor = { Value = 0.03, Default = 0.03 },
+            PredictionTime = { Value = 0.1, Default = 0.1 },
+            MaxWaitTime = { Value = 0.8, Default = 0.8 }
         }
     }
 
@@ -295,6 +295,7 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         end
+        print("Found " .. #damagePoints .. " damage points for weapon: " .. (weapon and weapon.Name or "nil"))
         return damagePoints
     end
 
@@ -335,9 +336,10 @@ function KillAura.Init(UI, Core, notify)
                 local speed = avgVelocity.Magnitude
                 if speed > 0 then
                     local timeToHit = (distance - hitboxRadius) / speed
-                    local adjustedTime = math.clamp(timeToHit * (releaseTime <= 0.3 and 0.8 or 0.9), 0.05, releaseTime * 0.8)
+                    local adjustedTime = math.clamp(timeToHit * (releaseTime <= 0.3 and 0.7 or 0.8), 0.02, releaseTime * 0.7)
                     if timeToHit > 0 and timeToHit < closestCollisionTime then
                         closestCollisionTime = adjustedTime
+                        print("Predicted collision time: " .. adjustedTime .. " for distance: " .. distance .. ", speed: " .. speed)
                     end
                 end
             end
@@ -359,16 +361,19 @@ function KillAura.Init(UI, Core, notify)
                 end
             end
         end
+        print("Closest damage point distance: " .. closestDistance .. ", hitboxRadius: " .. hitboxRadius)
         return closestDistance <= hitboxRadius
     end
 
     local function performDodgeAction(action)
         if isPerformingAction or tick() - lastDodgeTime < State.AutoDodge.DodgeCooldown.Value or dodgeTriggered then
+            print("Dodge blocked: isPerformingAction=" .. tostring(isPerformingAction) .. ", dodgeCooldown=" .. (tick() - lastDodgeTime) .. ", dodgeTriggered=" .. tostring(dodgeTriggered))
             return false
         end
         isPerformingAction = true
         dodgeTriggered = true
         if not (localHumanoid and localHumanoid.Health > 0) or not table.find(VALID_HUMANOID_STATES, localHumanoid:GetState()) then
+            print("Dodge failed: Invalid humanoid state or health")
             isPerformingAction = false
             dodgeTriggered = false
             return false
@@ -388,6 +393,7 @@ function KillAura.Init(UI, Core, notify)
         end
         local localStance = getPlayerStance(LocalPlayer)
         if localStance and table.find(INVALID_STANCES, localStance) then
+            print("Dodge failed: Invalid stance - " .. localStance)
             isPerformingAction = false
             dodgeTriggered = false
             return false
@@ -398,6 +404,7 @@ function KillAura.Init(UI, Core, notify)
                 activeAnimationTrack:Stop()
                 activeAnimationTrack:Destroy()
                 activeAnimationTrack = nil
+                print("Stopped previous animation at: " .. tick())
             end)
         end
         if settings and (State.AutoDodge.LegitBlock.Value or State.AutoDodge.LegitParry.Value) then
@@ -412,6 +419,7 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack:Play(0.1)
                         activeAnimationTrack:AdjustSpeed(1)
                         localHumanoid.WalkSpeed = 7
+                        print("Playing Parrying animation, WalkSpeed set to 7 at: " .. tick())
                     end
                 end)
             elseif action == "Riposte" and State.AutoDodge.LegitParry.Value and animations.Riposte and animations.Riposte ~= "0" then
@@ -425,11 +433,13 @@ function KillAura.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = 1
                         isRiposteActive = true
                         riposteEndTime = tick() + 1.5
+                        print("Playing Riposte animation, WalkSpeed set to 1 at: " .. tick())
                     end
                 end)
             end
         end
         ChangeStance:FireServer(action)
+        print("Performing " .. action .. " at: " .. tick())
         if State.AutoDodge.WarningText.Value then
             updateWarningText(action)
         end
@@ -439,6 +449,7 @@ function KillAura.Init(UI, Core, notify)
                 activeAnimationTrack:Stop(action == "Parrying" and 0.2 or 0.7)
                 activeAnimationTrack:Destroy()
                 activeAnimationTrack = nil
+                print("Stopped animation for " .. action .. " at: " .. tick())
             end)
         end
         if action == "Riposte" then
@@ -447,18 +458,19 @@ function KillAura.Init(UI, Core, notify)
         ChangeStance:FireServer("Idle")
         if localHumanoid then
             localHumanoid.WalkSpeed = 16
+            print("WalkSpeed reset to 16 at: " .. tick())
         end
         lastDodgeTime = tick()
         isPerformingAction = false
         dodgeTriggered = false
         lastReleaseTime = nil
         damagePointHistory = {}
+        print("Dodge completed, state reset at: " .. tick())
         return true
     end
 
     local function collectDodgeData()
-        while true do
-            RunService.Heartbeat:Wait()
+        RunService.Stepped:Connect(function()
             localCharacter = LocalPlayer.Character
             localRootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
             localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
@@ -475,9 +487,14 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack:Stop()
                         activeAnimationTrack:Destroy()
                         activeAnimationTrack = nil
+                        print("Cleared animation due to invalid character at: " .. tick())
                     end)
                 end
-                continue
+                if localHumanoid then
+                    localHumanoid.WalkSpeed = 16
+                    print("WalkSpeed reset to 16 (no character) at: " .. tick())
+                end
+                return
             end
             closestTarget = nil
             local minDistance = math.huge
@@ -499,6 +516,7 @@ function KillAura.Init(UI, Core, notify)
                 local stance = getPlayerStance(closestTarget)
                 if stance == "release" and lastReleaseTime == nil then
                     lastReleaseTime = tick()
+                    print("Detected release stance for " .. closestTarget.Name .. " at: " .. tick())
                 elseif stance ~= "release" then
                     lastReleaseTime = nil
                     damagePointHistory = {}
@@ -530,7 +548,7 @@ function KillAura.Init(UI, Core, notify)
                 damagePointHistory = {}
                 dodgeTriggered = false
             end
-        end
+        end)
     end
 
     local function runAutoDodge()
@@ -544,10 +562,12 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack:Stop()
                         activeAnimationTrack:Destroy()
                         activeAnimationTrack = nil
+                        print("Cleared animation (AutoDodge disabled) at: " .. tick())
                     end)
                 end
                 if localHumanoid then
                     localHumanoid.WalkSpeed = 16
+                    print("WalkSpeed reset to 16 (AutoDodge disabled) at: " .. tick())
                 end
                 return
             end
@@ -560,14 +580,17 @@ function KillAura.Init(UI, Core, notify)
                         activeAnimationTrack:Stop()
                         activeAnimationTrack:Destroy()
                         activeAnimationTrack = nil
+                        print("Cleared animation (no character) at: " .. tick())
                     end)
                 end
                 if localHumanoid then
                     localHumanoid.WalkSpeed = 16
+                    print("WalkSpeed reset to 16 (no character) at: " .. tick())
                 end
                 return
             end
             if tick() - lastDodgeTime < State.AutoDodge.DodgeCooldown.Value or dodgeTriggered then
+                print("AutoDodge skipped: cooldown=" .. (tick() - lastDodgeTime) .. ", dodgeTriggered=" .. tostring(dodgeTriggered))
                 return
             end
             if not closestTarget or not canTargetPlayer(closestTarget, State.AutoDodge.Range.Value, State.AutoDodge.TeamCheck.Value) then
@@ -589,30 +612,33 @@ function KillAura.Init(UI, Core, notify)
                 return
             end
             local shouldDodge = false
-            local dodgeDelay = 0.3
+            local dodgeDelay = 0.2
             if State.AutoDodge.ResolveAngle.Value and lastTargetWeapon then
                 local damagePoints = getBladeDamagePoints(lastTargetWeapon)
                 if #damagePoints > 0 then
                     if isDamagePointInRange(damagePoints, State.AutoDodge.HitboxRadius.Value) then
                         shouldDodge = true
-                        dodgeDelay = 0.1
+                        dodgeDelay = 0.05
+                        print("Dodge triggered: Damage point in range, delay=" .. dodgeDelay)
                     else
-                        local collisionTime = predictDmgPointCollision(damagePoints, State.AutoDodge.HitboxRadius.Value, lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.5)
+                        local collisionTime = predictDmgPointCollision(damagePoints, State.AutoDodge.HitboxRadius.Value, lastTargetWeaponSettings and lastTargetWeaponSettings.Release or 0.4)
                         if collisionTime and collisionTime <= State.AutoDodge.PredictionTime.Value then
                             shouldDodge = true
                             dodgeDelay = math.min(dodgeDelay, collisionTime)
+                            print("Dodge triggered: Predicted collision, delay=" .. dodgeDelay)
                         end
                     end
                 end
             else
                 if lastTargetWeaponSettings and lastReleaseTime then
                     local distance = (localRootPart.Position - targetCharacter.HumanoidRootPart.Position).Magnitude
-                    dodgeDelay = math.max(0.1, (lastTargetWeaponSettings.Release or 0.5) * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value))
+                    dodgeDelay = math.max(0.05, (lastTargetWeaponSettings.Release or 0.4) * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value))
                     if dodgeDelay > State.AutoDodge.MaxWaitTime.Value then
-                        dodgeDelay = 0.3
+                        dodgeDelay = 0.2
                     end
                     if tick() - lastReleaseTime >= dodgeDelay then
                         shouldDodge = true
+                        print("Dodge triggered without ResolveAngle, delay=" .. dodgeDelay .. ", distance=" .. distance)
                     end
                 end
             end
@@ -633,6 +659,7 @@ function KillAura.Init(UI, Core, notify)
                         lastDodgeTime = tick()
                         lastReleaseTime = nil
                         damagePointHistory = {}
+                        print("Dodge executed: " .. action .. " at: " .. tick())
                     end
                 end)
             end
@@ -841,6 +868,7 @@ function KillAura.Init(UI, Core, notify)
                     activeAnimationTrack:Stop()
                     activeAnimationTrack:Destroy()
                     activeAnimationTrack = nil
+                    print("Cleared animation (player removed) at: " .. tick())
                 end)
             end
         end
@@ -867,6 +895,7 @@ function KillAura.Init(UI, Core, notify)
                                 activeAnimationTrack:Stop()
                                 activeAnimationTrack:Destroy()
                                 activeAnimationTrack = nil
+                                print("Cleared animation (player died) at: " .. tick())
                             end)
                         end
                     end
