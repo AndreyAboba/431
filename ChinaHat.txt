@@ -29,14 +29,23 @@ function ChinaHat.Init(UI, Core, notify)
             CircleGradientSpeed = { Value = 4, Default = 4 },
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            CircleYOffset = { Value = -3, Default = -3 },
             JumpAnimate = { Value = false, Default = false }
+        },
+        Nimb = {
+            NimbActive = { Value = false, Default = false },
+            NimbRadius = { Value = 1.7, Default = 1.7 },
+            NimbParts = { Value = 30, Default = 30 },
+            NimbGradientSpeed = { Value = 4, Default = 4 },
+            NimbGradient = { Value = true, Default = true },
+            NimbColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
+            NimbYOffset = { Value = 1.5, Default = 1.5 }
         }
     }
 
     local hatLines = {} -- Для линий ChinaHat с Drawing.Line
     local hatCircleQuads = {} -- Для 3D-круга ChinaHat с Drawing.Quad
     local circleQuads = {} -- Для 3D-круга Circle с Drawing.Quad
+    local nimbQuads = {} -- Для 3D-круга Nimb с Drawing.Quad
     local jumpAnimationActive = false
 
     local function interpolateColor(color1, color2, factor)
@@ -79,6 +88,18 @@ function ChinaHat.Init(UI, Core, notify)
             quad.Filled = false
             quad.Color = State.Circle.CircleGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.Circle.CircleParts.Value) or State.Circle.CircleColor.Value
             table.insert(circleQuads, quad)
+        end
+    end
+
+    local function createNimb()
+        if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
+        for i = 1, State.Nimb.NimbParts.Value do
+            local quad = Drawing.new("Quad")
+            quad.Visible = false
+            quad.Thickness = 1
+            quad.Filled = false
+            quad.Color = State.Nimb.NimbGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.Nimb.NimbParts.Value) or State.Nimb.NimbColor.Value
+            table.insert(nimbQuads, quad)
         end
     end
 
@@ -197,7 +218,7 @@ function ChinaHat.Init(UI, Core, notify)
         if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
         local rootPart = localCharacter.HumanoidRootPart
         local t = tick()
-        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Circle.CircleYOffset.Value, rootPart.Position.Z)
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if onScreenCenter and screenCenter.Z > 0 then
             local circleSegments = #circleQuads
@@ -234,6 +255,53 @@ function ChinaHat.Init(UI, Core, notify)
             end
         else
             for _, quad in ipairs(circleQuads) do
+                quad.Visible = false
+            end
+        end
+    end
+
+    local function updateNimb()
+        if not State.Nimb.NimbActive.Value or #nimbQuads == 0 then return end
+        if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
+        local rootPart = localCharacter.HumanoidRootPart
+        local t = tick()
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Nimb.NimbYOffset.Value, rootPart.Position.Z)
+        local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
+        if onScreenCenter and screenCenter.Z > 0 then
+            local nimbSegments = #nimbQuads
+            local nimbRadius = State.Nimb.NimbRadius.Value
+            for i, quad in ipairs(nimbQuads) do
+                local angle1 = ((i - 1) / nimbSegments) * 2 * math.pi
+                local angle2 = (i / nimbSegments) * 2 * math.pi
+                local point1Bottom = center + Vector3.new(math.cos(angle1) * nimbRadius, 0, math.sin(angle1) * nimbRadius)
+                local point2Bottom = center + Vector3.new(math.cos(angle2) * nimbRadius, 0, math.sin(angle2) * nimbRadius)
+                local point1Top = point1Bottom + Vector3.new(0, 0, 0)
+                local point2Top = point2Bottom + Vector3.new(0, 0, 0)
+                local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
+                local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
+                local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
+                local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
+
+                if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
+                   screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
+                   screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
+                    quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
+                    quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
+                    quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
+                    quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
+                    quad.Visible = true
+                    if State.Nimb.NimbGradient.Value then
+                        local factor = (math.sin(t * State.Nimb.NimbGradientSpeed.Value + (i / nimbSegments) * 2 * math.pi) + 1) / 2
+                        quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
+                    else
+                        quad.Color = State.Nimb.NimbColor.Value
+                    end
+                else
+                    quad.Visible = false
+                end
+            end
+        else
+            for _, quad in ipairs(nimbQuads) do
                 quad.Visible = false
             end
         end
@@ -280,9 +348,21 @@ function ChinaHat.Init(UI, Core, notify)
         end
     end
 
+    local function toggleNimb(value)
+        State.Nimb.NimbActive.Value = value
+        if value then
+            createNimb()
+            notify("Nimb", "Nimb Enabled", true)
+        else
+            removeParts(nimbQuads)
+            notify("Nimb", "Nimb Disabled", true)
+        end
+    end
+
     RunService.Stepped:Connect(function(deltaTime)
         updateHat()
         updateCircle()
+        updateNimb()
     end)
 
     local function onStateChanged(oldState, newState)
@@ -518,24 +598,6 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'CircleColor'
         })
-        circleSection:Slider({
-            Name = "Y Offset",
-            Minimum = -5,
-            Maximum = 5,
-            Default = State.Circle.CircleYOffset.Default,
-            Precision = 2,
-            Callback = function(value)
-                if State.Circle.CircleActive.Value then
-                    removeParts(circleQuads)
-                    State.Circle.CircleYOffset.Value = value
-                    createCircle()
-                else
-                    State.Circle.CircleYOffset.Value = value
-                end
-                notify("Circle", "Circle Y Offset set to: " .. value, false)
-            end,
-            'CircleYOffset'
-        })
         circleSection:Toggle({
             Name = "Jump Animate",
             Default = State.Circle.JumpAnimate.Default,
@@ -544,6 +606,114 @@ function ChinaHat.Init(UI, Core, notify)
                 notify("Circle", "Jump Animation: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'JumpAnimate'
+        })
+
+        local nimbSection = UI.Sections.Nimb or UI.Tabs.Visuals:Section({ Name = "Nimb", Side = "Right" })
+        UI.Sections.Nimb = nimbSection
+        nimbSection:Header({ Name = "Nimb" })
+        nimbSection:SubLabel({ Text = "Displays a circle effect above the player's head" })
+        nimbSection:Toggle({
+            Name = "Nimb Enabled",
+            Default = State.Nimb.NimbActive.Default,
+            Callback = function(value)
+                toggleNimb(value)
+            end,
+            'NimbEnabled'
+        })
+        nimbSection:Slider({
+            Name = "Nimb Radius",
+            Minimum = 1.0,
+            Maximum = 3.0,
+            Default = State.Nimb.NimbRadius.Default,
+            Precision = 1,
+            Callback = function(value)
+                if State.Nimb.NimbActive.Value then
+                    removeParts(nimbQuads)
+                    State.Nimb.NimbRadius.Value = value
+                    createNimb()
+                else
+                    State.Nimb.NimbRadius.Value = value
+                end
+                notify("Nimb", "Nimb Radius set to: " .. value, false)
+            end,
+            'NimbRadius'
+        })
+        nimbSection:Slider({
+            Name = "Nimb Parts",
+            Minimum = 20,
+            Maximum = 100,
+            Default = State.Nimb.NimbParts.Default,
+            Precision = 0,
+            Callback = function(value)
+                if State.Nimb.NimbActive.Value then
+                    removeParts(nimbQuads)
+                    State.Nimb.NimbParts.Value = value
+                    createNimb()
+                else
+                    State.Nimb.NimbParts.Value = value
+                end
+                notify("Nimb", "Nimb Parts set to: " .. value, false)
+            end,
+            'NimbParts'
+        })
+        nimbSection:Slider({
+            Name = "Gradient Speed",
+            Minimum = 1,
+            Maximum = 10,
+            Default = State.Nimb.NimbGradientSpeed.Default,
+            Precision = 1,
+            Callback = function(value)
+                State.Nimb.NimbGradientSpeed.Value = value
+                if State.Nimb.NimbActive.Value then
+                    updateNimb()
+                end
+                notify("Nimb", "Nimb Gradient Speed set to: " .. value, false)
+            end,
+            'NimbGradientSpeed'
+        })
+        nimbSection:Toggle({
+            Name = "Gradient",
+            Default = State.Nimb.NimbGradient.Default,
+            Callback = function(value)
+                State.Nimb.NimbGradient.Value = value
+                if State.Nimb.NimbActive.Value then
+                    removeParts(nimbQuads)
+                    createNimb()
+                end
+                notify("Nimb", "Nimb Gradient: " .. (value and "Enabled" or "Disabled"), true)
+            end,
+            'NimbGradient'
+        })
+        nimbSection:Colorpicker({
+            Name = "Color",
+            Default = State.Nimb.NimbColor.Default,
+            Callback = function(value)
+                State.Nimb.NimbColor.Value = value
+                if State.Nimb.NimbActive.Value and not State.Nimb.NimbGradient.Value then
+                    removeParts(nimbQuads)
+                    createNimb()
+                end
+                notify("Nimb", "Nimb Color updated", false)
+            end,
+            'NimbColor'
+        })
+        nimbSection:Slider({
+            Name = "Y Offset",
+            Minimum = 1,
+            Maximum = 3,
+            Default = State.Nimb.NimbYOffset.Default,
+            Precision = 2,
+            Callback = function(value)
+                if State.Nimb.NimbActive.Value then
+                    removeParts(nimbQuads)
+                    State.Nimb.NimbYOffset.Value = value
+                    createNimb()
+                else
+                    State.Nimb.NimbYOffset.Value = value
+                end
+                notify("Nimb", "Nimb Y Offset set to: " .. value, false)
+            end,
+            'NimbYOffset'
         })
     end
 
