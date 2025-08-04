@@ -31,7 +31,7 @@ function KillAura.Init(UI, Core, notify)
             TeamCheck = { Value = true, Default = true },
             DynamicCooldown = { Value = false, Default = false },
             DynamicDelays = { Value = {0.05, 0.1, 0.15, 0.2}, Default = {0.05, 0.1, 0.15, 0.2} },
-            MultiTargetDelays = { Value = {0.15, 0.2, 0.25, 0.3}, Default = {0.15, 0.2, 0.25, 0.3} },
+            MultiTargetDelays = { Value = {0.15, 0.2, 0.25, 0.3}, Default = {0.15, 0.2, 0.25, 0.3} }, -- Новая настройка для задержек MultiTarget
             ParryColor = { Value = Color3.fromRGB(0, 162, 255), Default = Color3.fromRGB(0, 162, 255) },
             BlockColor = { Value = Color3.fromRGB(0, 255, 0), Default = Color3.fromRGB(0, 255, 0) },
             DefaultColor = { Value = Color3.fromRGB(255, 0, 0), Default = Color3.fromRGB(255, 0, 0) },
@@ -103,10 +103,10 @@ function KillAura.Init(UI, Core, notify)
     local MAX_ADDITIONAL_TARGETS = 5
 
     local function getPlayerStance(player)
-        local character = player.Character
-        if not character then
+        if not player or not player.Character then
             return nil
         end
+        local character = player.Character
         local stanceValue = character:FindFirstChild("Stance", true)
         if stanceValue and stanceValue:IsA("StringValue") then
             return stanceValue.Value:lower()
@@ -115,10 +115,10 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function getTargetWeaponSettings(targetPlayer)
-        local character = targetPlayer.Character
-        if not character then
+        if not targetPlayer or not targetPlayer.Character then
             return nil, nil
         end
+        local character = targetPlayer.Character
         local weapon
         for _, child in pairs(character:GetChildren()) do
             if child:IsA("Tool") then
@@ -211,7 +211,10 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function getDistanceToPlayer(targetPlayer)
-        local targetRootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not targetPlayer or not targetPlayer.Character then
+            return math.huge
+        end
+        local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         if targetRootPart and localRootPart then
             local distance = (localRootPart.Position - targetRootPart.Position).Magnitude
             if distance == math.huge or distance ~= distance then
@@ -223,7 +226,7 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function getDmgPointDistance(targetPlayer, weapon)
-        if not (weapon and targetPlayer.Character and localRootPart and localRootPart.Position) then
+        if not (weapon and targetPlayer and targetPlayer.Character and localRootPart and localRootPart.Position) then
             return math.huge
         end
         local blade = weapon:FindFirstChild("Blade")
@@ -242,7 +245,7 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function canTargetPlayer(targetPlayer, range, teamCheck)
-        if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0 and targetPlayer.Character) then
+        if not (localCharacter and localRootPart and localHumanoid and localHumanoid.Health > 0 and targetPlayer and targetPlayer.Character) then
             return false
         end
         local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -272,14 +275,12 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function updateTargetHighlight(targets)
-        -- Очистка старых подсветок
         for player, highlight in pairs(targetHighlights) do
             if not table.find(targets, player) or not player.Character then
                 highlight:Destroy()
                 targetHighlights[player] = nil
             end
         end
-        -- Обновление или создание подсветок для текущих таргетов
         for _, player in pairs(targets) do
             if not player.Character then
                 continue
@@ -306,7 +307,6 @@ function KillAura.Init(UI, Core, notify)
                 highlight.Enabled = true
             end
         end
-        -- Обновление глобальных таргетов для Bulwark
         if #targets > 0 then
             Core.BulwarkTarget.CurrentTarget = targets[1].Name
             Core.BulwarkTarget.UniversalTarget = targets[1].Name
@@ -414,7 +414,7 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function checkDamagePointCollision(targetPlayer, weapon)
-        if not (State.AutoDodge.ResolveAngle.Value and weapon and targetPlayer.Character and localCharacter) then
+        if not (State.AutoDodge.ResolveAngle.Value and weapon and targetPlayer and targetPlayer.Character and localCharacter) then
             return false
         end
         local blade = weapon:FindFirstChild("Blade")
@@ -444,6 +444,9 @@ function KillAura.Init(UI, Core, notify)
     end
 
     local function predictAttack(targetPlayer)
+        if not targetPlayer or not targetPlayer.Character then
+            return false, 0
+        end
         local weapon, settings = getTargetWeaponSettings(targetPlayer)
         if not (weapon and settings and settings.Release) then
             return false, 0
@@ -693,7 +696,7 @@ function KillAura.Init(UI, Core, notify)
                 local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
                 if targetCharacter and targetHumanoid and targetHumanoid.Health > 0 then
                     local stance = getPlayerStance(player)
-                    if not (stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value)) then
+                    if not (stance and ((stance == "parrying" or stance == "block" or stance == "blocking") and State.KillAura.AntiBlock.Value or (stance == "riposte" and State.KillAura.AntiParry.Value))) then
                         table.insert(additionalTargets, player)
                         count = count + 1
                         if count >= MAX_ADDITIONAL_TARGETS then
@@ -802,15 +805,8 @@ function KillAura.Init(UI, Core, notify)
                 continue
             end
             local targetCharacter = closestTarget.Character
-            if not targetCharacter then
-                lastStance = nil
-                isDodgePending = false
-                desiredDodgeAction = nil
-                Core.BulwarkTarget.CombatState = nil
-                continue
-            end
-            local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-            if not targetHumanoid or targetHumanoid.Health <= 0 then
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+            if not (targetCharacter and targetHumanoid and targetHumanoid.Health > 0) then
                 lastStance = nil
                 isDodgePending = false
                 desiredDodgeAction = nil
