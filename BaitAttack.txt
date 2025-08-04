@@ -1,0 +1,187 @@
+local BaitAttack = {}
+
+function BaitAttack.Init(UI, Core, notify)
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local UserInputService = game:GetService("UserInputService")
+    local Animation = game:GetService("Animation")
+
+    local LocalPlayer = Players.LocalPlayer
+    local localCharacter = LocalPlayer.Character
+    local localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
+    
+    local State = {
+        BaitAttack = {
+            FakeParry = { Value = false, Default = false },
+            FakeRiposte = { Value = false, Default = false },
+            FakeParryKey = { Value = Enum.KeyCode.F, Default = Enum.KeyCode.F },
+            FakeRiposteKey = { Value = Enum.KeyCode.R, Default = Enum.KeyCode.R },
+            Cooldown = { Value = 0.5, Default = 0.5 }
+        }
+    }
+
+    local lastActionTime = 0
+    local isPerformingAction = false
+
+    local function getLocalWeaponSettings()
+        if not localCharacter then
+            return nil, nil
+        end
+        local weapon
+        for _, child in pairs(localCharacter:GetChildren()) do
+            if child:IsA("Tool") then
+                weapon = child
+                break
+            end
+        end
+        if not weapon then
+            return nil, nil
+        end
+        local settingsModule = weapon:FindFirstChild("Settings")
+        if not settingsModule then
+            return nil, nil
+        end
+        local settings = require(settingsModule)
+        if not settings or type(settings) ~= "table" or not settings.Type then
+            return nil, nil
+        end
+        return settings, weapon
+    end
+
+    local function playAnimation(action)
+        if isPerformingAction or tick() - lastActionTime < State.BaitAttack.Cooldown.Value then
+            return false
+        end
+        if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
+            return false
+        end
+        isPerformingAction = true
+        local settings, weapon = getLocalWeaponSettings()
+        if not settings or not settings.Type then
+            isPerformingAction = false
+            return false
+        end
+        local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
+        if not animationsModule then
+            isPerformingAction = false
+            return false
+        end
+        local animations = require(animationsModule)[settings.Type]
+        if not animations or not animations[action] then
+            isPerformingAction = false
+            return false
+        end
+        local animation = Instance.new("Animation")
+        animation.AnimationId = "rbxassetid://" .. animations[action]
+        local animationTrack = localHumanoid:LoadAnimation(animation)
+        animationTrack:Play(0.1)
+        animationTrack:AdjustSpeed(action == "Riposte" and 0 or 1)
+        
+        if action == "Parry" then
+            localHumanoid.WalkSpeed = 7
+            task.spawn(function()
+                task.wait(0.5)
+                if animationTrack and animationTrack.IsPlaying then
+                    animationTrack:Stop(0.2)
+                    animationTrack:Destroy()
+                end
+                localHumanoid.WalkSpeed = 9
+                isPerformingAction = false
+                lastActionTime = tick()
+            end)
+        elseif action == "Riposte" then
+            localHumanoid.WalkSpeed = 1
+            task.spawn(function()
+                task.wait(0.5)
+                if animationTrack and animationTrack.IsPlaying and animationTrack.TimePosition == 0 then
+                    animationTrack:Stop(0.7)
+                    animationTrack:Destroy()
+                end
+                localHumanoid.WalkSpeed = 9
+                isPerformingAction = false
+                lastActionTime = tick()
+            end)
+        end
+        return true
+    end
+
+    local function onInputBegan(input, gameProcessedEvent)
+        if gameProcessedEvent or not localCharacter or not localHumanoid or localHumanoid.Health <= 0 then
+            return
+        end
+        if input.KeyCode == State.BaitAttack.FakeParryKey.Value and not State.BaitAttack.FakeParry.Value then
+            State.BaitAttack.FakeParry.Value = true
+            if playAnimation("Parry") then
+                notify("BaitAttack", "Fake Parry Activated", true)
+                Core.BulwarkTarget.CombatState = "BaitAttack (FakeParry)"
+                task.spawn(function()
+                    task.wait(State.BaitAttack.Cooldown.Value)
+                    State.BaitAttack.FakeParry.Value = false
+                    Core.BulwarkTarget.CombatState = nil
+                end)
+            else
+                State.BaitAttack.FakeParry.Value = false
+            end
+        elseif input.KeyCode == State.BaitAttack.FakeRiposteKey.Value and not State.BaitAttack.FakeRiposte.Value then
+            State.BaitAttack.FakeRiposte.Value = true
+            if playAnimation("Riposte") then
+                notify("BaitAttack", "Fake Riposte Activated", true)
+                Core.BulwarkTarget.CombatState = "BaitAttack (FakeRiposte)"
+                task.spawn(function()
+                    task.wait(State.BaitAttack.Cooldown.Value)
+                    State.BaitAttack.FakeRiposte.Value = false
+                    Core.BulwarkTarget.CombatState = nil
+                end)
+            else
+                State.BaitAttack.FakeRiposte.Value = false
+            end
+        end
+    end
+
+    UserInputService.InputBegan:Connect(onInputBegan)
+
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        localCharacter = character
+        localHumanoid = character:WaitForChild("Humanoid", 5)
+    end)
+
+    if UI.Tabs and UI.Tabs.Combat then
+        UI.Sections.BaitAttack = UI.Sections.BaitAttack or UI.Tabs.Combat:Section({ Name = "Bait Attack", Side = "Left" })
+        UI.Sections.BaitAttack:Header({ Name = "Bait Attack" })
+        UI.Sections.BaitAttack:SubLabel({ Text = "Plays fake Parry/Riposte animations without server interaction" })
+        UI.Sections.BaitAttack:Keybind({
+            Name = "Fake Parry Key",
+            Default = State.BaitAttack.FakeParryKey.Default,
+            Callback = function(value)
+                State.BaitAttack.FakeParryKey.Value = value
+                notify("BaitAttack", "Fake Parry Key set to: " .. tostring(value), true)
+            end,
+            'FakeParryKeyBA'
+        })
+        UI.Sections.BaitAttack:Keybind({
+            Name = "Fake Riposte Key",
+            Default = State.BaitAttack.FakeRiposteKey.Default,
+            Callback = function(value)
+                State.BaitAttack.FakeRiposteKey.Value = value
+                notify("BaitAttack", "Fake Riposte Key set to: " .. tostring(value), true)
+            end,
+            'FakeRiposteKeyBA'
+        })
+        UI.Sections.BaitAttack:Slider({
+            Name = "Cooldown",
+            Minimum = 0.1,
+            Maximum = 1.0,
+            Default = State.BaitAttack.Cooldown.Default,
+            Precision = 2,
+            Callback = function(value)
+                State.BaitAttack.Cooldown.Value = value
+                notify("BaitAttack", "Cooldown set to: " .. value)
+            end,
+            'CooldownBA'
+        })
+    end
+
+    return BaitAttack
+end
+
+return BaitAttack
