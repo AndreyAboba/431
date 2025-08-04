@@ -5,6 +5,7 @@ function BaitAttack.Init(UI, Core, notify)
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
     local Animation = game:GetService("Animation")
+    local CoreGui = game:GetService("CoreGui")
 
     local LocalPlayer = Players.LocalPlayer
     local localCharacter = LocalPlayer.Character
@@ -34,6 +35,7 @@ function BaitAttack.Init(UI, Core, notify)
     local parryAnimationTrack = nil
     local parryHoldConnection = nil
     local inputConnection = nil
+    local keybindDisplays = {}
 
     local function getLocalWeaponSettings()
         if not localCharacter then
@@ -250,6 +252,83 @@ function BaitAttack.Init(UI, Core, notify)
         return true
     end
 
+    local function updateKeybindDisplays()
+        -- Clear existing displays
+        for _, display in pairs(keybindDisplays) do
+            display:Destroy()
+        end
+        keybindDisplays = {}
+
+        -- Keybind data
+        local keybinds = {
+            { Name = "Parry", Key = State.BaitAttack.FakeParryKey },
+            { Name = "Riposte", Key = State.BaitAttack.FakeRiposteKey },
+            { Name = "Attack", Key = State.BaitAttack.FakeAttackKey },
+            { Name = "ForceStop", Key = State.BaitAttack.ForceStopKey }
+        }
+
+        -- Create ScreenGui
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "BaitAttackKeybinds"
+        screenGui.Parent = CoreGui
+        screenGui.ResetOnSpawn = false
+
+        -- Create displays for each keybind
+        for i, keybind in ipairs(keybinds) do
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(0, 100, 0, 100)
+            frame.Position = UDim2.new(0, (i - 1) * 120 + 20, 0, 20)
+            frame.BackgroundTransparency = 1
+            frame.Parent = screenGui
+
+            -- Top frame (icon and name)
+            local topFrame = Instance.new("Frame")
+            topFrame.Size = UDim2.new(1, 0, 0.6, 0)
+            topFrame.BackgroundColor3 = Color3.fromRGB(10, 20, 40)
+            topFrame.BorderSizePixel = 0
+            local uiCorner = Instance.new("UICorner")
+            uiCorner.CornerRadius = UDim.new(0, 8)
+            uiCorner.Parent = topFrame
+            topFrame.Parent = frame
+
+            local icon = Instance.new("ImageLabel")
+            icon.Size = UDim2.new(0, 40, 0, 40)
+            icon.Position = UDim2.new(0.5, 0, 0.2, 0)
+            icon.AnchorPoint = Vector2.new(0.5, 0.2)
+            icon.Image = "rbxassetid://11710306232"
+            icon.BackgroundTransparency = 1
+            icon.Parent = topFrame
+
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, 0, 0, 20)
+            nameLabel.Position = UDim2.new(0, 0, 0.7, 0)
+            nameLabel.Text = keybind.Name
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextScaled = true
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Parent = topFrame
+
+            -- Bottom frame (keybind letter)
+            local bottomFrame = Instance.new("Frame")
+            bottomFrame.Size = UDim2.new(1, 0, 0.4, 0)
+            bottomFrame.Position = UDim2.new(0, 0, 0.6, 0)
+            bottomFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+            bottomFrame.BackgroundTransparency = 0.3
+            bottomFrame.BorderSizePixel = 0
+            bottomFrame.Parent = frame
+
+            local keyLabel = Instance.new("TextLabel")
+            keyLabel.Size = UDim2.new(1, 0, 1, 0)
+            keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or "None"
+            keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            keyLabel.TextScaled = true
+            keyLabel.BackgroundTransparency = 1
+            keyLabel.Parent = bottomFrame
+
+            keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
+        end
+    end
+
     local function onInputBegan(input, gameProcessedEvent)
         if gameProcessedEvent or isInputFocused() or not localCharacter or not localHumanoid or localHumanoid.Health <= 0 or not State.BaitAttack.Enabled.Value then
             return
@@ -328,6 +407,7 @@ function BaitAttack.Init(UI, Core, notify)
             return
         end
         inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
+        updateKeybindDisplays()
     end
 
     local function stop()
@@ -356,6 +436,10 @@ function BaitAttack.Init(UI, Core, notify)
         State.BaitAttack.FakeRiposte.Value = false
         State.BaitAttack.FakeAttack.Value = false
         Core.BulwarkTarget.CombatState = nil
+        for _, display in pairs(keybindDisplays) do
+            display.Frame:Destroy()
+        end
+        keybindDisplays = {}
     end
 
     LocalPlayer.CharacterAdded:Connect(function(character)
@@ -390,6 +474,9 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.FakeParryKey.Default,
             Callback = function(value)
                 State.BaitAttack.FakeParryKey.Value = value
+                if keybindDisplays.Parry then
+                    keybindDisplays.Parry.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                end
             end,
             'FakeParryKeyBA'
         })
@@ -398,6 +485,9 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.FakeRiposteKey.Default,
             Callback = function(value)
                 State.BaitAttack.FakeRiposteKey.Value = value
+                if keybindDisplays.Riposte then
+                    keybindDisplays.Riposte.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                end
             end,
             'FakeRiposteKeyBA'
         })
@@ -406,6 +496,9 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.FakeAttackKey.Default,
             Callback = function(value)
                 State.BaitAttack.FakeAttackKey.Value = value
+                if keybindDisplays.Attack then
+                    keybindDisplays.Attack.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                end
             end,
             'FakeAttackKeyBA'
         })
@@ -491,9 +584,17 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
                 State.BaitAttack.ForceStopKey.Value = value
+                if keybindDisplays.ForceStop then
+                    keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                end
             end,
             'ForceStopKeyBA'
         })
+
+        -- New Visuals section for keybind displays
+        UI.Sections.BaitAttackKeybinds = UI.Tabs.Visuals:Section({ Name = "BaitAttackKeybinds", Side = "Left" })
+        UI.Sections.BaitAttackKeybinds:Header({ Name = "BaitAttack KeyBind" })
+        UI.Sections.BaitAttackKeybinds:SubLabel({ Text = "Displays keybinds for BaitAttack actions on screen" })
     end
 
     return BaitAttack
