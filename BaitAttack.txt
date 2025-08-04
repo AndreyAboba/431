@@ -236,9 +236,10 @@ function BaitAttack.Init(UI, Core, notify)
             stanceValue.Value = "Idle"
         end
         -- Send ChangeStance to server
-        local changeStanceEvent = ReplicatedStorage:FindFirstChild("ChangeStance")
+        local args = { [1] = "Idle" }
+        local changeStanceEvent = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer"):WaitForChild("ChangeStance")
         if changeStanceEvent and changeStanceEvent:IsA("RemoteEvent") then
-            changeStanceEvent:FireServer("Idle")
+            changeStanceEvent:FireServer(unpack(args))
         end
         -- Maintain Idle stance for 3 seconds
         task.spawn(function()
@@ -247,7 +248,7 @@ function BaitAttack.Init(UI, Core, notify)
                 if stanceValue and stanceValue.Value ~= "Idle" then
                     stanceValue.Value = "Idle"
                     if changeStanceEvent and changeStanceEvent:IsA("RemoteEvent") then
-                        changeStanceEvent:FireServer("Idle")
+                        changeStanceEvent:FireServer(unpack(args))
                     end
                 end
                 task.wait(0.1)
