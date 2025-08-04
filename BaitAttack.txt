@@ -1,5 +1,5 @@
 local BaitAttack = {}
-
+print('2')
 function BaitAttack.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -398,7 +398,6 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.FakeParryKey.Default,
             Callback = function(value)
                 State.BaitAttack.FakeParryKey.Value = value
-                notify("BaitAttack", "Fake Parry Key set to: " .. tostring(value), true)
             end,
             'FakeParryKeyBA'
         })
@@ -407,7 +406,6 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.FakeRiposteKey.Default,
             Callback = function(value)
                 State.BaitAttack.FakeRiposteKey.Value = value
-                notify("BaitAttack", "Fake Riposte Key set to: " .. tostring(value), true)
             end,
             'FakeRiposteKeyBA'
         })
@@ -416,7 +414,6 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.FakeAttackKey.Default,
             Callback = function(value)
                 State.BaitAttack.FakeAttackKey.Value = value
-                notify("BaitAttack", "Fake Attack Key set to: " .. tostring(value), true)
             end,
             'FakeAttackKeyBA'
         })
@@ -516,7 +513,6 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
                 State.BaitAttack.ForceStopKey.Value = value
-                notify("BaitAttack", "Force Stop Key set to: " .. tostring(value), true)
             end,
             'ForceStopKeyBA'
         })
@@ -524,5 +520,4 @@ function BaitAttack.Init(UI, Core, notify)
 
     return BaitAttack
 end
-
 return BaitAttack
