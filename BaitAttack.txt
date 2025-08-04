@@ -4,9 +4,7 @@ function BaitAttack.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
-    local Animation = game:GetService("Animation")
     local CoreGui = game:GetService("CoreGui")
-    local RunService = game:GetService("RunService")
 
     local LocalPlayer = Players.LocalPlayer
     local localCharacter = LocalPlayer.Character
@@ -48,12 +46,35 @@ function BaitAttack.Init(UI, Core, notify)
     local draggingFrame = nil
     local dragStartPos = nil
     local dragStartMousePos = nil
-    local activeFades = {}
 
+    -- Проверка валидности состояния для действий
+    local function isValidState()
+        if UserInputService:GetFocusedTextBox() then
+            return false, "Input focused"
+        end
+        if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
+            return false, "Invalid character or humanoid"
+        end
+        if not State.BaitAttack.Enabled.Value then
+            return false, "BaitAttack disabled"
+        end
+        if isPerformingAction then
+            return false, "Already performing action"
+        end
+        if State.BaitAttack.CheckStance.Value then
+            local stance = localCharacter:FindFirstChild("Stance", true)
+            local currentStance = stance and stance.Value or "Idle"
+            if currentStance ~= "Idle" and currentStance ~= "Recovery" then
+                return false, "Invalid stance: " .. tostring(currentStance)
+            end
+        end
+        return true, nil
+    end
+
+    -- Получение настроек оружия
     local function getLocalWeaponSettings()
         if not localCharacter then
-            notify("BaitAttack", "No character found", false)
-            return nil, nil
+            return nil, nil, "No character found"
         end
         local weapon
         for _, child in pairs(localCharacter:GetChildren()) do
@@ -63,104 +84,48 @@ function BaitAttack.Init(UI, Core, notify)
             end
         end
         if not weapon then
-            notify("BaitAttack", "No weapon equipped", false)
-            return nil, nil
+            return nil, nil, "No weapon equipped"
         end
         local settingsModule = weapon:FindFirstChild("Settings")
         if not settingsModule then
-            notify("BaitAttack", "No settings module found", false)
-            return nil, nil
+            return nil, nil, "No settings module found"
         end
         local settings = require(settingsModule)
         if not settings or type(settings) ~= "table" or not settings.Type then
-            notify("BaitAttack", "Invalid weapon settings", false)
-            return nil, nil
+            return nil, nil, "Invalid weapon settings"
         end
-        return settings, weapon
+        return settings, weapon, nil
     end
 
-    local function getCurrentStance()
-        if not localCharacter then
-            return nil
+    -- Применение Fade-эффекта
+    local function applyFade(label, keyName, color, revertAfter)
+        if not label then
+            print("BaitAttack: No label for", keyName)
+            return
         end
-        local stanceValue = localCharacter:FindFirstChild("Stance", true)
-        return stanceValue and stanceValue.Value or "Idle"
-    end
-
-    local function isInputFocused()
-        return UserInputService:GetFocusedTextBox() ~= nil
-    end
-
-    local function lerpColor(startColor, endColor, alpha)
-        return Color3.new(
-            startColor.R + (endColor.R - startColor.R) * alpha,
-            startColor.G + (endColor.G - startColor.G) * alpha,
-            startColor.B + (endColor.B - startColor.B) * alpha
-        )
-    end
-
-    local function startFade(label, keyName, toColor)
-        if activeFades[keyName] then
-            activeFades[keyName].Connection:Disconnect()
-            activeFades[keyName] = nil
+        print("BaitAttack: Applying fade for", keyName, "to", color)
+        label.TextColor3 = color
+        if revertAfter then
+            task.delay(revertAfter, function()
+                if label and label.Parent then
+                    print("BaitAttack: Reverting fade for", keyName)
+                    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+                end
+            end)
         end
-        local startTime = tick()
-        local duration = 0.3
-        local startColor = label.TextColor3
-        local connection
-        connection = RunService.Heartbeat:Connect(function()
-            local elapsed = tick() - startTime
-            local alpha = math.clamp(elapsed / duration, 0, 1)
-            label.TextColor3 = lerpColor(startColor, toColor, alpha)
-            if alpha >= 1 then
-                connection:Disconnect()
-                activeFades[keyName] = nil
-            end
-        end)
-        activeFades[keyName] = { Connection = connection }
     end
 
-    local function stopFade(label, keyName)
-        if activeFades[keyName] then
-            activeFades[keyName].Connection:Disconnect()
-            activeFades[keyName] = nil
-        end
-        local startTime = tick()
-        local duration = 0.3
-        local startColor = label.TextColor3
-        local endColor = Color3.fromRGB(255, 255, 255)
-        local connection
-        connection = RunService.Heartbeat:Connect(function()
-            local elapsed = tick() - startTime
-            local alpha = math.clamp(elapsed / duration, 0, 1)
-            label.TextColor3 = lerpColor(startColor, endColor, alpha)
-            if alpha >= 1 then
-                connection:Disconnect()
-                activeFades[keyName] = nil
-            end
-        end)
-        activeFades[keyName] = { Connection = connection }
-    end
-
-    local function playAnimation(action)
-        if isPerformingAction then
-            notify("BaitAttack", "Already performing an action", false)
+    -- Воспроизведение анимации с таймингами
+    local function playAnimationWithTiming(action, windup, speed, recovery, walkSpeed)
+        local valid, errorMsg = isValidState()
+        if not valid then
+            notify("BaitAttack", errorMsg, false)
             return false
-        end
-        if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
-            notify("BaitAttack", "Character or Humanoid invalid", false)
-            return false
-        end
-        if State.BaitAttack.CheckStance.Value then
-            local currentStance = getCurrentStance()
-            if currentStance ~= "Idle" and currentStance ~= "Recovery" then
-                notify("BaitAttack", "Invalid stance: " .. tostring(currentStance), false)
-                return false
-            end
         end
         isPerformingAction = true
-        local settings, weapon = getLocalWeaponSettings()
-        if not settings or not settings.Type then
+        local settings, weapon, errorMsg = getLocalWeaponSettings()
+        if not settings then
+            notify("BaitAttack", errorMsg, false)
             isPerformingAction = false
             return false
         end
@@ -199,21 +164,19 @@ function BaitAttack.Init(UI, Core, notify)
             isPerformingAction = false
             return false
         end
-        
+
+        animationTrack:Play(windup)
+        animationTrack:AdjustSpeed(speed)
+        if localHumanoid then
+            localHumanoid.WalkSpeed = walkSpeed
+        end
         if action == "Parry" then
             parryAnimationTrack = animationTrack
-            animationTrack:Play(0.1)
-            animationTrack:AdjustSpeed(1)
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 7
-            end
-            if State.BaitAttack.ParryHold.Value then
-                -- Handled in onInputBegan
-            elseif State.BaitAttack.AutoHoldEnabled.Value then
+            if not State.BaitAttack.ParryHold.Value and State.BaitAttack.AutoHoldEnabled.Value then
                 task.spawn(function()
                     task.wait(State.BaitAttack.ParryAutoHold.Value)
                     if animationTrack and animationTrack.IsPlaying then
-                        animationTrack:Stop(0.2)
+                        animationTrack:Stop(recovery)
                         animationTrack:Destroy()
                         parryAnimationTrack = nil
                     end
@@ -221,15 +184,17 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
+                    State.BaitAttack.FakeParry.Value = false
+                    Core.BulwarkTarget.CombatState = nil
                     if keybindDisplays.Parry then
-                        stopFade(keybindDisplays.Parry.KeyLabel, "Parry")
+                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
                     end
                 end)
-            else
+            elseif not State.BaitAttack.ParryHold.Value then
                 task.spawn(function()
                     task.wait(0.4)
                     if animationTrack and animationTrack.IsPlaying then
-                        animationTrack:Stop(0.2)
+                        animationTrack:Stop(recovery)
                         animationTrack:Destroy()
                         parryAnimationTrack = nil
                     end
@@ -237,52 +202,34 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
+                    State.BaitAttack.FakeParry.Value = false
+                    Core.BulwarkTarget.CombatState = nil
                     if keybindDisplays.Parry then
-                        stopFade(keybindDisplays.Parry.KeyLabel, "Parry")
+                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
                     end
                 end)
             end
-        elseif action == "Riposte" then
-            animationTrack:Play(0.1)
-            animationTrack:AdjustSpeed(0)
-            if localHumanoid then
-                localHumanoid.WalkSpeed = 1
-            end
+        else
             task.spawn(function()
-                task.wait(0.5)
-                if animationTrack and animationTrack.IsPlaying and animationTrack.TimePosition == 0 then
-                    animationTrack:Stop(0.7)
-                    animationTrack:Destroy()
-                end
-                if localHumanoid then
-                    localHumanoid.WalkSpeed = defaultWalkSpeed
-                end
-                isPerformingAction = false
-                if keybindDisplays.Riposte then
-                    stopFade(keybindDisplays.Riposte.KeyLabel, "Riposte")
-                end
-            end)
-        elseif action == "FakeAttack" then
-            animationTrack:Play(settings.Windup or 0.3)
-            animationTrack:AdjustSpeed(0)
-            if localHumanoid then
-                localHumanoid.WalkSpeed = swingWalkSpeed
-            end
-            task.spawn(function()
-                task.wait(settings.Windup or 0.3)
+                task.wait(windup)
                 if animationTrack and animationTrack.IsPlaying then
-                    animationTrack:AdjustSpeed((animationTrack.Length / (settings.Release or 0.3)) * 2)
-                    task.wait(settings.Release or 0.3)
+                    if action == "FakeAttack" then
+                        animationTrack:AdjustSpeed((animationTrack.Length / (settings.Release or 0.3)) * 2)
+                        task.wait(settings.Release or 0.3)
+                    end
                     if animationTrack and animationTrack.IsPlaying then
-                        animationTrack:Stop(settings.Recovery or 0.45)
+                        animationTrack:Stop(recovery)
                         animationTrack:Destroy()
                     end
                     if localHumanoid then
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
-                    if keybindDisplays.Attack then
-                        stopFade(keybindDisplays.Attack.KeyLabel, "Attack")
+                    State.BaitAttack[action].Value = false
+                    Core.BulwarkTarget.CombatState = nil
+                    local displayKey = action == "FakeAttack" and "Attack" or action
+                    if keybindDisplays[displayKey] then
+                        applyFade(keybindDisplays[displayKey].KeyLabel, displayKey, Color3.fromRGB(255, 255, 255), nil)
                     end
                 end
             end)
@@ -290,9 +237,11 @@ function BaitAttack.Init(UI, Core, notify)
         return true
     end
 
+    -- Принудительная остановка
     local function forceStop()
-        if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
-            notify("BaitAttack", "Cannot force stop: invalid character", false)
+        local valid, errorMsg = isValidState()
+        if not valid then
+            notify("BaitAttack", errorMsg, false)
             return false
         end
         isPerformingAction = false
@@ -323,24 +272,120 @@ function BaitAttack.Init(UI, Core, notify)
             end
         end)
         if keybindDisplays.ForceStop then
-            startFade(keybindDisplays.ForceStop.KeyLabel, "ForceStop", State.BaitAttack.FadeColor.Value)
-            task.spawn(function()
-                task.wait(0.3)
-                if keybindDisplays.ForceStop then
-                    stopFade(keybindDisplays.ForceStop.KeyLabel, "ForceStop")
-                end
-            end)
+            applyFade(keybindDisplays.ForceStop.KeyLabel, "ForceStop", State.BaitAttack.FadeColor.Value, 0.3)
         end
+        notify("BaitAttack", "Force Stop Activated", true)
         return true
     end
 
+    -- Создание UI для кейбинда
+    local function createKeybindFrame(keybind, index, scale)
+        local frame = Instance.new("Frame")
+        frame.Name = keybind.Name
+        frame.Size = UDim2.new(0, 75 * scale, 0, 75 * scale)
+        frame.Position = keybindPositions[keybind.Name] or UDim2.new(0, (index - 1) * (90 * scale) + 10, 0, 10)
+        frame.BackgroundTransparency = 1
+        frame.ClipsDescendants = true
+
+        local topFrame = Instance.new("Frame")
+        topFrame.Size = UDim2.new(1, 0, 0.4, 0)
+        topFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
+        topFrame.BorderSizePixel = 0
+        local uiCornerTop = Instance.new("UICorner")
+        uiCornerTop.CornerRadius = UDim.new(0, 8 * scale)
+        uiCornerTop.Parent = topFrame
+        topFrame.Parent = frame
+
+        local maskFrame = Instance.new("Frame")
+        maskFrame.Size = UDim2.new(1, 0, 0.5, 0)
+        maskFrame.Position = UDim2.new(0, 0, 0.5, 0)
+        maskFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
+        maskFrame.BorderSizePixel = 0
+        maskFrame.Parent = topFrame
+
+        local icon = Instance.new("ImageLabel")
+        icon.Size = UDim2.new(0, 22 * scale, 0, 22 * scale)
+        icon.Position = UDim2.new(0.5, 0, 0.005, 0)
+        icon.AnchorPoint = Vector2.new(0.5, 0.005)
+        icon.Image = "rbxassetid://11710306232"
+        icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
+        icon.ImageTransparency = 0.5
+        icon.BackgroundTransparency = 1
+        icon.Parent = topFrame
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, 0, 0, 15 * scale)
+        nameLabel.Position = UDim2.new(0, 0, 0.35, 0)
+        nameLabel.Text = keybind.Name
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextScaled = false
+        nameLabel.TextSize = 16 * scale
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Parent = topFrame
+
+        local bottomFrameContainer = Instance.new("Frame")
+        bottomFrameContainer.Size = UDim2.new(1, 0, 0.6, 0)
+        bottomFrameContainer.Position = UDim2.new(0, 0, 0.4, 0)
+        bottomFrameContainer.BackgroundTransparency = 1
+        bottomFrameContainer.ClipsDescendants = true
+        bottomFrameContainer.Parent = frame
+
+        local bottomFrame = Instance.new("Frame")
+        bottomFrame.Size = UDim2.new(1, 0, 1, 8 * scale)
+        bottomFrame.Position = UDim2.new(0, 0, 0, -8 * scale)
+        bottomFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+        bottomFrame.BackgroundTransparency = 0.3
+        bottomFrame.BorderSizePixel = 0
+        local uiCornerBottom = Instance.new("UICorner")
+        uiCornerBottom.CornerRadius = UDim.new(0, 8 * scale)
+        uiCornerBottom.Parent = bottomFrame
+        bottomFrame.Parent = bottomFrameContainer
+
+        local keyLabel = Instance.new("TextLabel")
+        keyLabel.Size = UDim2.new(1, 0, 1, 0)
+        keyLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+        keyLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+        keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or ""
+        keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        keyLabel.TextScaled = false
+        keyLabel.TextSize = 22 * scale
+        keyLabel.Font = Enum.Font.Gotham
+        keyLabel.BackgroundTransparency = 1
+        keyLabel.Parent = bottomFrameContainer
+
+        local function startDragging(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 and not UserInputService:GetFocusedTextBox() then
+                draggingFrame = frame
+                dragStartPos = frame.Position
+                dragStartMousePos = input.Position
+            end
+        end
+
+        local function stopDragging(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                draggingFrame = nil
+                dragStartPos = nil
+                dragStartMousePos = nil
+                keybindPositions[frame.Name] = frame.Position
+            end
+        end
+
+        topFrame.InputBegan:Connect(startDragging)
+        topFrame.InputEnded:Connect(stopDragging)
+        bottomFrameContainer.InputBegan:Connect(startDragging)
+        bottomFrameContainer.InputEnded:Connect(stopDragging)
+
+        return frame, keyLabel
+    end
+
+    -- Обновление отображения кейбиндов
     local function updateKeybindDisplays()
         for _, display in pairs(keybindDisplays) do
             keybindPositions[display.Frame.Name] = display.Frame.Position
             display.Frame:Destroy()
         end
         keybindDisplays = {}
-        activeFades = {}
 
         if not State.BaitAttack.Enabled.Value or not State.BaitAttack.KeybindDisplayEnabled.Value then
             return
@@ -366,104 +411,8 @@ function BaitAttack.Init(UI, Core, notify)
         end
 
         for i, keybind in ipairs(visibleKeybinds) do
-            local frame = Instance.new("Frame")
-            local scale = State.BaitAttack.KeybindDisplayScale.Value
-            frame.Name = keybind.Name
-            frame.Size = UDim2.new(0, 75 * scale, 0, 75 * scale)
-            frame.Position = keybindPositions[keybind.Name] or UDim2.new(0, (i - 1) * (90 * scale) + 10, 0, 10)
-            frame.BackgroundTransparency = 1
-            frame.ClipsDescendants = true
+            local frame, keyLabel = createKeybindFrame(keybind, i, State.BaitAttack.KeybindDisplayScale.Value)
             frame.Parent = screenGui
-
-            local topFrame = Instance.new("Frame")
-            topFrame.Size = UDim2.new(1, 0, 0.4, 0)
-            topFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
-            topFrame.BorderSizePixel = 0
-            local uiCornerTop = Instance.new("UICorner")
-            uiCornerTop.CornerRadius = UDim.new(0, 8 * scale)
-            uiCornerTop.Parent = topFrame
-            topFrame.Parent = frame
-
-            local maskFrame = Instance.new("Frame")
-            maskFrame.Size = UDim2.new(1, 0, 0.5, 0)
-            maskFrame.Position = UDim2.new(0, 0, 0.5, 0)
-            maskFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
-            maskFrame.BorderSizePixel = 0
-            maskFrame.Parent = topFrame
-
-            local icon = Instance.new("ImageLabel")
-            icon.Size = UDim2.new(0, 22 * scale, 0, 22 * scale)
-            icon.Position = UDim2.new(0.5, 0, 0.01, 0)
-            icon.AnchorPoint = Vector2.new(0.5, 0.01)
-            icon.Image = "rbxassetid://11710306232"
-            icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
-            icon.ImageTransparency = 0.5
-            icon.BackgroundTransparency = 1
-            icon.Parent = topFrame
-
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, 0, 0, 15 * scale)
-            nameLabel.Position = UDim2.new(0, 0, 0.35, 0)
-            nameLabel.Text = keybind.Name
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLabel.TextScaled = false
-            nameLabel.TextSize = 16 * scale
-            nameLabel.Font = Enum.Font.Gotham
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Parent = topFrame
-
-            local bottomFrameContainer = Instance.new("Frame")
-            bottomFrameContainer.Size = UDim2.new(1, 0, 0.6, 0)
-            bottomFrameContainer.Position = UDim2.new(0, 0, 0.4, 0)
-            bottomFrameContainer.BackgroundTransparency = 1
-            bottomFrameContainer.ClipsDescendants = true
-            bottomFrameContainer.Parent = frame
-
-            local bottomFrame = Instance.new("Frame")
-            bottomFrame.Size = UDim2.new(1, 0, 1, 8 * scale)
-            bottomFrame.Position = UDim2.new(0, 0, 0, -8 * scale)
-            bottomFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
-            bottomFrame.BackgroundTransparency = 0.3
-            bottomFrame.BorderSizePixel = 0
-            local uiCornerBottom = Instance.new("UICorner")
-            uiCornerBottom.CornerRadius = UDim.new(0, 8 * scale)
-            uiCornerBottom.Parent = bottomFrame
-            bottomFrame.Parent = bottomFrameContainer
-
-            local keyLabel = Instance.new("TextLabel")
-            keyLabel.Size = UDim2.new(1, 0, 1, 0)
-            keyLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
-            keyLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-            keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or ""
-            keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyLabel.TextScaled = false
-            keyLabel.TextSize = 22 * scale
-            keyLabel.Font = Enum.Font.Gotham
-            keyLabel.BackgroundTransparency = 1
-            keyLabel.Parent = bottomFrameContainer
-
-            local function startDragging(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 and not isInputFocused() then
-                    draggingFrame = frame
-                    dragStartPos = frame.Position
-                    dragStartMousePos = input.Position
-                end
-            end
-
-            local function stopDragging(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    draggingFrame = nil
-                    dragStartPos = nil
-                    dragStartMousePos = nil
-                    keybindPositions[frame.Name] = frame.Position
-                end
-            end
-
-            topFrame.InputBegan:Connect(startDragging)
-            topFrame.InputEnded:Connect(stopDragging)
-            bottomFrameContainer.InputBegan:Connect(startDragging)
-            bottomFrameContainer.InputEnded:Connect(stopDragging)
-
             keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
         end
 
@@ -480,100 +429,77 @@ function BaitAttack.Init(UI, Core, notify)
         end)
     end
 
+    -- Обработка ввода
     local function onInputBegan(input, gameProcessedEvent)
-        if gameProcessedEvent or isInputFocused() or not localCharacter or not localHumanoid or localHumanoid.Health <= 0 or not State.BaitAttack.Enabled.Value then
+        if gameProcessedEvent then
             return
         end
-        if input.KeyCode == State.BaitAttack.FakeParryKey.Value and not State.BaitAttack.FakeParry.Value then
-            State.BaitAttack.FakeParry.Value = true
-            if playAnimation("Parry") then
-                notify("BaitAttack", "Fake Parry Activated", true)
-                Core.BulwarkTarget.CombatState = "BaitAttack (FakeParry)"
-                if keybindDisplays.Parry then
-                    startFade(keybindDisplays.Parry.KeyLabel, "Parry", State.BaitAttack.FadeColor.Value)
-                end
-                if State.BaitAttack.ParryHold.Value then
-                    parryHoldConnection = UserInputService.InputEnded:Connect(function(endInput)
-                        if endInput.KeyCode == State.BaitAttack.FakeParryKey.Value then
-                            if parryAnimationTrack and parryAnimationTrack.IsPlaying then
-                                parryAnimationTrack:Stop(0.2)
-                                parryAnimationTrack:Destroy()
-                                parryAnimationTrack = nil
+        local valid, errorMsg = isValidState()
+        if not valid then
+            return
+        end
+
+        local function handleAction(key, stateKey, action, windup, speed, recovery, walkSpeed)
+            if input.KeyCode == State.BaitAttack[key].Value and not State.BaitAttack[stateKey].Value then
+                State.BaitAttack[stateKey].Value = true
+                local displayKey = action == "FakeAttack" and "Attack" or action
+                if playAnimationWithTiming(action, windup, speed, recovery, walkSpeed) then
+                    notify("BaitAttack", "Fake " .. action .. " Activated", true)
+                    Core.BulwarkTarget.CombatState = "BaitAttack (" .. stateKey .. ")"
+                    if keybindDisplays[displayKey] then
+                        applyFade(keybindDisplays[displayKey].KeyLabel, displayKey, State.BaitAttack.FadeColor.Value, 0.3)
+                    end
+                    if action == "Parry" and State.BaitAttack.ParryHold.Value then
+                        parryHoldConnection = UserInputService.InputEnded:Connect(function(endInput)
+                            if endInput.KeyCode == State.BaitAttack.FakeParryKey.Value then
+                                if parryAnimationTrack and parryAnimationTrack.IsPlaying then
+                                    parryAnimationTrack:Stop(0.2)
+                                    parryAnimationTrack:Destroy()
+                                    parryAnimationTrack = nil
+                                end
+                                if localHumanoid then
+                                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                                end
+                                isPerformingAction = false
+                                State.BaitAttack.FakeParry.Value = false
+                                Core.BulwarkTarget.CombatState = nil
+                                if keybindDisplays.Parry then
+                                    applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
+                                end
+                                if parryHoldConnection then
+                                    parryHoldConnection:Disconnect()
+                                    parryHoldConnection = nil
+                                end
                             end
-                            if localHumanoid then
-                                localHumanoid.WalkSpeed = defaultWalkSpeed
-                            end
-                            isPerformingAction = false
-                            State.BaitAttack.FakeParry.Value = false
+                        end)
+                    end
+                    if action ~= "Parry" or (not State.BaitAttack.ParryHold.Value and State.BaitAttack.AutoHoldEnabled.Value) then
+                        task.spawn(function()
+                            task.wait(action == "Parry" and State.BaitAttack.ParryAutoHold.Value or 0.5)
+                            State.BaitAttack[stateKey].Value = false
                             Core.BulwarkTarget.CombatState = nil
-                            if keybindDisplays.Parry then
-                                stopFade(keybindDisplays.Parry.KeyLabel, "Parry")
-                            end
-                            if parryHoldConnection then
-                                parryHoldConnection:Disconnect()
-                                parryHoldConnection = nil
-                            end
-                        end
-                    end)
-                end
-                if not State.BaitAttack.ParryHold.Value and State.BaitAttack.AutoHoldEnabled.Value then
-                    task.spawn(function()
-                        task.wait(State.BaitAttack.ParryAutoHold.Value)
-                        State.BaitAttack.FakeParry.Value = false
-                        Core.BulwarkTarget.CombatState = nil
-                    end)
-                end
-            else
-                State.BaitAttack.FakeParry.Value = false
-                if keybindDisplays.Parry then
-                    stopFade(keybindDisplays.Parry.KeyLabel, "Parry")
+                        end)
+                    end
+                else
+                    State.BaitAttack[stateKey].Value = false
+                    if keybindDisplays[displayKey] then
+                        applyFade(keybindDisplays[displayKey].KeyLabel, displayKey, Color3.fromRGB(255, 255, 255), nil)
+                    end
                 end
             end
-        elseif input.KeyCode == State.BaitAttack.FakeRiposteKey.Value and not State.BaitAttack.FakeRiposte.Value then
-            State.BaitAttack.FakeRiposte.Value = true
-            if playAnimation("Riposte") then
-                notify("BaitAttack", "Fake Riposte Activated", true)
-                Core.BulwarkTarget.CombatState = "BaitAttack (FakeRiposte)"
-                if keybindDisplays.Riposte then
-                    startFade(keybindDisplays.Riposte.KeyLabel, "Riposte", State.BaitAttack.FadeColor.Value)
-                end
-                task.spawn(function()
-                    task.wait(0.5)
-                    State.BaitAttack.FakeRiposte.Value = false
-                    Core.BulwarkTarget.CombatState = nil
-                end)
-            else
-                State.BaitAttack.FakeRiposte.Value = false
-                if keybindDisplays.Riposte then
-                    stopFade(keybindDisplays.Riposte.KeyLabel, "Riposte")
-                end
-            end
-        elseif input.KeyCode == State.BaitAttack.FakeAttackKey.Value and not State.BaitAttack.FakeAttack.Value then
-            State.BaitAttack.FakeAttack.Value = true
-            if playAnimation("FakeAttack") then
-                notify("BaitAttack", "Fake Attack Activated", true)
-                Core.BulwarkTarget.CombatState = "BaitAttack (FakeAttack)"
-                if keybindDisplays.Attack then
-                    startFade(keybindDisplays.Attack.KeyLabel, "Attack", State.BaitAttack.FadeColor.Value)
-                end
-                task.spawn(function()
-                    task.wait(0.5)
-                    State.BaitAttack.FakeAttack.Value = false
-                    Core.BulwarkTarget.CombatState = nil
-                end)
-            else
-                State.BaitAttack.FakeAttack.Value = false
-                if keybindDisplays.Attack then
-                    stopFade(keybindDisplays.Attack.KeyLabel, "Attack")
-                end
-            end
-        elseif input.KeyCode == State.BaitAttack.ForceStopKey.Value and State.BaitAttack.ForceStopEnabled.Value then
-            if forceStop() then
-                notify("BaitAttack", "Force Stop Activated", true)
-            end
+        end
+
+        handleAction("FakeParryKey", "FakeParry", "Parry", 0.1, 1, 0.2, 7)
+        handleAction("FakeRiposteKey", "FakeRiposte", "Riposte", 0.1, 0, 0.7, 1)
+        local settings = getLocalWeaponSettings()
+        handleAction("FakeAttackKey", "FakeAttack", "FakeAttack", settings and (settings.Windup or 0.3) or 0.3, 0, settings and (settings.Recovery or 0.45) or 0.45, swingWalkSpeed)
+
+        if input.KeyCode == State.BaitAttack.ForceStopKey.Value and State.BaitAttack.ForceStopEnabled.Value then
+            forceStop()
         end
     end
 
+    -- Запуск и остановка
     local function start()
         if inputConnection then
             return
@@ -612,7 +538,6 @@ function BaitAttack.Init(UI, Core, notify)
             display.Frame:Destroy()
         end
         keybindDisplays = {}
-        activeFades = {}
         updateKeybindDisplays()
     end
 
@@ -624,11 +549,13 @@ function BaitAttack.Init(UI, Core, notify)
         end
     end)
 
+    -- Настройка UI
     if UI.Tabs and UI.Tabs.Combat then
-        UI.Sections.BaitAttack = UI.Sections.BaitAttack or UI.Tabs.Combat:Section({ Name = "Bait Attack", Side = "Left" })
-        UI.Sections.BaitAttack:Header({ Name = "Bait Attack" })
-        UI.Sections.BaitAttack:SubLabel({ Text = "Plays fake Parry/Riposte/Attack animations without server interaction" })
-        UI.Sections.BaitAttack:Toggle({
+        local section = UI.Sections.BaitAttack or UI.Tabs.Combat:Section({ Name = "Bait Attack", Side = "Left" })
+        UI.Sections.BaitAttack = section
+        section:Header({ Name = "Bait Attack" })
+        section:SubLabel({ Text = "Plays fake Parry/Riposte/Attack animations without server interaction" })
+        section:Toggle({
             Name = "Enabled",
             Default = State.BaitAttack.Enabled.Default,
             Callback = function(value)
@@ -643,44 +570,29 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'BaitAttackEnabled'
         })
-        UI.Sections.BaitAttack:Keybind({
-            Name = "Fake Parry Key",
-            Default = State.BaitAttack.FakeParryKey.Default,
-            Callback = function(value)
-                State.BaitAttack.FakeParryKey.Value = value
-                updateKeybindDisplays()
-                if keybindDisplays.Parry then
-                    keybindDisplays.Parry.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
-                end
-            end,
-            'FakeParryKeyBA'
-        })
-        UI.Sections.BaitAttack:Keybind({
-            Name = "Fake Riposte Key",
-            Default = State.BaitAttack.FakeRiposteKey.Default,
-            Callback = function(value)
-                State.BaitAttack.FakeRiposteKey.Value = value
-                updateKeybindDisplays()
-                if keybindDisplays.Riposte then
-                    keybindDisplays.Riposte.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
-                end
-            end,
-            'FakeRiposteKeyBA'
-        })
-        UI.Sections.BaitAttack:Keybind({
-            Name = "Fake Attack Key",
-            Default = State.BaitAttack.FakeAttackKey.Default,
-            Callback = function(value)
-                State.BaitAttack.FakeAttackKey.Value = value
-                updateKeybindDisplays()
-                if keybindDisplays.Attack then
-                    keybindDisplays.Attack.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
-                end
-            end,
-            'FakeAttackKeyBA'
-        })
-        UI.Sections.BaitAttack:Divider()
-        UI.Sections.BaitAttack:Toggle({
+        local keybinds = {
+            { Name = "Fake Parry Key", State = "FakeParryKey", Id = "FakeParryKeyBA" },
+            { Name = "Fake Riposte Key", State = "FakeRiposteKey", Id = "FakeRiposteKeyBA" },
+            { Name = "Fake Attack Key", State = "FakeAttackKey", Id = "FakeAttackKeyBA" },
+            { Name = "Force Stop Key", State = "ForceStopKey", Id = "ForceStopKeyBA" }
+        }
+        for _, kb in ipairs(keybinds) do
+            section:Keybind({
+                Name = kb.Name,
+                Default = State.BaitAttack[kb.State].Default,
+                Callback = function(value)
+                    State.BaitAttack[kb.State].Value = value
+                    updateKeybindDisplays()
+                    local displayKey = kb.Name:match("Force Stop") and "ForceStop" or kb.Name:match("Fake (%w+) Key")
+                    if keybindDisplays[displayKey] then
+                        keybindDisplays[displayKey].KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
+                    end
+                end,
+                kb.Id
+            })
+        end
+        section:Divider()
+        section:Toggle({
             Name = "Check Stance",
             Default = State.BaitAttack.CheckStance.Default,
             Callback = function(value)
@@ -689,10 +601,10 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'CheckStanceBA'
         })
-        UI.Sections.BaitAttack:SubLabel({ Text = "Prevents bait animations if player's Stance is not Idle or Recovery" })
-        UI.Sections.BaitAttack:Divider()
-        UI.Sections.BaitAttack:SubLabel({ Text = "Parry" })
-        UI.Sections.BaitAttack:Toggle({
+        section:SubLabel({ Text = "Prevents bait animations if player's Stance is not Idle or Recovery" })
+        section:Divider()
+        section:SubLabel({ Text = "Parry" })
+        section:Toggle({
             Name = "Hold",
             Default = State.BaitAttack.ParryHold.Default,
             Callback = function(value)
@@ -709,13 +621,13 @@ function BaitAttack.Init(UI, Core, notify)
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
                     if keybindDisplays.Parry then
-                        stopFade(keybindDisplays.Parry.KeyLabel, "Parry")
+                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
                     end
                 end
             end,
             'ParryHoldBA'
         })
-        UI.Sections.BaitAttack:Toggle({
+        section:Toggle({
             Name = "Auto Hold",
             Default = State.BaitAttack.AutoHoldEnabled.Default,
             Callback = function(value)
@@ -732,13 +644,13 @@ function BaitAttack.Init(UI, Core, notify)
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
                     if keybindDisplays.Parry then
-                        stopFade(keybindDisplays.Parry.KeyLabel, "Parry")
+                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
                     end
                 end
             end,
             'AutoHoldEnabledBA'
         })
-        UI.Sections.BaitAttack:Slider({
+        section:Slider({
             Name = "Auto Hold Duration",
             Minimum = 2,
             Maximum = 10,
@@ -750,9 +662,9 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'ParryAutoHoldBA'
         })
-        UI.Sections.BaitAttack:Divider()
-        UI.Sections.BaitAttack:SubLabel({ Text = "Force Stop" })
-        UI.Sections.BaitAttack:Toggle({
+        section:Divider()
+        section:SubLabel({ Text = "Force Stop" })
+        section:Toggle({
             Name = "Enabled",
             Default = State.BaitAttack.ForceStopEnabled.Default,
             Callback = function(value)
@@ -761,43 +673,23 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'ForceStopEnabledBA'
         })
-        UI.Sections.BaitAttack:SubLabel({ Text = "Sets Stance to Idle without stopping animations" })
-        UI.Sections.BaitAttack:Keybind({
-            Name = "Force Stop Key",
-            Default = State.BaitAttack.ForceStopKey.Default,
-            Callback = function(value)
-                State.BaitAttack.ForceStopKey.Value = value
-                updateKeybindDisplays()
-                if keybindDisplays.ForceStop then
-                    keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
-                end
-            end,
-            'ForceStopKeyBA'
-        })
+        section:SubLabel({ Text = "Sets Stance to Idle without stopping animations" })
 
-        UI.Sections.BaitAttackKeybinds = UI.Tabs.Visuals:Section({ Name = "BaitAttackKeybinds", Side = "Left" })
-        UI.Sections.BaitAttackKeybinds:Header({ Name = "BaitAttack KeyBind" })
-        UI.Sections.BaitAttackKeybinds:SubLabel({ Text = "Displays keybinds for BaitAttack actions on screen" })
-        UI.Sections.BaitAttackKeybinds:Toggle({
+        local keybindSection = UI.Tabs.Visuals:Section({ Name = "BaitAttackKeybinds", Side = "Left" })
+        UI.Sections.BaitAttackKeybinds = keybindSection
+        keybindSection:Header({ Name = "BaitAttack KeyBind" })
+        keybindSection:SubLabel({ Text = "Displays keybinds for BaitAttack actions on screen" })
+        keybindSection:Toggle({
             Name = "Enabled",
             Default = State.BaitAttack.KeybindDisplayEnabled.Default,
             Callback = function(value)
                 State.BaitAttack.KeybindDisplayEnabled.Value = value
-                if value then
-                    updateKeybindDisplays()
-                    notify("BaitAttack", "Keybind Displays Enabled", true)
-                else
-                    for _, display in pairs(keybindDisplays) do
-                        display.Frame:Destroy()
-                    end
-                    keybindDisplays = {}
-                    activeFades = {}
-                    notify("BaitAttack", "Keybind Displays Disabled", true)
-                end
+                updateKeybindDisplays()
+                notify("BaitAttack", "Keybind Displays " .. (value and "Enabled" or "Disabled"), true)
             end,
             'KeybindDisplayEnabledBA'
         })
-        UI.Sections.BaitAttackKeybinds:Slider({
+        keybindSection:Slider({
             Name = "Scale",
             Minimum = 0.5,
             Maximum = 2.0,
@@ -810,49 +702,27 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'KeybindDisplayScaleBA'
         })
-        UI.Sections.BaitAttackKeybinds:Divider()
-        UI.Sections.BaitAttackKeybinds:Toggle({
-            Name = "Parry",
-            Default = State.BaitAttack.ParryDisplayEnabled.Default,
-            Callback = function(value)
-                State.BaitAttack.ParryDisplayEnabled.Value = value
-                updateKeybindDisplays()
-                notify("BaitAttack", "Parry Keybind Display: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'ParryDisplayEnabledBA'
-        })
-        UI.Sections.BaitAttackKeybinds:Toggle({
-            Name = "Riposte",
-            Default = State.BaitAttack.RiposteDisplayEnabled.Default,
-            Callback = function(value)
-                State.BaitAttack.RiposteDisplayEnabled.Value = value
-                updateKeybindDisplays()
-                notify("BaitAttack", "Riposte Keybind Display: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'RiposteDisplayEnabledBA'
-        })
-        UI.Sections.BaitAttackKeybinds:Toggle({
-            Name = "Attack",
-            Default = State.BaitAttack.AttackDisplayEnabled.Default,
-            Callback = function(value)
-                State.BaitAttack.AttackDisplayEnabled.Value = value
-                updateKeybindDisplays()
-                notify("BaitAttack", "Attack Keybind Display: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'AttackDisplayEnabledBA'
-        })
-        UI.Sections.BaitAttackKeybinds:Toggle({
-            Name = "ForceStop",
-            Default = State.BaitAttack.ForceStopDisplayEnabled.Default,
-            Callback = function(value)
-                State.BaitAttack.ForceStopDisplayEnabled.Value = value
-                updateKeybindDisplays()
-                notify("BaitAttack", "ForceStop Keybind Display: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'ForceStopDisplayEnabledBA'
-        })
-        UI.Sections.BaitAttackKeybinds:Divider()
-        UI.Sections.BaitAttackKeybinds:Colorpicker({
+        keybindSection:Divider()
+        local displayToggles = {
+            { Name = "Parry", State = "ParryDisplayEnabled", Id = "ParryDisplayEnabledBA" },
+            { Name = "Riposte", State = "RiposteDisplayEnabled", Id = "RiposteDisplayEnabledBA" },
+            { Name = "Attack", State = "AttackDisplayEnabled", Id = "AttackDisplayEnabledBA" },
+            { Name = "ForceStop", State = "ForceStopDisplayEnabled", Id = "ForceStopDisplayEnabledBA" }
+        }
+        for _, toggle in ipairs(displayToggles) do
+            keybindSection:Toggle({
+                Name = toggle.Name,
+                Default = State.BaitAttack[toggle.State].Default,
+                Callback = function(value)
+                    State.BaitAttack[toggle.State].Value = value
+                    updateKeybindDisplays()
+                    notify("BaitAttack", toggle.Name .. " Keybind Display: " .. (value and "Enabled" or "Disabled"), true)
+                end,
+                toggle.Id
+            })
+        end
+        keybindSection:Divider()
+        keybindSection:Colorpicker({
             Name = "Fade Color",
             Default = State.BaitAttack.FadeColor.Default,
             Callback = function(value)
