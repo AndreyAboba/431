@@ -29,7 +29,9 @@ function ChinaHat.Init(UI, Core, notify)
             CircleGradientSpeed = { Value = 4, Default = 4 },
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            JumpAnimate = { Value = false, Default = false }
+            JumpAnimate = { Value = false, Default = false },
+            KillAuraOnly = { Value = false, Default = false },
+            AutoDodgeOnly = { Value = false, Default = false }
         },
         Nimb = {
             NimbActive = { Value = false, Default = false },
@@ -339,7 +341,7 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function toggleCircle(value)
         State.Circle.CircleActive.Value = value
-        if value then
+        if value and ((Core.BulwarkTarget.isAutoDodge and State.Circle.AutoDodgeOnly.Value) or (Core.BulwarkTarget.isKillAura and State.Circle.KillAuraOnly.Value)) then
             createCircle()
             notify("Circle", "Circle Enabled", true)
         else
@@ -606,6 +608,38 @@ function ChinaHat.Init(UI, Core, notify)
                 notify("Circle", "Jump Animation: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'JumpAnimate'
+        })
+        circleSection:Toggle({
+            Name = "KillAura Only",
+            Default = State.Circle.KillAuraOnly.Default,
+            Callback = function(value)
+                State.Circle.KillAuraOnly.Value = value
+                if not value and not State.Circle.AutoDodgeOnly.Value then
+                    State.Circle.CircleActive.Value = false
+                    removeParts(circleQuads)
+                    notify("Circle", "Circle Disabled (No mode selected)", true)
+                elseif value or State.Circle.AutoDodgeOnly.Value then
+                    toggleCircle(State.Circle.CircleActive.Value)
+                end
+                notify("Circle", "KillAura Only: " .. (value and "Enabled" or "Disabled"), true)
+            end,
+            'KillAuraOnly'
+        })
+        circleSection:Toggle({
+            Name = "AutoDodge Only",
+            Default = State.Circle.AutoDodgeOnly.Default,
+            Callback = function(value)
+                State.Circle.AutoDodgeOnly.Value = value
+                if not value and not State.Circle.KillAuraOnly.Value then
+                    State.Circle.CircleActive.Value = false
+                    removeParts(circleQuads)
+                    notify("Circle", "Circle Disabled (No mode selected)", true)
+                elseif value or State.Circle.KillAuraOnly.Value then
+                    toggleCircle(State.Circle.CircleActive.Value)
+                end
+                notify("Circle", "AutoDodge Only: " .. (value and "Enabled" or "Disabled"), true)
+            end,
+            'AutoDodgeOnly'
         })
 
         local nimbSection = UI.Sections.Nimb or UI.Tabs.Visuals:Section({ Name = "Nimb", Side = "Right" })
