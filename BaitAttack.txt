@@ -817,7 +817,7 @@ function BaitAttack.Init(UI, Core, notify)
             'KeybindDisplayScaleBA'
         })
         UI.Sections.BaitAttackKeybinds:Divider()
-        UI.Sections.BaitAttackKeybinds:ColorPicker({
+        UI.Sections.BaitAttackKeybinds:Colorpicker({
             Name = "Fade Color",
             Default = State.BaitAttack.FadeColor.Default,
             Callback = function(value)
