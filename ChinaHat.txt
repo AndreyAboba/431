@@ -3,7 +3,7 @@ local ChinaHat = {}
 function ChinaHat.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
-    local TweenService = Core.Services.TweenService
+    local UserInputService = Core.Services.UserInputService
     local Workspace = Core.Services.Workspace
 
     local LocalPlayer = Core.PlayerData.LocalPlayer
@@ -16,7 +16,6 @@ function ChinaHat.Init(UI, Core, notify)
             HatScale = { Value = 0.75, Default = 0.75 },
             HatParts = { Value = 50, Default = 50 },
             HatGradientSpeed = { Value = 4, Default = 4 },
-            HatGradientAmplitude = { Value = 1.0, Default = 1.0 },
             HatGradient = { Value = true, Default = true },
             HatColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             HatYOffset = { Value = 1.6, Default = 1.6 },
@@ -24,7 +23,6 @@ function ChinaHat.Init(UI, Core, notify)
             CircleRadius = { Value = 1.7, Default = 1.7 },
             CircleParts = { Value = 50, Default = 50 },
             CircleGradientSpeed = { Value = 4, Default = 4 },
-            CircleGradientAmplitude = { Value = 1.0, Default = 1.0 },
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             CircleYOffset = { Value = -3, Default = -3 },
@@ -32,11 +30,10 @@ function ChinaHat.Init(UI, Core, notify)
         }
     }
 
-    local partSize = Vector3.new(0.1, 0.15, 0.1) -- Уменьшена высота Circle
+    local partSize = Vector3.new(0.1, 0.15, 0.1) -- Высота Circle = 0.15
     local circleParts = {}
     local hatParts = {}
     local jumpAnimationActive = false
-    local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
 
     local function interpolateColor(color1, color2, factor)
         return Color3.new(
@@ -106,12 +103,9 @@ function ChinaHat.Init(UI, Core, notify)
             local x = math.cos(angle) * State.ChinaHat.CircleRadius.Value
             local z = math.sin(angle) * State.ChinaHat.CircleRadius.Value
             local newPosition = Vector3.new(rootPart.Position.X + x, rootPart.Position.Y + State.ChinaHat.CircleYOffset.Value, rootPart.Position.Z + z)
-            if (part.Position - newPosition).magnitude > 0.01 then
-                local tween = TweenService:Create(part, tweenInfo, { Position = newPosition })
-                tween:Play()
-            end
+            part.Position = newPosition
             if State.ChinaHat.CircleGradient.Value then
-                local factor = (math.sin(t * State.ChinaHat.CircleGradientSpeed.Value + (i / State.ChinaHat.CircleParts.Value) * 2 * math.pi) + math.cos(t * State.ChinaHat.CircleGradientSpeed.Value * 0.5) * State.ChinaHat.CircleGradientAmplitude.Value) / (2 + State.ChinaHat.CircleGradientAmplitude.Value)
+                local factor = (math.sin(t * State.ChinaHat.CircleGradientSpeed.Value + (i / State.ChinaHat.CircleParts.Value) * 2 * math.pi) + 1) / 2
                 part.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
             else
                 part.Color = State.ChinaHat.CircleColor.Value
@@ -133,12 +127,9 @@ function ChinaHat.Init(UI, Core, notify)
             local y = head.Position.Y + State.ChinaHat.HatYOffset.Value
             local targetPosition = Vector3.new(head.Position.X + x / 2, y - hatHeight / 3, head.Position.Z + z / 2)
             local targetCFrame = CFrame.new(targetPosition, Vector3.new(head.Position.X, y, head.Position.Z)) * CFrame.Angles(math.rad(80), 0, 0)
-            if (part.Position - targetPosition).magnitude > 0.1 then
-                local tween = TweenService:Create(part, tweenInfo, { CFrame = targetCFrame })
-                tween:Play()
-            end
+            part.CFrame = targetCFrame
             if State.ChinaHat.HatGradient.Value then
-                local factor = (math.sin(t * State.ChinaHat.HatGradientSpeed.Value + (i / State.ChinaHat.HatParts.Value) * 2 * math.pi) + math.cos(t * State.ChinaHat.HatGradientSpeed.Value * 0.5) * State.ChinaHat.HatGradientAmplitude.Value) / (2 + State.ChinaHat.HatGradientAmplitude.Value)
+                local factor = (math.sin(t * State.ChinaHat.HatGradientSpeed.Value + (i / State.ChinaHat.HatParts.Value) * 2 * math.pi) + 1) / 2
                 part.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
             else
                 part.Color = State.ChinaHat.HatColor.Value
@@ -269,18 +260,6 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'HatGradientSpeed'
         })
-        chinaHatSection:Slider({
-            Name = "Gradient Amplitude",
-            Minimum = 0.5,
-            Maximum = 2.0,
-            Default = State.ChinaHat.HatGradientAmplitude.Default,
-            Precision = 2,
-            Callback = function(value)
-                State.ChinaHat.HatGradientAmplitude.Value = value
-                notify("ChinaHat", "Hat Gradient Amplitude set to: " .. value, false)
-            end,
-            'HatGradientAmplitude'
-        })
         chinaHatSection:Toggle({
             Name = "Gradient",
             Default = State.ChinaHat.HatGradient.Default,
@@ -385,18 +364,6 @@ function ChinaHat.Init(UI, Core, notify)
                 notify("Circle", "Circle Gradient Speed set to: " .. value, false)
             end,
             'CircleGradientSpeed'
-        })
-        circleSection:Slider({
-            Name = "Gradient Amplitude",
-            Minimum = 0.5,
-            Maximum = 2.0,
-            Default = State.ChinaHat.CircleGradientAmplitude.Default,
-            Precision = 2,
-            Callback = function(value)
-                State.ChinaHat.CircleGradientAmplitude.Value = value
-                notify("Circle", "Circle Gradient Amplitude set to: " .. value, false)
-            end,
-            'CircleGradientAmplitude'
         })
         circleSection:Toggle({
             Name = "Gradient",
