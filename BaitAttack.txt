@@ -356,13 +356,12 @@ function BaitAttack.Init(UI, Core, notify)
 
     -- Обновление отображения кейбиндов
     local function updateKeybindDisplays()
-        for _, display in pairs(keybindDisplays) do
-            keybindPositions[display.Frame.Name] = display.Frame.Position
-            display.Frame:Destroy()
-        end
-        keybindDisplays = {}
-
         if not State.BaitAttack.Enabled.Value or not State.BaitAttack.KeybindDisplayEnabled.Value then
+            for _, display in pairs(keybindDisplays) do
+                keybindPositions[display.Frame.Name] = display.Frame.Position
+                display.Frame:Destroy()
+            end
+            keybindDisplays = {}
             return
         end
 
@@ -373,10 +372,13 @@ function BaitAttack.Init(UI, Core, notify)
             { Name = "ForceStop", State = "ForceStopKey", Enabled = State.BaitAttack.ForceStopDisplayEnabled.Value }
         }
 
-        local screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "BaitAttackKeybinds"
-        screenGui.Parent = CoreGui
-        screenGui.ResetOnSpawn = false
+        local screenGui = CoreGui:FindFirstChild("BaitAttackKeybinds")
+        if not screenGui then
+            screenGui = Instance.new("ScreenGui")
+            screenGui.Name = "BaitAttackKeybinds"
+            screenGui.Parent = CoreGui
+            screenGui.ResetOnSpawn = false
+        end
 
         local visibleKeybinds = {}
         for _, keybind in ipairs(keybinds) do
@@ -385,12 +387,39 @@ function BaitAttack.Init(UI, Core, notify)
             end
         end
 
-        for i, keybind in ipairs(visibleKeybinds) do
-            local frame, keyLabel = createKeybindFrame(keybind, i, State.BaitAttack.KeybindDisplayScale.Value)
-            frame.Parent = screenGui
-            keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
+        -- Удаляем менюшки, которые больше не нужны
+        for key, display in pairs(keybindDisplays) do
+            local found = false
+            for _, keybind in ipairs(visibleKeybinds) do
+                if keybind.Name == key then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                keybindPositions[display.Frame.Name] = display.Frame.Position
+                display.Frame:Destroy()
+                keybindDisplays[key] = nil
+            end
         end
 
+        -- Обновляем или создаём менюшки
+        for i, keybind in ipairs(visibleKeybinds) do
+            if keybindDisplays[keybind.Name] then
+                -- Обновляем существующий текст
+                local display = keybindDisplays[keybind.Name]
+                if display.KeyLabel and display.KeyLabel.Parent then
+                    display.KeyLabel.Text = State.BaitAttack[keybind.State].Value and tostring(State.BaitAttack[keybind.State].Value):match("Enum%.KeyCode%.(.+)") or ""
+                end
+            else
+                -- Создаём новый UI-элемент
+                local frame, keyLabel = createKeybindFrame(keybind, i, State.BaitAttack.KeybindDisplayScale.Value)
+                frame.Parent = screenGui
+                keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
+            end
+        end
+
+        -- Подключаем перетаскивание
         UserInputService.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement and draggingFrame then
                 local delta = input.Position - dragStartMousePos
@@ -555,11 +584,11 @@ function BaitAttack.Init(UI, Core, notify)
                 Default = State.BaitAttack[kb.State].Default,
                 Callback = function(value)
                     State.BaitAttack[kb.State].Value = value
-                    updateKeybindDisplays()
                     local displayKey = kb.Name:match("Fake (%w+) Key")
-                    if keybindDisplays[displayKey] then
+                    if keybindDisplays[displayKey] and keybindDisplays[displayKey].KeyLabel and keybindDisplays[displayKey].KeyLabel.Parent then
                         keybindDisplays[displayKey].KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                     end
+                    updateKeybindDisplays()
                     if State.BaitAttack.Enabled.Value then
                         start()
                     end
@@ -648,10 +677,10 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
                 State.BaitAttack.ForceStopKey.Value = value
-                updateKeybindDisplays()
-                if keybindDisplays.ForceStop then
+                if keybindDisplays.ForceStop and keybindDisplays.ForceStop.KeyLabel and keybindDisplays.ForceStop.KeyLabel.Parent then
                     keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                 end
+                updateKeybindDisplays()
                 if State.BaitAttack.Enabled.Value then
                     start()
                 end
