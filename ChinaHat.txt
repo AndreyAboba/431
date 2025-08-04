@@ -220,7 +220,7 @@ function ChinaHat.Init(UI, Core, notify)
         if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
         local rootPart = localCharacter.HumanoidRootPart
         local t = tick()
-        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y, rootPart.Position.Z)
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y - 3, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if onScreenCenter and screenCenter.Z > 0 then
             local circleSegments = #circleQuads
@@ -260,6 +260,7 @@ function ChinaHat.Init(UI, Core, notify)
                 quad.Visible = false
             end
         end
+        print("isKillAura:", Core.BulwarkTarget.isKillAura, "isAutoDodge:", Core.BulwarkTarget.isAutoDodge)
     end
 
     local function updateNimb()
@@ -363,6 +364,14 @@ function ChinaHat.Init(UI, Core, notify)
 
     RunService.Stepped:Connect(function(deltaTime)
         updateHat()
+        local shouldShowCircle = State.Circle.CircleActive.Value and ((Core.BulwarkTarget.isAutoDodge and State.Circle.AutoDodgeOnly.Value) or (Core.BulwarkTarget.isKillAura and State.Circle.KillAuraOnly.Value))
+        if shouldShowCircle and #circleQuads == 0 then
+            createCircle()
+            notify("Circle", "Circle Enabled", true)
+        elseif not shouldShowCircle and #circleQuads > 0 then
+            removeParts(circleQuads)
+            notify("Circle", "Circle Disabled", true)
+        end
         updateCircle()
         updateNimb()
     end)
