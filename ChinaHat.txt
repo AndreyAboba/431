@@ -288,7 +288,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'HatGradient'
         })
-        chinaHatSection:ColorPicker({
+        chinaHatSection:Colorpicker({
             Name = "Color",
             Default = State.ChinaHat.HatColor.Default,
             Callback = function(value)
@@ -393,7 +393,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'CircleGradient'
         })
-        circleSection:ColorPicker({
+        circleSection:Colorpicker({
             Name = "Color",
             Default = State.ChinaHat.CircleColor.Default,
             Callback = function(value)
