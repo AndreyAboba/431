@@ -29,7 +29,6 @@ function BaitAttack.Init(UI, Core, notify)
             ForceStopEnabled = { Value = false, Default = false },
             KeybindDisplayEnabled = { Value = true, Default = true },
             KeybindDisplayScale = { Value = 1, Default = 1 },
-            FadeColor = { Value = Color3.fromRGB(100, 150, 255), Default = Color3.fromRGB(100, 150, 255) },
             ParryDisplayEnabled = { Value = true, Default = true },
             RiposteDisplayEnabled = { Value = true, Default = true },
             AttackDisplayEnabled = { Value = true, Default = true },
@@ -95,28 +94,6 @@ function BaitAttack.Init(UI, Core, notify)
             return nil, nil, "Invalid weapon settings"
         end
         return settings, weapon, nil
-    end
-
-    -- Применение Fade-эффекта
-    local function applyFade(label, keyName, color, revertAfter)
-        if not label or not label:IsA("TextLabel") then
-            print("BaitAttack: No valid TextLabel for", keyName)
-            return
-        end
-        print("BaitAttack: Applying fade for", keyName, "from", label.TextColor3, "to", color)
-        label.TextColor3 = color
-        print("BaitAttack: Color set to", label.TextColor3) -- Отладка: проверка нового цвета
-        if revertAfter then
-            task.delay(revertAfter, function()
-                if label and label.Parent and label:IsA("TextLabel") then
-                    print("BaitAttack: Reverting fade for", keyName, "to", Color3.fromRGB(255, 255, 255))
-                    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-                else
-                    print("BaitAttack: Label for", keyName, "no longer exists")
-                end
-            end)
-        end
-        -- Примечание: Если кастомная UI библиотека требует другого метода (например, label:SetTextColor), замените label.TextColor3 = color
     end
 
     -- Воспроизведение анимации
@@ -193,9 +170,6 @@ function BaitAttack.Init(UI, Core, notify)
                         State.BaitAttack[stateKey].Value = false
                     end
                     Core.BulwarkTarget.CombatState = nil
-                    if keybindDisplays.Parry then
-                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
-                    end
                 end)
             elseif not State.BaitAttack.ParryHold.Value then
                 task.spawn(function()
@@ -213,9 +187,6 @@ function BaitAttack.Init(UI, Core, notify)
                         State.BaitAttack[stateKey].Value = false
                     end
                     Core.BulwarkTarget.CombatState = nil
-                    if keybindDisplays.Parry then
-                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
-                    end
                 end)
             end
         else
@@ -238,9 +209,6 @@ function BaitAttack.Init(UI, Core, notify)
                         State.BaitAttack[stateKey].Value = false
                     end
                     Core.BulwarkTarget.CombatState = nil
-                    if keybindDisplays[displayKey] then
-                        applyFade(keybindDisplays[displayKey].KeyLabel, displayKey, Color3.fromRGB(255, 255, 255), nil)
-                    end
                 end
             end)
         end
@@ -281,9 +249,6 @@ function BaitAttack.Init(UI, Core, notify)
                 task.wait(0.1)
             end
         end)
-        if keybindDisplays.ForceStop then
-            applyFade(keybindDisplays.ForceStop.KeyLabel, "ForceStop", State.BaitAttack.FadeColor.Value, 0.7)
-        end
         notify("BaitAttack", "Force Stop Activated", true)
         return true
     end
@@ -451,19 +416,14 @@ function BaitAttack.Init(UI, Core, notify)
 
         local function handleAction(key, stateKey, action, windup, speed, recovery, walkSpeed)
             if State.BaitAttack[key].Value == nil then
-                print("BaitAttack: Key", key, "is nil, skipping")
                 return
             end
-            print("BaitAttack: Checking input", input.KeyCode, "against", State.BaitAttack[key].Value) -- Отладка
             if input.KeyCode == State.BaitAttack[key].Value and not State.BaitAttack[stateKey].Value then
                 State.BaitAttack[stateKey].Value = true
                 local displayKey = action == "FakeAttack" and "Attack" or action
                 if playAnimationWithTiming(action, stateKey, windup, speed, recovery, walkSpeed) then
                     notify("BaitAttack", "Fake " .. action .. " Activated", true)
                     Core.BulwarkTarget.CombatState = "BaitAttack (" .. stateKey .. ")"
-                    if keybindDisplays[displayKey] then
-                        applyFade(keybindDisplays[displayKey].KeyLabel, displayKey, State.BaitAttack.FadeColor.Value, 0.7)
-                    end
                     if action == "Parry" and State.BaitAttack.ParryHold.Value then
                         parryHoldConnection = UserInputService.InputEnded:Connect(function(endInput)
                             if endInput.KeyCode == State.BaitAttack.FakeParryKey.Value then
@@ -478,9 +438,6 @@ function BaitAttack.Init(UI, Core, notify)
                                 isPerformingAction = false
                                 State.BaitAttack.FakeParry.Value = false
                                 Core.BulwarkTarget.CombatState = nil
-                                if keybindDisplays.Parry then
-                                    applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
-                                end
                                 if parryHoldConnection then
                                     parryHoldConnection:Disconnect()
                                     parryHoldConnection = nil
@@ -501,9 +458,6 @@ function BaitAttack.Init(UI, Core, notify)
                     if State.BaitAttack[stateKey] then
                         State.BaitAttack[stateKey].Value = false
                     end
-                    if keybindDisplays[displayKey] then
-                        applyFade(keybindDisplays[displayKey].KeyLabel, displayKey, Color3.fromRGB(255, 255, 255), nil)
-                    end
                 end
             end
         end
@@ -521,7 +475,8 @@ function BaitAttack.Init(UI, Core, notify)
     -- Запуск и остановка
     local function start()
         if inputConnection then
-            return
+            inputConnection:Disconnect()
+            inputConnection = nil
         end
         inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
         updateKeybindDisplays()
@@ -605,18 +560,11 @@ function BaitAttack.Init(UI, Core, notify)
                     if keybindDisplays[displayKey] then
                         keybindDisplays[displayKey].KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                     end
-                    print("BaitAttack: Set", kb.State, "to", value) -- Отладка
+                    if State.BaitAttack.Enabled.Value then
+                        start()
+                    end
                 end,
                 kb.Id
-            })
-            section:Button({
-                Name = "Reset " .. kb.Name,
-                Callback = function()
-                    State.BaitAttack[kb.State].Value = nil
-                    section:Unbind() -- Примечание: :Unbind() сбрасывает последний кейбинд в секции, порядок важен
-                    updateKeybindDisplays()
-                    notify("BaitAttack", kb.Name .. " reset to nil", true)
-                end
             })
         end
         section:Divider()
@@ -648,9 +596,6 @@ function BaitAttack.Init(UI, Core, notify)
                     isPerformingAction = false
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
-                    if keybindDisplays.Parry then
-                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
-                    end
                 end
             end,
             'ParryHoldBA'
@@ -671,9 +616,6 @@ function BaitAttack.Init(UI, Core, notify)
                     isPerformingAction = false
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
-                    if keybindDisplays.Parry then
-                        applyFade(keybindDisplays.Parry.KeyLabel, "Parry", Color3.fromRGB(255, 255, 255), nil)
-                    end
                 end
             end,
             'AutoHoldEnabledBA'
@@ -710,18 +652,11 @@ function BaitAttack.Init(UI, Core, notify)
                 if keybindDisplays.ForceStop then
                     keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                 end
-                print("BaitAttack: Set ForceStopKey to", value) -- Отладка
+                if State.BaitAttack.Enabled.Value then
+                    start()
+                end
             end,
             'ForceStopKeyBA'
-        })
-        section:Button({
-            Name = "Reset Force Stop Key",
-            Callback = function()
-                State.BaitAttack.ForceStopKey.Value = nil
-                section:Unbind() -- Примечание: :Unbind() сбрасывает последний кейбинд в секции, порядок важен
-                updateKeybindDisplays()
-                notify("BaitAttack", "Force Stop Key reset to nil", true)
-            end
         })
         section:SubLabel({ Text = "Sets Stance to Idle without stopping animations" })
 
@@ -771,16 +706,6 @@ function BaitAttack.Init(UI, Core, notify)
                 toggle.Id
             })
         end
-        keybindSection:Divider()
-        keybindSection:Colorpicker({
-            Name = "Fade Color",
-            Default = State.BaitAttack.FadeColor.Default,
-            Callback = function(value)
-                State.BaitAttack.FadeColor.Value = value
-                notify("BaitAttack", "Fade Color Updated", true)
-            end,
-            'FadeColorBA'
-        })
 
         updateKeybindDisplays()
     end
