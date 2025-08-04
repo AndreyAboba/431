@@ -351,18 +351,19 @@ function BaitAttack.Init(UI, Core, notify)
         bottomFrameContainer.InputBegan:Connect(startDragging)
         bottomFrameContainer.InputEnded:Connect(stopDragging)
 
-        return frame, keyLabel
-    end
+        UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement and draggingFrame == frame then
+                local delta = input.Position - dragStartMousePos
+                frame.Position = UDim2.new(
+                    dragStartPos.X.Scale,
+                    dragStartPos.X.Offset + delta.X,
+                    dragStartPos.Y.Scale,
+                    dragStartPos.Y.Offset + delta.Y
+                )
+            end
+        end)
 
-    -- Обновление подключения ввода
-    local function updateInputConnection()
-        if inputConnection then
-            inputConnection:Disconnect()
-            inputConnection = nil
-        end
-        if State.BaitAttack.Enabled.Value then
-            inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
-        end
+        return frame, keyLabel
     end
 
     -- Обновление отображения кейбиндов
@@ -452,10 +453,8 @@ function BaitAttack.Init(UI, Core, notify)
                         end
                     end
                     display.KeyLabel.TextSize = 22 * scale
-                    -- Корректируем позицию с учётом масштаба
                     if keybindPositions[keybind.Name] then
-                        local pos = keybindPositions[keybind.Name]
-                        display.Frame.Position = UDim2.new(pos.X.Scale, pos.X.Offset * scale, pos.Y.Scale, pos.Y.Offset * scale)
+                        display.Frame.Position = keybindPositions[keybind.Name]
                     end
                 end
             else
@@ -537,7 +536,13 @@ function BaitAttack.Init(UI, Core, notify)
 
     -- Запуск и остановка
     local function start()
-        updateInputConnection()
+        if inputConnection then
+            inputConnection:Disconnect()
+            inputConnection = nil
+        end
+        if State.BaitAttack.Enabled.Value then
+            inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
+        end
         updateKeybindDisplays()
     end
 
@@ -614,10 +619,7 @@ function BaitAttack.Init(UI, Core, notify)
                 Default = State.BaitAttack[kb.State].Default,
                 Callback = function(value)
                     State.BaitAttack[kb.State].Value = value
-                    task.spawn(function()
-                        updateKeybindDisplays()
-                        updateInputConnection()
-                    end)
+                    updateKeybindDisplays()
                 end,
                 kb.Id
             })
@@ -703,10 +705,7 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
                 State.BaitAttack.ForceStopKey.Value = value
-                task.spawn(function()
-                    updateKeybindDisplays()
-                    updateInputConnection()
-                end)
+                updateKeybindDisplays()
             end,
             'ForceStopKeyBA'
         })
