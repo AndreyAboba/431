@@ -1,396 +1,340 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local ChinaHat = {}
 
-local State = {
-    Circle = {
-        Enabled = { Value = false, Default = false },
-        CircleKey = { Value = Enum.KeyCode.Z, Default = Enum.KeyCode.Z },
-        CircleRadius = { Value = 1.7, Default = 1.7 },
-        NumberOfParts = { Value = 198, Default = 198 },
-        PartSize = { Value = Vector3.new(0.1, 0, 0.1), Default = Vector3.new(0.1, 0, 0.1) },
-        GradientSpeed = { Value = 4, Default = 4 }
-    },
-    ChinaHat = {
-        Enabled = { Value = false, Default = false },
-        HatKey = { Value = Enum.KeyCode.F, Default = Enum.KeyCode.F },
-        HatScale = { Value = 0.75, Default = 0.75 }
+function ChinaHat.Init(UI, Core, notify)
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
+
+    local LocalPlayer = Players.LocalPlayer
+    local localCharacter = LocalPlayer.Character
+    local localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
+
+    local State = {
+        ChinaHat = {
+            Enabled = { Value = false, Default = false },
+            CircleActive = { Value = false, Default = false },
+            HatActive = { Value = false, Default = false },
+            CircleRadius = { Value = 1.7, Default = 1.7 },
+            HatScale = { Value = 0.75, Default = 0.75 },
+            GradientSpeed = { Value = 4, Default = 4 }
+        }
     }
-}
 
-local startColor = Color3.fromRGB(0, 0, 255) -- Blue
-local endColor = Color3.fromRGB(204, 153, 255) -- Light Purple
-local circleParts = {}
-local hatParts = {}
-local jumpAnimationActive = false
-local inputConnection = nil
+    local numberOfParts = 198
+    local partSize = Vector3.new(0.1, 0, 0.1)
+    local startColor = Color3.fromRGB(0, 0, 255) -- Blue
+    local endColor = Color3.fromRGB(204, 153, 255) -- Light Purple
+    local circleParts = {}
+    local hatParts = {}
+    local jumpAnimationActive = false
+    local steppedConnection = nil
+    local inputConnection = nil
+    local jumpConnection = nil
 
-local function interpolateColor(color1, color2, factor)
-    return Color3.new(
-        color1.R + (color2.R - color1.R) * factor,
-        color1.G + (color2.G - color1.G) * factor,
-        color1.B + (color2.B - color1.B) * factor
-    )
-end
-
-local function createCircle()
-    local localPlayer = Players.LocalPlayer
-    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-    local rootPart = character:WaitForChild("HumanoidRootPart")
-    local yPosition = rootPart.Position.Y - 3
-    
-    for i = 1, State.Circle.NumberOfParts.Value do
-        local angle = (i / State.Circle.NumberOfParts.Value) * 2 * math.pi
-        local x = math.cos(angle) * State.Circle.CircleRadius.Value
-        local z = math.sin(angle) * State.Circle.CircleRadius.Value
-        
-        local part = Instance.new("Part")
-        part.Size = State.Circle.PartSize.Value
-        part.Anchored = true
-        part.CanCollide = false
-        part.Position = rootPart.Position + Vector3.new(x, -3, z)
-        part.Transparency = 0.5
-        part.Color = interpolateColor(startColor, endColor, i / State.Circle.NumberOfParts.Value)
-        part.Parent = workspace
-        table.insert(circleParts, part)
+    local function interpolateColor(color1, color2, factor)
+        return Color3.new(
+            color1.R + (color2.R - color1.R) * factor,
+            color1.G + (color2.G - color1.G) * factor,
+            color1.B + (color2.B - color1.B) * factor
+        )
     end
-end
 
-local function createHat()
-    local localPlayer = Players.LocalPlayer
-    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-    local head = character:WaitForChild("Head")
-    local yPosition = head.Position.Y + 1.6
-    
-    local hatHeight = 2.15 * State.ChinaHat.HatScale.Value
-    local hatRadius = 1.95 * State.ChinaHat.HatScale.Value
-    
-    for i = 1, State.Circle.NumberOfParts.Value do
-        local angle = (i / State.Circle.NumberOfParts.Value) * 2 * math.pi
-        local x = math.cos(angle) * hatRadius
-        local z = math.sin(angle) * hatRadius
-        local linePosition = Vector3.new(head.Position.X + x / 2, yPosition - hatHeight / 3, head.Position.Z + z / 2)
-        
-        local linePart = Instance.new("Part")
-        linePart.Size = Vector3.new(0.06, hatHeight, 0.06)
-        linePart.Anchored = true
-        linePart.CanCollide = false
-        linePart.CFrame = CFrame.new(linePosition, Vector3.new(head.Position.X, yPosition, head.Position.Z)) * CFrame.Angles(math.rad(80), 0, 0)
-        linePart.Transparency = 0.5
-        linePart.Color = interpolateColor(startColor, endColor, i / State.Circle.NumberOfParts.Value)
-        linePart.Parent = workspace
-        table.insert(hatParts, linePart)
-    end
-end
-
-local function removeParts(parts)
-    for _, part in ipairs(parts) do
-        part:Destroy()
-    end
-    table.clear(parts)
-end
-
-local function updateCircle()
-    if not State.Circle.Enabled.Value or #circleParts == 0 then return end
-    local localPlayer = Players.LocalPlayer
-    local character = localPlayer.Character
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-
-    local yPosition = rootPart.Position.Y - 3
-    local t = tick()
-    for i, part in ipairs(circleParts) do
-        local angle = (i / State.Circle.NumberOfParts.Value) * 2 * math.pi
-        local x = math.cos(angle) * State.Circle.CircleRadius.Value
-        local z = math.sin(angle) * State.Circle.CircleRadius.Value
-        local newPosition = Vector3.new(rootPart.Position.X + x, yPosition, rootPart.Position.Z + z)
-        if (part.Position - newPosition).magnitude > 0.01 then
-            part.Position = newPosition
+    local function createCircle()
+        if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
+        local rootPart = localCharacter.HumanoidRootPart
+        for i = 1, numberOfParts do
+            local angle = (i / numberOfParts) * 2 * math.pi
+            local x = math.cos(angle) * State.ChinaHat.CircleRadius.Value
+            local z = math.sin(angle) * State.ChinaHat.CircleRadius.Value
+            local part = Instance.new("Part")
+            part.Size = partSize
+            part.Anchored = true
+            part.CanCollide = false
+            part.Position = rootPart.Position + Vector3.new(x, -3, z)
+            part.Transparency = 0.5
+            part.Color = interpolateColor(startColor, endColor, i / numberOfParts)
+            part.Parent = workspace
+            table.insert(circleParts, part)
         end
-        local factor = (math.sin(t * State.Circle.GradientSpeed.Value + (i / State.Circle.NumberOfParts.Value) * 2 * math.pi) + 1) / 2
-        part.Color = interpolateColor(startColor, endColor, factor)
-        part.Size = State.Circle.PartSize.Value
+        notify("ChinaHat", "Circle Enabled", true)
     end
-end
 
-local function updateHat()
-    if not State.ChinaHat.Enabled.Value or #hatParts == 0 then return end
-    local localPlayer = Players.LocalPlayer
-    local character = localPlayer.Character
-    local head = character and character:FindFirstChild("Head")
-    if not head then return end
-
-    local yPosition = head.Position.Y + 1.6
-    local hatHeight = 2.15 * State.ChinaHat.HatScale.Value
-    local hatRadius = 1.95 * State.ChinaHat.HatScale.Value
-    local t = tick()
-    for i, part in ipairs(hatParts) do
-        local angle = (i / State.Circle.NumberOfParts.Value) * 2 * math.pi
-        local x = math.cos(angle) * hatRadius
-        local z = math.sin(angle) * hatRadius
-        local targetPosition = Vector3.new(head.Position.X + x / 2, yPosition - hatHeight / 3, head.Position.Z + z / 2)
-        local currentPosition = part.Position
-        if (currentPosition - targetPosition).magnitude > 0.1 then
-            part.Position = targetPosition
-            part.CFrame = CFrame.new(targetPosition, Vector3.new(head.Position.X, yPosition, head.Position.Z)) * CFrame.Angles(math.rad(80), 0, 0)
-            part.Size = Vector3.new(0.06, hatHeight, 0.06)
+    local function createHat()
+        if not localCharacter or not localCharacter:FindFirstChild("Head") then return end
+        local head = localCharacter.Head
+        local hatHeight = 2.15 * State.ChinaHat.HatScale.Value
+        local hatRadius = 1.95 * State.ChinaHat.HatScale.Value
+        for i = 1, numberOfParts do
+            local angle = (i / numberOfParts) * 2 * math.pi
+            local x = math.cos(angle) * hatRadius
+            local z = math.sin(angle) * hatRadius
+            local y = head.Position.Y + 1.6
+            local linePart = Instance.new("Part")
+            linePart.Size = Vector3.new(0.06, hatHeight, 0.06)
+            linePart.Anchored = true
+            linePart.CanCollide = false
+            local linePosition = Vector3.new(head.Position.X + x / 2, y - hatHeight / 3, head.Position.Z + z / 2)
+            local lineRotation = CFrame.new(linePosition, Vector3.new(head.Position.X, y, head.Position.Z))
+            linePart.CFrame = lineRotation * CFrame.Angles(math.rad(80), 0, 0)
+            linePart.Transparency = 0.5
+            linePart.Color = interpolateColor(startColor, endColor, i / numberOfParts)
+            linePart.Parent = workspace
+            table.insert(hatParts, linePart)
         end
-        local factor = (math.sin(t * State.Circle.GradientSpeed.Value + (i / State.Circle.NumberOfParts.Value) * 2 * math.pi) + 1) / 2
-        part.Color = interpolateColor(startColor, endColor, factor)
-    end
-end
-
-local function animateJump()
-    if not State.Circle.Enabled.Value or #circleParts == 0 or jumpAnimationActive then return end
-    jumpAnimationActive = true
-    local t = 0
-    local duration = 0.55
-    local initialRadius = State.Circle.CircleRadius.Value
-    local maxRadius = State.Circle.CircleRadius.Value * 1.6
-
-    while t < duration do
-        local dt = RunService.RenderStepped:Wait()
-        t = t + dt
-        local factor = t / duration
-        State.Circle.CircleRadius.Value = initialRadius + (maxRadius - initialRadius) * math.sin(factor * math.pi)
-        updateCircle()
+        notify("ChinaHat", "Hat Enabled", true)
     end
 
-    State.Circle.CircleRadius.Value = initialRadius
-    jumpAnimationActive = false
-end
+    local function removeParts(parts)
+        for _, part in ipairs(parts) do
+            part:Destroy()
+        end
+        table.clear(parts)
+    end
 
-local function toggleCircle()
-    if not State.Circle.Enabled.Value then
-        createCircle()
-        State.Circle.Enabled.Value = true
-    else
+    local function updateCircle()
+        if not State.ChinaHat.CircleActive.Value or #circleParts == 0 then return end
+        if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
+        local rootPart = localCharacter.HumanoidRootPart
+        local t = tick()
+        for i, part in ipairs(circleParts) do
+            local angle = (i / numberOfParts) * 2 * math.pi
+            local x = math.cos(angle) * State.ChinaHat.CircleRadius.Value
+            local z = math.sin(angle) * State.ChinaHat.CircleRadius.Value
+            local newPosition = Vector3.new(rootPart.Position.X + x, rootPart.Position.Y - 3, rootPart.Position.Z + z)
+            if (part.Position - newPosition).magnitude > 0.01 then
+                part.Position = newPosition
+            end
+            local factor = (math.sin(t * State.ChinaHat.GradientSpeed.Value + (i / numberOfParts) * 2 * math.pi) + 1) / 2
+            part.Color = interpolateColor(startColor, endColor, factor)
+        end
+    end
+
+    local function updateHat()
+        if not State.ChinaHat.HatActive.Value or #hatParts == 0 then return end
+        if not localCharacter or not localCharacter:FindFirstChild("Head") then return end
+        local head = localCharacter.Head
+        local hatHeight = 2.15 * State.ChinaHat.HatScale.Value
+        local hatRadius = 1.95 * State.ChinaHat.HatScale.Value
+        local t = tick()
+        for i, part in ipairs(hatParts) do
+            local angle = (i / numberOfParts) * 2 * math.pi
+            local x = math.cos(angle) * hatRadius
+            local z = math.sin(angle) * hatRadius
+            local y = head.Position.Y + 1.6
+            local targetPosition = Vector3.new(head.Position.X + x / 2, y - hatHeight / 3, head.Position.Z + z / 2)
+            local currentPosition = part.Position
+            if (currentPosition - targetPosition).magnitude > 0.1 then
+                part.Position = targetPosition
+                part.CFrame = CFrame.new(targetPosition, Vector3.new(head.Position.X, y, head.Position.Z)) * CFrame.Angles(math.rad(80), 0, 0)
+            end
+            local factor = (math.sin(t * State.ChinaHat.GradientSpeed.Value + (i / numberOfParts) * 2 * math.pi) + 1) / 2
+            part.Color = interpolateColor(startColor, endColor, factor)
+        end
+    end
+
+    local function animateJump()
+        if not State.ChinaHat.CircleActive.Value or #circleParts == 0 or jumpAnimationActive then return end
+        jumpAnimationActive = true
+        local t = 0
+        local duration = 0.55
+        local initialRadius = State.ChinaHat.CircleRadius.Value
+        local maxRadius = State.ChinaHat.CircleRadius.Value * 1.6
+        while t < duration do
+            local dt = RunService.RenderStepped:Wait()
+            t = t + dt
+            local factor = t / duration
+            State.ChinaHat.CircleRadius.Value = initialRadius + (maxRadius - initialRadius) * math.sin(factor * math.pi)
+            updateCircle()
+        end
+        State.ChinaHat.CircleRadius.Value = initialRadius
+        jumpAnimationActive = false
+    end
+
+    local function toggleCircle(value)
+        if value == nil then
+            value = not State.ChinaHat.CircleActive.Value
+        end
+        State.ChinaHat.CircleActive.Value = value
+        if value then
+            createCircle()
+        else
+            removeParts(circleParts)
+            notify("ChinaHat", "Circle Disabled", true)
+        end
+    end
+
+    local function toggleHat(value)
+        if value == nil then
+            value = not State.ChinaHat.HatActive.Value
+        end
+        State.ChinaHat.HatActive.Value = value
+        if value then
+            createHat()
+        else
+            removeParts(hatParts)
+            notify("ChinaHat", "Hat Disabled", true)
+        end
+    end
+
+    local function start()
+        if steppedConnection then
+            steppedConnection:Disconnect()
+            steppedConnection = nil
+        end
+        if inputConnection then
+            inputConnection:Disconnect()
+            inputConnection = nil
+        end
+        if jumpConnection then
+            jumpConnection:Disconnect()
+            jumpConnection = nil
+        end
+        if State.ChinaHat.Enabled.Value then
+            steppedConnection = RunService.Stepped:Connect(function(deltaTime)
+                updateCircle()
+                updateHat()
+            end)
+            inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+                if gameProcessedEvent then return end
+                if input.KeyCode == Enum.KeyCode.Z then
+                    toggleCircle()
+                elseif input.KeyCode == Enum.KeyCode.F then
+                    toggleHat()
+                end
+            end)
+            jumpConnection = UserInputService.JumpRequest:Connect(function()
+                if State.ChinaHat.CircleActive.Value and not jumpAnimationActive then
+                    animateJump()
+                end
+            end)
+        end
+    end
+
+    local function stop()
+        if steppedConnection then
+            steppedConnection:Disconnect()
+            steppedConnection = nil
+        end
+        if inputConnection then
+            inputConnection:Disconnect()
+            inputConnection = nil
+        end
+        if jumpConnection then
+            jumpConnection:Disconnect()
+            jumpConnection = nil
+        end
         removeParts(circleParts)
-        State.Circle.Enabled.Value = false
-    end
-end
-
-local function toggleHat()
-    if not State.ChinaHat.Enabled.Value then
-        createHat()
-        State.ChinaHat.Enabled.Value = true
-    else
         removeParts(hatParts)
-        State.ChinaHat.Enabled.Value = false
+        State.ChinaHat.CircleActive.Value = false
+        State.ChinaHat.HatActive.Value = false
+        jumpAnimationActive = false
     end
-end
 
-local function onInputBegan(input, gameProcessedEvent)
-    if gameProcessedEvent then return end
-    if input.KeyCode == State.Circle.CircleKey.Value then
-        toggleCircle()
-    elseif input.KeyCode == State.ChinaHat.HatKey.Value then
-        toggleHat()
-    end
-end
-
-local function start()
-    if inputConnection then
-        inputConnection:Disconnect()
-        inputConnection = nil
-    end
-    inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
-end
-
-local function stop()
-    if inputConnection then
-        inputConnection:Disconnect()
-        inputConnection = nil
-    end
-    removeParts(circleParts)
-    removeParts(hatParts)
-    State.Circle.Enabled.Value = false
-    State.ChinaHat.Enabled.Value = false
-end
-
-local function onJumpRequest()
-    if State.Circle.Enabled.Value and not jumpAnimationActive then
-        animateJump()
-    end
-end
-
-UserInputService.JumpRequest:Connect(onJumpRequest)
-
-Players.LocalPlayer.CharacterAdded:Connect(function(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    humanoid.StateChanged:Connect(function(_, newState)
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            updateCircle()
-        end
-        local head = character:FindFirstChild("Head")
-        if head then
-            updateHat()
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        localCharacter = character
+        localHumanoid = character:WaitForChild("Humanoid", 5)
+        if State.ChinaHat.Enabled.Value then
+            start()
         end
     end)
-end)
 
-if Players.LocalPlayer.Character then
-    local character = Players.LocalPlayer.Character
-    local humanoid = character:WaitForChild("Humanoid")
-    humanoid.StateChanged:Connect(function(_, newState)
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            updateCircle()
-        end
-        local head = character:FindFirstChild("Head")
-        if head then
-            updateHat()
-        end
-    end)
-end
-
-RunService.Stepped:Connect(function(deltaTime)
-    updateCircle()
-    updateHat()
-end)
-
-return function(UI, Core, notify)
-    start()
+    if localCharacter then
+        localHumanoid = localCharacter:WaitForChild("Humanoid", 5)
+    end
 
     if UI.Tabs and UI.Tabs.Visuals then
-        -- ChinaHat Section
-        local hatSection = UI.Sections.ChinaHat or UI.Tabs.Visuals:Section({ Name = "ChinaHat", Side = "Left" })
-        UI.Sections.ChinaHat = hatSection
-        hatSection:Header({ Name = "China Hat" })
-        hatSection:SubLabel({ Text = "Displays a hat-like effect above the player's head" })
-        hatSection:Toggle({
+        local chinaHatSection = UI.Sections.ChinaHat or UI.Tabs.Visuals:Section({ Name = "ChinaHat", Side = "Left" })
+        UI.Sections.ChinaHat = chinaHatSection
+        chinaHatSection:Header({ Name = "China Hat" })
+        chinaHatSection:SubLabel({ Text = "Displays a hat-like effect above the player's head" })
+        chinaHatSection:Toggle({
             Name = "Enabled",
             Default = State.ChinaHat.Enabled.Default,
             Callback = function(value)
                 State.ChinaHat.Enabled.Value = value
                 if value then
-                    createHat()
+                    start()
+                    notify("ChinaHat", "Enabled", true)
                 else
-                    removeParts(hatParts)
+                    stop()
+                    notify("ChinaHat", "Disabled", true)
                 end
-                notify("ChinaHat", "China Hat " .. (value and "Enabled" or "Disabled"), true)
             end,
             'ChinaHatEnabled'
         })
-        hatSection:Slider({
+        chinaHatSection:Toggle({
+            Name = "Hat Enabled",
+            Default = State.ChinaHat.HatActive.Default,
+            Callback = function(value)
+                toggleHat(value)
+            end,
+            'HatEnabled'
+        })
+        chinaHatSection:Slider({
             Name = "Hat Scale",
             Minimum = 0.5,
             Maximum = 2.0,
             Default = State.ChinaHat.HatScale.Default,
             Precision = 2,
             Callback = function(value)
-                State.ChinaHat.HatScale.Value = value
-                if State.ChinaHat.Enabled.Value then
+                if State.ChinaHat.HatActive.Value then
                     removeParts(hatParts)
+                    State.ChinaHat.HatScale.Value = value
                     createHat()
+                else
+                    State.ChinaHat.HatScale.Value = value
                 end
                 notify("ChinaHat", "Hat Scale set to: " .. value, false)
             end,
             'HatScale'
         })
-        hatSection:Keybind({
-            Name = "Toggle Hat Key",
-            Default = State.ChinaHat.HatKey.Default,
-            Callback = function(value)
-                State.ChinaHat.HatKey.Value = value
-                notify("ChinaHat", "Toggle Hat Key set to: " .. (value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"), false)
-            end,
-            'HatKey'
-        })
 
-        -- Circle Section
         local circleSection = UI.Sections.Circle or UI.Tabs.Visuals:Section({ Name = "Circle", Side = "Left" })
         UI.Sections.Circle = circleSection
         circleSection:Header({ Name = "Circle" })
-        circleSection:SubLabel({ Text = "Displays a circle effect around the player's feet" })
+        circleSection:SubLabel({ Text = "Displays a circle effect at the player's feet with jump animation" })
         circleSection:Toggle({
-            Name = "Enabled",
-            Default = State.Circle.Enabled.Default,
+            Name = "Circle Enabled",
+            Default = State.ChinaHat.CircleActive.Default,
             Callback = function(value)
-                State.Circle.Enabled.Value = value
-                if value then
-                    createCircle()
-                else
-                    removeParts(circleParts)
-                end
-                notify("Circle", "Circle " .. (value and "Enabled" or "Disabled"), true)
+                toggleCircle(value)
             end,
             'CircleEnabled'
         })
         circleSection:Slider({
             Name = "Circle Radius",
-            Minimum = 0.5,
-            Maximum = 5.0,
-            Default = State.Circle.CircleRadius.Default,
-            Precision = 2,
+            Minimum = 1.0,
+            Maximum = 3.0,
+            Default = State.ChinaHat.CircleRadius.Default,
+            Precision = 1,
             Callback = function(value)
-                State.Circle.CircleRadius.Value = value
-                if State.Circle.Enabled.Value then
+                if State.ChinaHat.CircleActive.Value then
                     removeParts(circleParts)
+                    State.ChinaHat.CircleRadius.Value = value
                     createCircle()
+                else
+                    State.ChinaHat.CircleRadius.Value = value
                 end
-                notify("Circle", "Circle Radius set to: " .. value, false)
+                notify("ChinaHat", "Circle Radius set to: " .. value, false)
             end,
             'CircleRadius'
-        })
-        circleSection:Slider({
-            Name = "Number of Parts",
-            Minimum = 50,
-            Maximum = 300,
-            Default = State.Circle.NumberOfParts.Default,
-            Precision = 0,
-            Callback = function(value)
-                State.Circle.NumberOfParts.Value = value
-                if State.Circle.Enabled.Value then
-                    removeParts(circleParts)
-                    createCircle()
-                end
-                notify("Circle", "Number of Parts set to: " .. value, false)
-            end,
-            'NumberOfParts'
-        })
-        circleSection:Slider({
-            Name = "Part Size",
-            Minimum = 0.05,
-            Maximum = 0.5,
-            Default = State.Circle.PartSize.Default.X,
-            Precision = 2,
-            Callback = function(value)
-                State.Circle.PartSize.Value = Vector3.new(value, 0, value)
-                if State.Circle.Enabled.Value then
-                    removeParts(circleParts)
-                    createCircle()
-                end
-                notify("Circle", "Part Size set to: " .. value, false)
-            end,
-            'PartSize'
         })
         circleSection:Slider({
             Name = "Gradient Speed",
             Minimum = 1,
             Maximum = 10,
-            Default = State.Circle.GradientSpeed.Default,
+            Default = State.ChinaHat.GradientSpeed.Default,
             Precision = 1,
             Callback = function(value)
-                State.Circle.GradientSpeed.Value = value
-                notify("Circle", "Gradient Speed set to: " .. value, false)
+                State.ChinaHat.GradientSpeed.Value = value
+                notify("ChinaHat", "Gradient Speed set to: " .. value, false)
             end,
             'GradientSpeed'
         })
-        circleSection:Keybind({
-            Name = "Toggle Circle Key",
-            Default = State.Circle.CircleKey.Default,
-            Callback = function(value)
-                State.Circle.CircleKey.Value = value
-                notify("Circle", "Toggle Circle Key set to: " .. (value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"), false)
-            end,
-            'CircleKey'
-        })
     end
 
-    return {
-        Stop = stop
-    }
+    return ChinaHat
 end
+
+return ChinaHat
