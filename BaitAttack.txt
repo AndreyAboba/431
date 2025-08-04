@@ -5,6 +5,7 @@ function BaitAttack.Init(UI, Core, notify)
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
     local Animation = game:GetService("Animation")
+    local TextChatService = game:GetService("TextChatService")
 
     local LocalPlayer = Players.LocalPlayer
     local localCharacter = LocalPlayer.Character
@@ -17,15 +18,22 @@ function BaitAttack.Init(UI, Core, notify)
             FakeParry = { Value = false, Default = false },
             FakeRiposte = { Value = false, Default = false },
             FakeAttack = { Value = false, Default = false },
-            FakeParryKey = { Value = Enum.KeyCode.F, Default = Enum.KeyCode.F },
-            FakeRiposteKey = { Value = Enum.KeyCode.R, Default = Enum.KeyCode.R },
-            FakeAttackKey = { Value = Enum.KeyCode.G, Default = Enum.KeyCode.G },
-            Cooldown = { Value = 0.5, Default = 0.5 }
+            FakeParryKey = { Value = nil, Default = nil },
+            FakeRiposteKey = { Value = nil, Default = nil },
+            FakeAttackKey = { Value = nil, Default = nil },
+            ForceStopKey = { Value = nil, Default = nil },
+            Cooldown = { Value = 0.5, Default = 0.5 },
+            CheckStance = { Value = false, Default = false },
+            ParryHold = { Value = false, Default = false },
+            ParryAutoHold = { Value = 2, Default = 2 },
+            ForceStopEnabled = { Value = false, Default = false }
         }
     }
 
     local lastActionTime = 0
     local isPerformingAction = false
+    local parryAnimationTrack = nil
+    local parryHoldConnection = nil
 
     local function getLocalWeaponSettings()
         if not localCharacter then
@@ -52,12 +60,26 @@ function BaitAttack.Init(UI, Core, notify)
         return settings, weapon
     end
 
+    local function getCurrentStance()
+        if not localCharacter then
+            return nil
+        end
+        local stanceValue = localCharacter:FindFirstChild("Stance", true)
+        return stanceValue and stanceValue.Value or "Idle"
+    end
+
     local function playAnimation(action)
         if isPerformingAction or tick() - lastActionTime < State.BaitAttack.Cooldown.Value then
             return false
         end
         if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
             return false
+        end
+        if State.BaitAttack.CheckStance.Value then
+            local currentStance = getCurrentStance()
+            if currentStance ~= "Idle" and currentStance ~= "Recovery" then
+                return false
+            end
         end
         isPerformingAction = true
         local settings, weapon = getLocalWeaponSettings()
@@ -91,19 +113,23 @@ function BaitAttack.Init(UI, Core, notify)
         local animationTrack = localHumanoid:LoadAnimation(animation)
         
         if action == "Parry" then
+            parryAnimationTrack = animationTrack
             animationTrack:Play(0.1)
             animationTrack:AdjustSpeed(1)
             localHumanoid.WalkSpeed = 7
-            task.spawn(function()
-                task.wait(0.4)
-                if animationTrack and animationTrack.IsPlaying then
-                    animationTrack:Stop(0.2)
-                    animationTrack:Destroy()
-                end
-                localHumanoid.WalkSpeed = defaultWalkSpeed
-                isPerformingAction = false
-                lastActionTime = tick()
-            end)
+            if not State.BaitAttack.ParryHold.Value then
+                task.spawn(function()
+                    task.wait(State.BaitAttack.ParryAutoHold.Value)
+                    if animationTrack and animationTrack.IsPlaying then
+                        animationTrack:Stop(0.2)
+                        animationTrack:Destroy()
+                        parryAnimationTrack = nil
+                    end
+                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                    isPerformingAction = false
+                    lastActionTime = tick()
+                end)
+            end
         elseif action == "Riposte" then
             animationTrack:Play(0.1)
             animationTrack:AdjustSpeed(0)
@@ -136,12 +162,53 @@ function BaitAttack.Init(UI, Core, notify)
                     lastActionTime = tick()
                 end
             end)
+        elseif action == "Idle" then
+            animationTrack:Play(0.1)
+            animationTrack.Priority = Enum.AnimationPriority.Movement
+            localHumanoid.WalkSpeed = defaultWalkSpeed
+            task.spawn(function()
+                task.wait(0.1)
+                isPerformingAction = false
+                lastActionTime = tick()
+            end)
         end
         return true
     end
 
+    local function forceStop()
+        if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
+            return false
+        end
+        local settings, weapon = getLocalWeaponSettings()
+        if not settings or not settings.Type then
+            return false
+        end
+        local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
+        if not animationsModule then
+            return false
+        end
+        local animations = require(animationsModule)[settings.Type]
+        if not animations or not animations.Idle then
+            return false
+        end
+        local stanceValue = localCharacter:FindFirstChild("Stance", true)
+        if stanceValue then
+            stanceValue.Value = "Idle"
+        end
+        if parryAnimationTrack and parryAnimationTrack.IsPlaying then
+            parryAnimationTrack:Stop(0.2)
+            parryAnimationTrack:Destroy()
+            parryAnimationTrack = nil
+        end
+        return playAnimation("Idle")
+    end
+
+    local function isPlayerTyping()
+        return TextChatService.ChatInputBarConfiguration and TextChatService.ChatInputBarConfiguration.Enabled
+    end
+
     local function onInputBegan(input, gameProcessedEvent)
-        if gameProcessedEvent or not localCharacter or not localHumanoid or localHumanoid.Health <= 0 then
+        if gameProcessedEvent or isPlayerTyping() or not localCharacter or not localHumanoid or localHumanoid.Health <= 0 then
             return
         end
         if input.KeyCode == State.BaitAttack.FakeParryKey.Value and not State.BaitAttack.FakeParry.Value then
@@ -149,11 +216,33 @@ function BaitAttack.Init(UI, Core, notify)
             if playAnimation("Parry") then
                 notify("BaitAttack", "Fake Parry Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeParry)"
-                task.spawn(function()
-                    task.wait(State.BaitAttack.Cooldown.Value)
-                    State.BaitAttack.FakeParry.Value = false
-                    Core.BulwarkTarget.CombatState = nil
-                end)
+                if State.BaitAttack.ParryHold.Value then
+                    parryHoldConnection = UserInputService.InputEnded:Connect(function(endInput)
+                        if endInput.KeyCode == State.BaitAttack.FakeParryKey.Value then
+                            if parryAnimationTrack and parryAnimationTrack.IsPlaying then
+                                parryAnimationTrack:Stop(0.2)
+                                parryAnimationTrack:Destroy()
+                                parryAnimationTrack = nil
+                            end
+                            localHumanoid.WalkSpeed = defaultWalkSpeed
+                            isPerformingAction = false
+                            lastActionTime = tick()
+                            State.BaitAttack.FakeParry.Value = false
+                            Core.BulwarkTarget.CombatState = nil
+                            if parryHoldConnection then
+                                parryHoldConnection:Disconnect()
+                                parryHoldConnection = nil
+                            end
+                        end
+                    end)
+                end
+                if not State.BaitAttack.ParryHold.Value then
+                    task.spawn(function()
+                        task.wait(State.BaitAttack.ParryAutoHold.Value)
+                        State.BaitAttack.FakeParry.Value = false
+                        Core.BulwarkTarget.CombatState = nil
+                    end)
+                end
             else
                 State.BaitAttack.FakeParry.Value = false
             end
@@ -183,10 +272,13 @@ function BaitAttack.Init(UI, Core, notify)
             else
                 State.BaitAttack.FakeAttack.Value = false
             end
+        elseif input.KeyCode == State.BaitAttack.ForceStopKey.Value and State.BaitAttack.ForceStopEnabled.Value then
+            if forceStop() then
+                notify("BaitAttack", "Force Stop Activated", true)
+                Core.BulwarkTarget.CombatState = "Idle"
+            end
         end
     end
-
-    UserInputService.InputBegan:Connect(onInputBegan)
 
     LocalPlayer.CharacterAdded:Connect(function(character)
         localCharacter = character
@@ -224,6 +316,7 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'FakeAttackKeyBA'
         })
+        UI.Sections.BaitAttack:Divider()
         UI.Sections.BaitAttack:Slider({
             Name = "Cooldown",
             Minimum = 0.1,
@@ -235,6 +328,70 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Cooldown set to: " .. value)
             end,
             'CooldownBA'
+        })
+        UI.Sections.BaitAttack:Toggle({
+            Name = "Check Stance",
+            Default = State.BaitAttack.CheckStance.Default,
+            Callback = function(value)
+                State.BaitAttack.CheckStance.Value = value
+                notify("BaitAttack", "Check Stance: " .. (value and "Enabled" or "Disabled"))
+            end,
+            'CheckStanceBA'
+        })
+        UI.Sections.BaitAttack:SubLabel({ Text = "Prevents bait animations if player's Stance is not Idle or Recovery" })
+        UI.Sections.BaitAttack:Divider()
+        UI.Sections.BaitAttack:SubLabel({ Text = "Parry" })
+        UI.Sections.BaitAttack:Toggle({
+            Name = "Hold",
+            Default = State.BaitAttack.ParryHold.Default,
+            Callback = function(value)
+                State.BaitAttack.ParryHold.Value = value
+                notify("BaitAttack", "Parry Hold: " .. (value and "Enabled" or "Disabled"))
+                if not value and parryAnimationTrack and parryAnimationTrack.IsPlaying then
+                    parryAnimationTrack:Stop(0.2)
+                    parryAnimationTrack:Destroy()
+                    parryAnimationTrack = nil
+                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                    isPerformingAction = false
+                    lastActionTime = tick()
+                    State.BaitAttack.FakeParry.Value = false
+                    Core.BulwarkTarget.CombatState = nil
+                end
+            end,
+            'ParryHoldBA'
+        })
+        UI.Sections.BaitAttack:Slider({
+            Name = "Auto Hold Duration",
+            Minimum = 2,
+            Maximum = 10,
+            Default = State.BaitAttack.ParryAutoHold.Default,
+            Precision = 1,
+            Callback = function(value)
+                State.BaitAttack.ParryAutoHold.Value = value
+                notify("BaitAttack", "Parry Auto Hold set to: " .. value .. " seconds")
+            end,
+            'ParryAutoHoldBA'
+        })
+        UI.Sections.BaitAttack:Divider()
+        UI.Sections.BaitAttack:SubLabel({ Text = "Force Stop" })
+        UI.Sections.BaitAttack:Toggle({
+            Name = "Enabled",
+            Default = State.BaitAttack.ForceStopEnabled.Default,
+            Callback = function(value)
+                State.BaitAttack.ForceStopEnabled.Value = value
+                notify("BaitAttack", "Force Stop: " .. (value and "Enabled" or "Disabled"))
+            end,
+            'ForceStopEnabledBA'
+        })
+        UI.Sections.BaitAttack:SubLabel({ Text = "Forces Stance to Idle and plays Idle animation to cancel ongoing actions" })
+        UI.Sections.BaitAttack:Keybind({
+            Name = "Force Stop Key",
+            Default = State.BaitAttack.ForceStopKey.Default,
+            Callback = function(value)
+                State.BaitAttack.ForceStopKey.Value = value
+                notify("BaitAttack", "Force Stop Key set to: " .. tostring(value), true)
+            end,
+            'ForceStopKeyBA'
         })
     end
 
