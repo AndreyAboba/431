@@ -1,5 +1,5 @@
 local BaitAttack = {}
-print('2')
+
 function BaitAttack.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -223,19 +223,6 @@ function BaitAttack.Init(UI, Core, notify)
             notify("BaitAttack", "Cannot force stop: invalid character", false)
             return false
         end
-        if parryAnimationTrack and parryAnimationTrack.IsPlaying then
-            parryAnimationTrack:Stop(0.2)
-            parryAnimationTrack:Destroy()
-            parryAnimationTrack = nil
-        end
-        -- Stop all animations
-        if localHumanoid then
-            for _, track in pairs(localHumanoid:GetPlayingAnimationTracks()) do
-                track:Stop(0.2)
-                track:Destroy()
-            end
-            localHumanoid.WalkSpeed = defaultWalkSpeed
-        end
         isPerformingAction = false
         lastActionTime = tick()
         State.BaitAttack.FakeParry.Value = false
@@ -397,8 +384,10 @@ function BaitAttack.Init(UI, Core, notify)
                 State.BaitAttack.Enabled.Value = value
                 if value then
                     start()
+                    notify("BaitAttack", "Enabled", true)
                 else
                     stop()
+                    notify("BaitAttack", "Disabled", true)
                 end
             end,
             'BaitAttackEnabled'
@@ -407,10 +396,8 @@ function BaitAttack.Init(UI, Core, notify)
             Name = "Fake Parry Key",
             Default = State.BaitAttack.FakeParryKey.Default,
             Callback = function(value)
-                if value ~= State.BaitAttack.FakeParryKey.Value then
-                    State.BaitAttack.FakeParryKey.Value = value
-                    notify("BaitAttack", "Fake Parry Key set to: " .. tostring(value), true)
-                end
+                State.BaitAttack.FakeParryKey.Value = value
+                notify("BaitAttack", "Fake Parry Key set to: " .. tostring(value), true)
             end,
             'FakeParryKeyBA'
         })
@@ -418,10 +405,8 @@ function BaitAttack.Init(UI, Core, notify)
             Name = "Fake Riposte Key",
             Default = State.BaitAttack.FakeRiposteKey.Default,
             Callback = function(value)
-                if value ~= State.BaitAttack.FakeRiposteKey.Value then
-                    State.BaitAttack.FakeRiposteKey.Value = value
-                    notify("BaitAttack", "Fake Riposte Key set to: " .. tostring(value), true)
-                end
+                State.BaitAttack.FakeRiposteKey.Value = value
+                notify("BaitAttack", "Fake Riposte Key set to: " .. tostring(value), true)
             end,
             'FakeRiposteKeyBA'
         })
@@ -429,10 +414,8 @@ function BaitAttack.Init(UI, Core, notify)
             Name = "Fake Attack Key",
             Default = State.BaitAttack.FakeAttackKey.Default,
             Callback = function(value)
-                if value ~= State.BaitAttack.FakeAttackKey.Value then
-                    State.BaitAttack.FakeAttackKey.Value = value
-                    notify("BaitAttack", "Fake Attack Key set to: " .. tostring(value), true)
-                end
+                State.BaitAttack.FakeAttackKey.Value = value
+                notify("BaitAttack", "Fake Attack Key set to: " .. tostring(value), true)
             end,
             'FakeAttackKeyBA'
         })
@@ -445,7 +428,7 @@ function BaitAttack.Init(UI, Core, notify)
             Precision = 2,
             Callback = function(value)
                 State.BaitAttack.Cooldown.Value = value
-                notify("BaitAttack", "Cooldown set to: " .. value, true)
+                notify("BaitAttack", "Cooldown set to: " .. value, false)
             end,
             'CooldownBA'
         })
@@ -511,7 +494,7 @@ function BaitAttack.Init(UI, Core, notify)
             Precision = 1,
             Callback = function(value)
                 State.BaitAttack.ParryAutoHold.Value = value
-                notify("BaitAttack", "Parry Auto Hold set to: " .. value .. " seconds", true)
+                notify("BaitAttack", "Parry Auto Hold set to: " .. value .. " seconds", false)
             end,
             'ParryAutoHoldBA'
         })
@@ -526,15 +509,13 @@ function BaitAttack.Init(UI, Core, notify)
             end,
             'ForceStopEnabledBA'
         })
-        UI.Sections.BaitAttack:SubLabel({ Text = "Stops all animations and sets Stance to Idle" })
+        UI.Sections.BaitAttack:SubLabel({ Text = "Sets Stance to Idle without stopping animations" })
         UI.Sections.BaitAttack:Keybind({
             Name = "Force Stop Key",
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
-                if value ~= State.BaitAttack.ForceStopKey.Value then
-                    State.BaitAttack.ForceStopKey.Value = value
-                    notify("BaitAttack", "Force Stop Key set to: " .. tostring(value), true)
-                end
+                State.BaitAttack.ForceStopKey.Value = value
+                notify("BaitAttack", "Force Stop Key set to: " .. tostring(value), true)
             end,
             'ForceStopKeyBA'
         })
