@@ -1,5 +1,5 @@
 local BaitAttack = {}
-
+print('1')
 function BaitAttack.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,6 +26,7 @@ function BaitAttack.Init(UI, Core, notify)
             CheckStance = { Value = false, Default = false },
             ParryHold = { Value = false, Default = false },
             ParryAutoHold = { Value = 2, Default = 2 },
+            AutoHoldEnabled = { Value = true, Default = true },
             ForceStopEnabled = { Value = false, Default = false }
         }
     }
@@ -37,6 +38,7 @@ function BaitAttack.Init(UI, Core, notify)
 
     local function getLocalWeaponSettings()
         if not localCharacter then
+            notify("BaitAttack", "No character found", false)
             return nil, nil
         end
         local weapon
@@ -47,14 +49,17 @@ function BaitAttack.Init(UI, Core, notify)
             end
         end
         if not weapon then
+            notify("BaitAttack", "No weapon equipped", false)
             return nil, nil
         end
         local settingsModule = weapon:FindFirstChild("Settings")
         if not settingsModule then
+            notify("BaitAttack", "No settings module found", false)
             return nil, nil
         end
         local settings = require(settingsModule)
         if not settings or type(settings) ~= "table" or not settings.Type then
+            notify("BaitAttack", "Invalid weapon settings", false)
             return nil, nil
         end
         return settings, weapon
@@ -70,14 +75,17 @@ function BaitAttack.Init(UI, Core, notify)
 
     local function playAnimation(action)
         if isPerformingAction or tick() - lastActionTime < State.BaitAttack.Cooldown.Value then
+            notify("BaitAttack", "Action on cooldown or already performing", false)
             return false
         end
         if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
+            notify("BaitAttack", "Character or Humanoid invalid", false)
             return false
         end
         if State.BaitAttack.CheckStance.Value then
             local currentStance = getCurrentStance()
             if currentStance ~= "Idle" and currentStance ~= "Recovery" then
+                notify("BaitAttack", "Invalid stance: " .. tostring(currentStance), false)
                 return false
             end
         end
@@ -89,11 +97,13 @@ function BaitAttack.Init(UI, Core, notify)
         end
         local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
         if not animationsModule then
+            notify("BaitAttack", "WeaponAnimations module not found", false)
             isPerformingAction = false
             return false
         end
         local animations = require(animationsModule)[settings.Type]
         if not animations then
+            notify("BaitAttack", "No animations for weapon type: " .. tostring(settings.Type), false)
             isPerformingAction = false
             return false
         end
@@ -105,19 +115,33 @@ function BaitAttack.Init(UI, Core, notify)
             animationId = animations[action]
         end
         if not animationId then
+            notify("BaitAttack", "No animation ID for action: " .. action, false)
             isPerformingAction = false
             return false
         end
         local animation = Instance.new("Animation")
         animation.AnimationId = "rbxassetid://" .. animationId
-        local animationTrack = localHumanoid:LoadAnimation(animation)
+        local success, animationTrack = pcall(function()
+            return localHumanoid:LoadAnimation(animation)
+        end)
+        if not success or not animationTrack then
+            notify("BaitAttack", "Failed to load animation for " .. action, false)
+            animation:Destroy()
+            isPerformingAction = false
+            return false
+        end
+        notify("BaitAttack", "Playing animation: " .. action, true)
         
         if action == "Parry" then
             parryAnimationTrack = animationTrack
             animationTrack:Play(0.1)
             animationTrack:AdjustSpeed(1)
-            localHumanoid.WalkSpeed = 7
-            if not State.BaitAttack.ParryHold.Value then
+            if localHumanoid then
+                localHumanoid.WalkSpeed = 7
+            end
+            if State.BaitAttack.ParryHold.Value then
+                -- Handled in onInputBegan
+            elseif State.BaitAttack.AutoHoldEnabled.Value then
                 task.spawn(function()
                     task.wait(State.BaitAttack.ParryAutoHold.Value)
                     if animationTrack and animationTrack.IsPlaying then
@@ -125,7 +149,24 @@ function BaitAttack.Init(UI, Core, notify)
                         animationTrack:Destroy()
                         parryAnimationTrack = nil
                     end
-                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                    if localHumanoid then
+                        localHumanoid.WalkSpeed = defaultWalkSpeed
+                    end
+                    isPerformingAction = false
+                    lastActionTime = tick()
+                end)
+            else
+                -- No hold or auto-hold, stop immediately after play
+                task.spawn(function()
+                    task.wait(0.4)
+                    if animationTrack and animationTrack.IsPlaying then
+                        animationTrack:Stop(0.2)
+                        animationTrack:Destroy()
+                        parryAnimationTrack = nil
+                    end
+                    if localHumanoid then
+                        localHumanoid.WalkSpeed = defaultWalkSpeed
+                    end
                     isPerformingAction = false
                     lastActionTime = tick()
                 end)
@@ -133,21 +174,27 @@ function BaitAttack.Init(UI, Core, notify)
         elseif action == "Riposte" then
             animationTrack:Play(0.1)
             animationTrack:AdjustSpeed(0)
-            localHumanoid.WalkSpeed = 1
+            if localHumanoid then
+                localHumanoid.WalkSpeed = 1
+            end
             task.spawn(function()
                 task.wait(0.5)
                 if animationTrack and animationTrack.IsPlaying and animationTrack.TimePosition == 0 then
                     animationTrack:Stop(0.7)
                     animationTrack:Destroy()
                 end
-                localHumanoid.WalkSpeed = defaultWalkSpeed
+                if localHumanoid then
+                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                end
                 isPerformingAction = false
                 lastActionTime = tick()
             end)
         elseif action == "FakeAttack" then
             animationTrack:Play(settings.Windup or 0.3)
             animationTrack:AdjustSpeed(0)
-            localHumanoid.WalkSpeed = swingWalkSpeed
+            if localHumanoid then
+                localHumanoid.WalkSpeed = swingWalkSpeed
+            end
             task.spawn(function()
                 task.wait(settings.Windup or 0.3)
                 if animationTrack and animationTrack.IsPlaying then
@@ -157,7 +204,9 @@ function BaitAttack.Init(UI, Core, notify)
                         animationTrack:Stop(settings.Recovery or 0.45)
                         animationTrack:Destroy()
                     end
-                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                    if localHumanoid then
+                        localHumanoid.WalkSpeed = defaultWalkSpeed
+                    end
                     isPerformingAction = false
                     lastActionTime = tick()
                 end
@@ -165,7 +214,9 @@ function BaitAttack.Init(UI, Core, notify)
         elseif action == "Idle" then
             animationTrack:Play(0.1)
             animationTrack.Priority = Enum.AnimationPriority.Movement
-            localHumanoid.WalkSpeed = defaultWalkSpeed
+            if localHumanoid then
+                localHumanoid.WalkSpeed = defaultWalkSpeed
+            end
             task.spawn(function()
                 task.wait(0.1)
                 isPerformingAction = false
@@ -177,6 +228,7 @@ function BaitAttack.Init(UI, Core, notify)
 
     local function forceStop()
         if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
+            notify("BaitAttack", "Cannot force stop: invalid character", false)
             return false
         end
         local settings, weapon = getLocalWeaponSettings()
@@ -185,10 +237,12 @@ function BaitAttack.Init(UI, Core, notify)
         end
         local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
         if not animationsModule then
+            notify("BaitAttack", "WeaponAnimations module not found for force stop", false)
             return false
         end
         local animations = require(animationsModule)[settings.Type]
         if not animations or not animations.Idle then
+            notify("BaitAttack", "No Idle animation for weapon type: " .. tostring(settings.Type), false)
             return false
         end
         local stanceValue = localCharacter:FindFirstChild("Stance", true)
@@ -224,7 +278,9 @@ function BaitAttack.Init(UI, Core, notify)
                                 parryAnimationTrack:Destroy()
                                 parryAnimationTrack = nil
                             end
-                            localHumanoid.WalkSpeed = defaultWalkSpeed
+                            if localHumanoid then
+                                localHumanoid.WalkSpeed = defaultWalkSpeed
+                            end
                             isPerformingAction = false
                             lastActionTime = tick()
                             State.BaitAttack.FakeParry.Value = false
@@ -236,7 +292,7 @@ function BaitAttack.Init(UI, Core, notify)
                         end
                     end)
                 end
-                if not State.BaitAttack.ParryHold.Value then
+                if not State.BaitAttack.ParryHold.Value and State.BaitAttack.AutoHoldEnabled.Value then
                     task.spawn(function()
                         task.wait(State.BaitAttack.ParryAutoHold.Value)
                         State.BaitAttack.FakeParry.Value = false
@@ -351,7 +407,9 @@ function BaitAttack.Init(UI, Core, notify)
                     parryAnimationTrack:Stop(0.2)
                     parryAnimationTrack:Destroy()
                     parryAnimationTrack = nil
-                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                    if localHumanoid then
+                        localHumanoid.WalkSpeed = defaultWalkSpeed
+                    end
                     isPerformingAction = false
                     lastActionTime = tick()
                     State.BaitAttack.FakeParry.Value = false
@@ -359,6 +417,27 @@ function BaitAttack.Init(UI, Core, notify)
                 end
             end,
             'ParryHoldBA'
+        })
+        UI.Sections.BaitAttack:Toggle({
+            Name = "Auto Hold",
+            Default = State.BaitAttack.AutoHoldEnabled.Default,
+            Callback = function(value)
+                State.BaitAttack.AutoHoldEnabled.Value = value
+                notify("BaitAttack", "Auto Hold: " .. (value and "Enabled" or "Disabled"))
+                if not value and parryAnimationTrack and parryAnimationTrack.IsPlaying and not State.BaitAttack.ParryHold.Value then
+                    parryAnimationTrack:Stop(0.2)
+                    parryAnimationTrack:Destroy()
+                    parryAnimationTrack = nil
+                    if localHumanoid then
+                        localHumanoid.WalkSpeed = defaultWalkSpeed
+                    end
+                    isPerformingAction = false
+                    lastActionTime = tick()
+                    State.BaitAttack.FakeParry.Value = false
+                    Core.BulwarkTarget.CombatState = nil
+                end
+            end,
+            'AutoHoldEnabledBA'
         })
         UI.Sections.BaitAttack:Slider({
             Name = "Auto Hold Duration",
