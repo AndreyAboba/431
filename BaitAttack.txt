@@ -255,7 +255,7 @@ function BaitAttack.Init(UI, Core, notify)
     local function updateKeybindDisplays()
         -- Clear existing displays
         for _, display in pairs(keybindDisplays) do
-            display:Destroy()
+            display.Frame:Destroy()
         end
         keybindDisplays = {}
 
@@ -276,11 +276,11 @@ function BaitAttack.Init(UI, Core, notify)
         -- Create displays for each keybind
         for i, keybind in ipairs(keybinds) do
             local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(0, 100, 0, 100)
-            frame.Position = UDim2.new(0, (i - 1) * 120 + 20, 0, 20)
+            frame.Size = UDim2.new(0, 50, 0, 50)
+            frame.Position = UDim2.new(0, (i - 1) * 60 + 10, 0, 10)
             frame.BackgroundTransparency = 1
-            frame.Parent = screenGui
             frame.ClipsDescendants = true
+            frame.Parent = screenGui
 
             -- Top frame (icon and name)
             local topFrame = Instance.new("Frame")
@@ -293,44 +293,54 @@ function BaitAttack.Init(UI, Core, notify)
             topFrame.Parent = frame
 
             local icon = Instance.new("ImageLabel")
-            icon.Size = UDim2.new(0, 30, 0, 30)
-            icon.Position = UDim2.new(0.5, 0, 0.15, 0)
-            icon.AnchorPoint = Vector2.new(0.5, 0.15)
+            icon.Size = UDim2.new(0, 15, 0, 15)
+            icon.Position = UDim2.new(0.5, 0, 0.1, 0)
+            icon.AnchorPoint = Vector2.new(0.5, 0.1)
             icon.Image = "rbxassetid://11710306232"
             icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
             icon.BackgroundTransparency = 1
             icon.Parent = topFrame
 
             local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, 0, 0, 20)
+            nameLabel.Size = UDim2.new(1, 0, 0, 10)
             nameLabel.Position = UDim2.new(0, 0, 0.5, 0)
             nameLabel.Text = keybind.Name
             nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             nameLabel.TextScaled = true
+            nameLabel.Font = Enum.Font.Gotham
             nameLabel.BackgroundTransparency = 1
             nameLabel.Parent = topFrame
 
             -- Bottom frame (keybind letter)
+            local bottomFrameContainer = Instance.new("Frame")
+            bottomFrameContainer.Size = UDim2.new(1, 0, 0.6, 0)
+            bottomFrameContainer.Position = UDim2.new(0, 0, 0.4, 0)
+            bottomFrameContainer.BackgroundTransparency = 1
+            bottomFrameContainer.ClipsDescendants = true
+            bottomFrameContainer.Parent = frame
+
             local bottomFrame = Instance.new("Frame")
-            bottomFrame.Size = UDim2.new(1, 0, 0.6, 0)
-            bottomFrame.Position = UDim2.new(0, 0, 0.4, 0)
+            bottomFrame.Size = UDim2.new(1, 0, 1, 8) -- Extend slightly to ensure lower corners are visible
+            bottomFrame.Position = UDim2.new(0, 0, 0, -8) -- Shift up to clip top corners
             bottomFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
             bottomFrame.BackgroundTransparency = 0.3
             bottomFrame.BorderSizePixel = 0
             local uiCornerBottom = Instance.new("UICorner")
             uiCornerBottom.CornerRadius = UDim.new(0, 8)
             uiCornerBottom.Parent = bottomFrame
-            bottomFrame.Parent = frame
+            bottomFrame.Parent = bottomFrameContainer
 
             local keyLabel = Instance.new("TextLabel")
             keyLabel.Size = UDim2.new(1, 0, 1, 0)
-            keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or "None"
+            keyLabel.Position = UDim2.new(0, 0, 0, 8) -- Adjust for clipped top
+            keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or ""
             keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             keyLabel.TextScaled = true
+            keyLabel.Font = Enum.Font.Gotham
             keyLabel.BackgroundTransparency = 1
-            keyLabel.Parent = bottomFrame
+            keyLabel.Parent = bottomFrameContainer
 
-            keybindDisplays[keybind.Name] = frame
+            keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
         end
     end
 
@@ -442,7 +452,7 @@ function BaitAttack.Init(UI, Core, notify)
         State.BaitAttack.FakeAttack.Value = false
         Core.BulwarkTarget.CombatState = nil
         for _, display in pairs(keybindDisplays) do
-            display:Destroy()
+            display.Frame:Destroy()
         end
         keybindDisplays = {}
     end
@@ -480,7 +490,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 State.BaitAttack.FakeParryKey.Value = value
                 if keybindDisplays.Parry then
-                    keybindDisplays.Parry.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                    keybindDisplays.Parry.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                 end
             end,
             'FakeParryKeyBA'
@@ -491,7 +501,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 State.BaitAttack.FakeRiposteKey.Value = value
                 if keybindDisplays.Riposte then
-                    keybindDisplays.Riposte.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                    keybindDisplays.Riposte.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                 end
             end,
             'FakeRiposteKeyBA'
@@ -502,7 +512,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 State.BaitAttack.FakeAttackKey.Value = value
                 if keybindDisplays.Attack then
-                    keybindDisplays.Attack.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                    keybindDisplays.Attack.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                 end
             end,
             'FakeAttackKeyBA'
@@ -590,7 +600,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 State.BaitAttack.ForceStopKey.Value = value
                 if keybindDisplays.ForceStop then
-                    keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or "None"
+                    keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
                 end
             end,
             'ForceStopKeyBA'
