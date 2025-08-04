@@ -280,28 +280,30 @@ function BaitAttack.Init(UI, Core, notify)
             frame.Position = UDim2.new(0, (i - 1) * 120 + 20, 0, 20)
             frame.BackgroundTransparency = 1
             frame.Parent = screenGui
+            frame.ClipsDescendants = true
 
             -- Top frame (icon and name)
             local topFrame = Instance.new("Frame")
-            topFrame.Size = UDim2.new(1, 0, 0.6, 0)
-            topFrame.BackgroundColor3 = Color3.fromRGB(10, 20, 40)
+            topFrame.Size = UDim2.new(1, 0, 0.4, 0)
+            topFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
             topFrame.BorderSizePixel = 0
-            local uiCorner = Instance.new("UICorner")
-            uiCorner.CornerRadius = UDim.new(0, 8)
-            uiCorner.Parent = topFrame
+            local uiCornerTop = Instance.new("UICorner")
+            uiCornerTop.CornerRadius = UDim.new(0, 8)
+            uiCornerTop.Parent = topFrame
             topFrame.Parent = frame
 
             local icon = Instance.new("ImageLabel")
-            icon.Size = UDim2.new(0, 40, 0, 40)
-            icon.Position = UDim2.new(0.5, 0, 0.2, 0)
-            icon.AnchorPoint = Vector2.new(0.5, 0.2)
+            icon.Size = UDim2.new(0, 30, 0, 30)
+            icon.Position = UDim2.new(0.5, 0, 0.15, 0)
+            icon.AnchorPoint = Vector2.new(0.5, 0.15)
             icon.Image = "rbxassetid://11710306232"
+            icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
             icon.BackgroundTransparency = 1
             icon.Parent = topFrame
 
             local nameLabel = Instance.new("TextLabel")
             nameLabel.Size = UDim2.new(1, 0, 0, 20)
-            nameLabel.Position = UDim2.new(0, 0, 0.7, 0)
+            nameLabel.Position = UDim2.new(0, 0, 0.5, 0)
             nameLabel.Text = keybind.Name
             nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             nameLabel.TextScaled = true
@@ -310,11 +312,14 @@ function BaitAttack.Init(UI, Core, notify)
 
             -- Bottom frame (keybind letter)
             local bottomFrame = Instance.new("Frame")
-            bottomFrame.Size = UDim2.new(1, 0, 0.4, 0)
-            bottomFrame.Position = UDim2.new(0, 0, 0.6, 0)
+            bottomFrame.Size = UDim2.new(1, 0, 0.6, 0)
+            bottomFrame.Position = UDim2.new(0, 0, 0.4, 0)
             bottomFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
             bottomFrame.BackgroundTransparency = 0.3
             bottomFrame.BorderSizePixel = 0
+            local uiCornerBottom = Instance.new("UICorner")
+            uiCornerBottom.CornerRadius = UDim.new(0, 8)
+            uiCornerBottom.Parent = bottomFrame
             bottomFrame.Parent = frame
 
             local keyLabel = Instance.new("TextLabel")
@@ -325,7 +330,7 @@ function BaitAttack.Init(UI, Core, notify)
             keyLabel.BackgroundTransparency = 1
             keyLabel.Parent = bottomFrame
 
-            keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
+            keybindDisplays[keybind.Name] = frame
         end
     end
 
@@ -437,7 +442,7 @@ function BaitAttack.Init(UI, Core, notify)
         State.BaitAttack.FakeAttack.Value = false
         Core.BulwarkTarget.CombatState = nil
         for _, display in pairs(keybindDisplays) do
-            display.Frame:Destroy()
+            display:Destroy()
         end
         keybindDisplays = {}
     end
