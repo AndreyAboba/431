@@ -588,6 +588,7 @@ function BaitAttack.Init(UI, Core, notify)
     end)
 
     -- Настройка UI
+    wait(0.7)
     if UI.Tabs and UI.Tabs.Combat then
         local section = UI.Sections.BaitAttack or UI.Tabs.Combat:Section({ Name = "Bait Attack", Side = "Left" })
         UI.Sections.BaitAttack = section
@@ -711,7 +712,7 @@ function BaitAttack.Init(UI, Core, notify)
         })
         section:SubLabel({ Text = "Sets Stance to Idle without stopping animations" })
 
-        local keybindSection = UI.Tabs.Visuals:Section({ Name = "BaitAttackKeybinds", Side = "Left" })
+        local keybindSection = UI.Tabs.Visuals:Section({ Name = "BaitAttackKeybinds", Side = "Right" })
         UI.Sections.BaitAttackKeybinds = keybindSection
         keybindSection:Header({ Name = "BaitAttack KeyBind" })
         keybindSection:SubLabel({ Text = "Displays keybinds for BaitAttack actions on screen" })
