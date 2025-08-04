@@ -354,6 +354,17 @@ function BaitAttack.Init(UI, Core, notify)
         return frame, keyLabel
     end
 
+    -- Обновление подключения ввода
+    local function updateInputConnection()
+        if inputConnection then
+            inputConnection:Disconnect()
+            inputConnection = nil
+        end
+        if State.BaitAttack.Enabled.Value then
+            inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
+        end
+    end
+
     -- Обновление отображения кейбиндов
     local function updateKeybindDisplays()
         if not State.BaitAttack.Enabled.Value or not State.BaitAttack.KeybindDisplayEnabled.Value then
@@ -372,6 +383,7 @@ function BaitAttack.Init(UI, Core, notify)
             { Name = "ForceStop", State = "ForceStopKey", Enabled = State.BaitAttack.ForceStopDisplayEnabled.Value }
         }
 
+        local scale = State.BaitAttack.KeybindDisplayScale.Value
         local screenGui = CoreGui:FindFirstChild("BaitAttackKeybinds")
         if not screenGui then
             screenGui = Instance.new("ScreenGui")
@@ -406,31 +418,53 @@ function BaitAttack.Init(UI, Core, notify)
         -- Обновляем или создаём менюшки
         for i, keybind in ipairs(visibleKeybinds) do
             if keybindDisplays[keybind.Name] then
-                -- Обновляем существующий текст
+                -- Обновляем существующий UI
                 local display = keybindDisplays[keybind.Name]
-                if display.KeyLabel and display.KeyLabel.Parent then
+                if display.Frame and display.Frame.Parent and display.KeyLabel and display.KeyLabel.Parent then
                     display.KeyLabel.Text = State.BaitAttack[keybind.State].Value and tostring(State.BaitAttack[keybind.State].Value):match("Enum%.KeyCode%.(.+)") or ""
+                    display.Frame.Size = UDim2.new(0, 75 * scale, 0, 75 * scale)
+                    local topFrame = display.Frame:FindFirstChildWhichIsA("Frame")
+                    if topFrame then
+                        local uiCornerTop = topFrame:FindFirstChildWhichIsA("UICorner")
+                        if uiCornerTop then
+                            uiCornerTop.CornerRadius = UDim.new(0, 8 * scale)
+                        end
+                        local icon = topFrame:FindFirstChildWhichIsA("ImageLabel")
+                        if icon then
+                            icon.Size = UDim2.new(0, 22 * scale, 0, 22 * scale)
+                        end
+                        local nameLabel = topFrame:FindFirstChildWhichIsA("TextLabel")
+                        if nameLabel then
+                            nameLabel.Size = UDim2.new(1, 0, 0, 15 * scale)
+                            nameLabel.TextSize = 16 * scale
+                        end
+                    end
+                    local bottomFrameContainer = display.Frame:FindFirstChildWhichIsA("Frame", true)
+                    if bottomFrameContainer then
+                        local bottomFrame = bottomFrameContainer:FindFirstChildWhichIsA("Frame")
+                        if bottomFrame then
+                            bottomFrame.Size = UDim2.new(1, 0, 1, 8 * scale)
+                            bottomFrame.Position = UDim2.new(0, 0, 0, -8 * scale)
+                            local uiCornerBottom = bottomFrame:FindFirstChildWhichIsA("UICorner")
+                            if uiCornerBottom then
+                                uiCornerBottom.CornerRadius = UDim.new(0, 8 * scale)
+                            end
+                        end
+                    end
+                    display.KeyLabel.TextSize = 22 * scale
+                    -- Корректируем позицию с учётом масштаба
+                    if keybindPositions[keybind.Name] then
+                        local pos = keybindPositions[keybind.Name]
+                        display.Frame.Position = UDim2.new(pos.X.Scale, pos.X.Offset * scale, pos.Y.Scale, pos.Y.Offset * scale)
+                    end
                 end
             else
-                -- Создаём новый UI-элемент
-                local frame, keyLabel = createKeybindFrame(keybind, i, State.BaitAttack.KeybindDisplayScale.Value)
+                -- Создаём новый UI
+                local frame, keyLabel = createKeybindFrame(keybind, i, scale)
                 frame.Parent = screenGui
                 keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
             end
         end
-
-        -- Подключаем перетаскивание
-        UserInputService.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement and draggingFrame then
-                local delta = input.Position - dragStartMousePos
-                draggingFrame.Position = UDim2.new(
-                    dragStartPos.X.Scale,
-                    dragStartPos.X.Offset + delta.X,
-                    dragStartPos.Y.Scale,
-                    dragStartPos.Y.Offset + delta.Y
-                )
-            end
-        end)
     end
 
     -- Обработка ввода
@@ -503,11 +537,7 @@ function BaitAttack.Init(UI, Core, notify)
 
     -- Запуск и остановка
     local function start()
-        if inputConnection then
-            inputConnection:Disconnect()
-            inputConnection = nil
-        end
-        inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
+        updateInputConnection()
         updateKeybindDisplays()
     end
 
@@ -584,14 +614,10 @@ function BaitAttack.Init(UI, Core, notify)
                 Default = State.BaitAttack[kb.State].Default,
                 Callback = function(value)
                     State.BaitAttack[kb.State].Value = value
-                    local displayKey = kb.Name:match("Fake (%w+) Key")
-                    if keybindDisplays[displayKey] and keybindDisplays[displayKey].KeyLabel and keybindDisplays[displayKey].KeyLabel.Parent then
-                        keybindDisplays[displayKey].KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
-                    end
-                    updateKeybindDisplays()
-                    if State.BaitAttack.Enabled.Value then
-                        start()
-                    end
+                    task.spawn(function()
+                        updateKeybindDisplays()
+                        updateInputConnection()
+                    end)
                 end,
                 kb.Id
             })
@@ -677,13 +703,10 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
                 State.BaitAttack.ForceStopKey.Value = value
-                if keybindDisplays.ForceStop and keybindDisplays.ForceStop.KeyLabel and keybindDisplays.ForceStop.KeyLabel.Parent then
-                    keybindDisplays.ForceStop.KeyLabel.Text = value and tostring(value):match("Enum%.KeyCode%.(.+)") or ""
-                end
-                updateKeybindDisplays()
-                if State.BaitAttack.Enabled.Value then
-                    start()
-                end
+                task.spawn(function()
+                    updateKeybindDisplays()
+                    updateInputConnection()
+                end)
             end,
             'ForceStopKeyBA'
         })
