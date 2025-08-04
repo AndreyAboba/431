@@ -1,5 +1,5 @@
 local KillAura = {}
-
+print('1')
 function KillAura.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -98,8 +98,8 @@ function KillAura.Init(UI, Core, notify)
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
-    local LATENCY_BUFFER = 0.05
-    local PREDICTION_THRESHOLD = 0.7
+    local LATENCY_BUFFER = 0.035
+    local PREDICTION_THRESHOLD = 0.5
     local MAX_ADDITIONAL_TARGETS = 5
 
     local function getPlayerStance(player)
@@ -1713,5 +1713,6 @@ function KillAura.Init(UI, Core, notify)
 end
 
 return KillAura
+
 
 
