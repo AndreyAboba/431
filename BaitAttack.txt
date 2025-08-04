@@ -40,9 +40,11 @@ function BaitAttack.Init(UI, Core, notify)
     local parryHoldConnection = nil
     local inputConnection = nil
     local keybindDisplays = {}
+    local keybindPositions = {}
     local draggingFrame = nil
     local dragStartPos = nil
     local dragStartMousePos = nil
+    local activeTweens = {}
 
     local function getLocalWeaponSettings()
         if not localCharacter then
@@ -165,11 +167,15 @@ function BaitAttack.Init(UI, Core, notify)
                     end
                     isPerformingAction = false
                     if keybindDisplays.Parry then
+                        if activeTweens.Parry then
+                            activeTweens.Parry:Cancel()
+                        end
                         local tween = TweenService:Create(
                             keybindDisplays.Parry.KeyLabel,
                             TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                             { TextColor3 = Color3.fromRGB(255, 255, 255) }
                         )
+                        activeTweens.Parry = tween
                         tween:Play()
                     end
                 end)
@@ -186,11 +192,15 @@ function BaitAttack.Init(UI, Core, notify)
                     end
                     isPerformingAction = false
                     if keybindDisplays.Parry then
+                        if activeTweens.Parry then
+                            activeTweens.Parry:Cancel()
+                        end
                         local tween = TweenService:Create(
                             keybindDisplays.Parry.KeyLabel,
                             TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                             { TextColor3 = Color3.fromRGB(255, 255, 255) }
                         )
+                        activeTweens.Parry = tween
                         tween:Play()
                     end
                 end)
@@ -212,11 +222,15 @@ function BaitAttack.Init(UI, Core, notify)
                 end
                 isPerformingAction = false
                 if keybindDisplays.Riposte then
+                    if activeTweens.Riposte then
+                        activeTweens.Riposte:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Riposte.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = Color3.fromRGB(255, 255, 255) }
                     )
+                    activeTweens.Riposte = tween
                     tween:Play()
                 end
             end)
@@ -240,11 +254,15 @@ function BaitAttack.Init(UI, Core, notify)
                     end
                     isPerformingAction = false
                     if keybindDisplays.Attack then
+                        if activeTweens.Attack then
+                            activeTweens.Attack:Cancel()
+                        end
                         local tween = TweenService:Create(
                             keybindDisplays.Attack.KeyLabel,
                             TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                             { TextColor3 = Color3.fromRGB(255, 255, 255) }
                         )
+                        activeTweens.Attack = tween
                         tween:Play()
                     end
                 end
@@ -264,18 +282,15 @@ function BaitAttack.Init(UI, Core, notify)
         State.BaitAttack.FakeAttack.Value = false
         Core.BulwarkTarget.CombatState = nil
 
-        -- Set Stance to Idle and maintain it for 3 seconds
         local stanceValue = localCharacter:FindFirstChild("Stance", true)
         if stanceValue then
             stanceValue.Value = "Idle"
         end
-        -- Send ChangeStance to server
         local args = { [1] = "Idle" }
         local changeStanceEvent = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer"):WaitForChild("ChangeStance")
         if changeStanceEvent and changeStanceEvent:IsA("RemoteEvent") then
             changeStanceEvent:FireServer(unpack(args))
         end
-        -- Maintain Idle stance for 3 seconds
         task.spawn(function()
             local startTime = tick()
             while tick() - startTime < 3 do
@@ -289,19 +304,23 @@ function BaitAttack.Init(UI, Core, notify)
             end
         end)
         if keybindDisplays.ForceStop then
+            if activeTweens.ForceStop then
+                activeTweens.ForceStop:Cancel()
+            end
             local tween = TweenService:Create(
                 keybindDisplays.ForceStop.KeyLabel,
                 TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                { TextColor3 = Color3.fromRGB(255, 255, 255) }
+                { TextColor3 = State.BaitAttack.FadeColor.Value }
             )
+            activeTweens.ForceStop = tween
             tween:Play()
         end
         return true
     end
 
     local function updateKeybindDisplays()
-        -- Clear existing displays
         for _, display in pairs(keybindDisplays) do
+            keybindPositions[display.Frame.Name] = display.Frame.Position
             display.Frame:Destroy()
         end
         keybindDisplays = {}
@@ -310,7 +329,6 @@ function BaitAttack.Init(UI, Core, notify)
             return
         end
 
-        -- Keybind data
         local keybinds = {
             { Name = "Parry", Key = State.BaitAttack.FakeParryKey },
             { Name = "Riposte", Key = State.BaitAttack.FakeRiposteKey },
@@ -318,43 +336,41 @@ function BaitAttack.Init(UI, Core, notify)
             { Name = "ForceStop", Key = State.BaitAttack.ForceStopKey }
         }
 
-        -- Create ScreenGui
         local screenGui = Instance.new("ScreenGui")
         screenGui.Name = "BaitAttackKeybinds"
         screenGui.Parent = CoreGui
         screenGui.ResetOnSpawn = false
 
-        -- Create displays for each keybind
         for i, keybind in ipairs(keybinds) do
             local frame = Instance.new("Frame")
             local scale = State.BaitAttack.KeybindDisplayScale.Value
+            frame.Name = keybind.Name
             frame.Size = UDim2.new(0, 75 * scale, 0, 75 * scale)
-            frame.Position = UDim2.new(0, (i - 1) * (90 * scale) + 10, 0, 10)
+            frame.Position = keybindPositions[keybind.Name] or UDim2.new(0, (i - 1) * (90 * scale) + 10, 0, 10)
             frame.BackgroundTransparency = 1
             frame.ClipsDescendants = true
             frame.Parent = screenGui
 
-            -- Top frame (icon and name)
-            local topFrameContainer = Instance.new("Frame")
-            topFrameContainer.Size = UDim2.new(1, 0, 0.4, 0)
-            topFrameContainer.BackgroundTransparency = 1
-            topFrameContainer.ClipsDescendants = true
-            topFrameContainer.Parent = frame
-
             local topFrame = Instance.new("Frame")
-            topFrame.Size = UDim2.new(1, 0, 1, -8 * scale) -- Extend to clip top corners
-            topFrame.Position = UDim2.new(0, 0, 0, 8 * scale) -- Shift down to clip top corners
+            topFrame.Size = UDim2.new(1, 0, 0.4, 0)
             topFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
             topFrame.BorderSizePixel = 0
             local uiCornerTop = Instance.new("UICorner")
             uiCornerTop.CornerRadius = UDim.new(0, 8 * scale)
             uiCornerTop.Parent = topFrame
-            topFrame.Parent = topFrameContainer
+            topFrame.Parent = frame
+
+            local maskFrame = Instance.new("Frame")
+            maskFrame.Size = UDim2.new(1, 0, 0.5, 0)
+            maskFrame.Position = UDim2.new(0, 0, 0.5, 0)
+            maskFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
+            maskFrame.BorderSizePixel = 0
+            maskFrame.Parent = topFrame
 
             local icon = Instance.new("ImageLabel")
             icon.Size = UDim2.new(0, 22 * scale, 0, 22 * scale)
-            icon.Position = UDim2.new(0.5, 0, 0.05, 0)
-            icon.AnchorPoint = Vector2.new(0.5, 0.05)
+            icon.Position = UDim2.new(0.5, 0, 0.025, 0)
+            icon.AnchorPoint = Vector2.new(0.5, 0.025)
             icon.Image = "rbxassetid://11710306232"
             icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
             icon.BackgroundTransparency = 1
@@ -362,16 +378,15 @@ function BaitAttack.Init(UI, Core, notify)
 
             local nameLabel = Instance.new("TextLabel")
             nameLabel.Size = UDim2.new(1, 0, 0, 15 * scale)
-            nameLabel.Position = UDim2.new(0, 0, 0.5, 0)
+            nameLabel.Position = UDim2.new(0, 0, 0.35, 0)
             nameLabel.Text = keybind.Name
             nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             nameLabel.TextScaled = false
-            nameLabel.TextSize = 12 * scale
+            nameLabel.TextSize = 14 * scale
             nameLabel.Font = Enum.Font.Gotham
             nameLabel.BackgroundTransparency = 1
             nameLabel.Parent = topFrame
 
-            -- Bottom frame (keybind letter)
             local bottomFrameContainer = Instance.new("Frame")
             bottomFrameContainer.Size = UDim2.new(1, 0, 0.6, 0)
             bottomFrameContainer.Position = UDim2.new(0, 0, 0.4, 0)
@@ -380,8 +395,8 @@ function BaitAttack.Init(UI, Core, notify)
             bottomFrameContainer.Parent = frame
 
             local bottomFrame = Instance.new("Frame")
-            bottomFrame.Size = UDim2.new(1, 0, 1, 8 * scale) -- Extend slightly to ensure lower corners are visible
-            bottomFrame.Position = UDim2.new(0, 0, 0, -8 * scale) -- Shift up to clip top corners
+            bottomFrame.Size = UDim2.new(1, 0, 1, 8 * scale)
+            bottomFrame.Position = UDim2.new(0, 0, 0, -8 * scale)
             bottomFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
             bottomFrame.BackgroundTransparency = 0.3
             bottomFrame.BorderSizePixel = 0
@@ -392,36 +407,41 @@ function BaitAttack.Init(UI, Core, notify)
 
             local keyLabel = Instance.new("TextLabel")
             keyLabel.Size = UDim2.new(1, 0, 1, 0)
-            keyLabel.Position = UDim2.new(0, 0, 0, 8 * scale) -- Adjust for clipped top
+            keyLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+            keyLabel.AnchorPoint = Vector2.new(0.5, 0.5)
             keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or ""
             keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             keyLabel.TextScaled = false
-            keyLabel.TextSize = 18 * scale
+            keyLabel.TextSize = 22 * scale
             keyLabel.Font = Enum.Font.Gotham
             keyLabel.BackgroundTransparency = 1
             keyLabel.Parent = bottomFrameContainer
 
-            -- Dragging functionality
-            topFrame.InputBegan:Connect(function(input)
+            local function startDragging(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 and not isInputFocused() then
                     draggingFrame = frame
                     dragStartPos = frame.Position
                     dragStartMousePos = input.Position
                 end
-            end)
+            end
 
-            topFrame.InputEnded:Connect(function(input)
+            local function stopDragging(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 then
                     draggingFrame = nil
                     dragStartPos = nil
                     dragStartMousePos = nil
+                    keybindPositions[frame.Name] = frame.Position
                 end
-            end)
+            end
+
+            topFrame.InputBegan:Connect(startDragging)
+            topFrame.InputEnded:Connect(stopDragging)
+            bottomFrameContainer.InputBegan:Connect(startDragging)
+            bottomFrameContainer.InputEnded:Connect(stopDragging)
 
             keybindDisplays[keybind.Name] = { Frame = frame, KeyLabel = keyLabel }
         end
 
-        -- Handle dragging
         UserInputService.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement and draggingFrame then
                 local delta = input.Position - dragStartMousePos
@@ -445,11 +465,15 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Fake Parry Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeParry)"
                 if keybindDisplays.Parry then
+                    if activeTweens.Parry then
+                        activeTweens.Parry:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Parry.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = State.BaitAttack.FadeColor.Value }
                     )
+                    activeTweens.Parry = tween
                     tween:Play()
                 end
                 if State.BaitAttack.ParryHold.Value then
@@ -467,11 +491,15 @@ function BaitAttack.Init(UI, Core, notify)
                             State.BaitAttack.FakeParry.Value = false
                             Core.BulwarkTarget.CombatState = nil
                             if keybindDisplays.Parry then
+                                if activeTweens.Parry then
+                                    activeTweens.Parry:Cancel()
+                                end
                                 local tween = TweenService:Create(
                                     keybindDisplays.Parry.KeyLabel,
                                     TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                                     { TextColor3 = Color3.fromRGB(255, 255, 255) }
                                 )
+                                activeTweens.Parry = tween
                                 tween:Play()
                             end
                             if parryHoldConnection then
@@ -491,11 +519,15 @@ function BaitAttack.Init(UI, Core, notify)
             else
                 State.BaitAttack.FakeParry.Value = false
                 if keybindDisplays.Parry then
+                    if activeTweens.Parry then
+                        activeTweens.Parry:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Parry.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = Color3.fromRGB(255, 255, 255) }
                     )
+                    activeTweens.Parry = tween
                     tween:Play()
                 end
             end
@@ -505,11 +537,15 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Fake Riposte Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeRiposte)"
                 if keybindDisplays.Riposte then
+                    if activeTweens.Riposte then
+                        activeTweens.Riposte:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Riposte.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = State.BaitAttack.FadeColor.Value }
                     )
+                    activeTweens.Riposte = tween
                     tween:Play()
                 end
                 task.spawn(function()
@@ -520,11 +556,15 @@ function BaitAttack.Init(UI, Core, notify)
             else
                 State.BaitAttack.FakeRiposte.Value = false
                 if keybindDisplays.Riposte then
+                    if activeTweens.Riposte then
+                        activeTweens.Riposte:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Riposte.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = Color3.fromRGB(255, 255, 255) }
                     )
+                    activeTweens.Riposte = tween
                     tween:Play()
                 end
             end
@@ -534,11 +574,15 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Fake Attack Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeAttack)"
                 if keybindDisplays.Attack then
+                    if activeTweens.Attack then
+                        activeTweens.Attack:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Attack.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = State.BaitAttack.FadeColor.Value }
                     )
+                    activeTweens.Attack = tween
                     tween:Play()
                 end
                 task.spawn(function()
@@ -549,25 +593,21 @@ function BaitAttack.Init(UI, Core, notify)
             else
                 State.BaitAttack.FakeAttack.Value = false
                 if keybindDisplays.Attack then
+                    if activeTweens.Attack then
+                        activeTweens.Attack:Cancel()
+                    end
                     local tween = TweenService:Create(
                         keybindDisplays.Attack.KeyLabel,
                         TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                         { TextColor3 = Color3.fromRGB(255, 255, 255) }
                     )
+                    activeTweens.Attack = tween
                     tween:Play()
                 end
             end
         elseif input.KeyCode == State.BaitAttack.ForceStopKey.Value and State.BaitAttack.ForceStopEnabled.Value then
             if forceStop() then
                 notify("BaitAttack", "Force Stop Activated", true)
-                if keybindDisplays.ForceStop then
-                    local tween = TweenService:Create(
-                        keybindDisplays.ForceStop.KeyLabel,
-                        TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                        { TextColor3 = State.BaitAttack.FadeColor.Value }
-                    )
-                    tween:Play()
-                end
             end
         end
     end
@@ -610,6 +650,7 @@ function BaitAttack.Init(UI, Core, notify)
             display.Frame:Destroy()
         end
         keybindDisplays = {}
+        activeTweens = {}
     end
 
     LocalPlayer.CharacterAdded:Connect(function(character)
@@ -705,11 +746,15 @@ function BaitAttack.Init(UI, Core, notify)
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
                     if keybindDisplays.Parry then
+                        if activeTweens.Parry then
+                            activeTweens.Parry:Cancel()
+                        end
                         local tween = TweenService:Create(
                             keybindDisplays.Parry.KeyLabel,
                             TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                             { TextColor3 = Color3.fromRGB(255, 255, 255) }
                         )
+                        activeTweens.Parry = tween
                         tween:Play()
                     end
                 end
@@ -733,11 +778,15 @@ function BaitAttack.Init(UI, Core, notify)
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
                     if keybindDisplays.Parry then
+                        if activeTweens.Parry then
+                            activeTweens.Parry:Cancel()
+                        end
                         local tween = TweenService:Create(
                             keybindDisplays.Parry.KeyLabel,
                             TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                             { TextColor3 = Color3.fromRGB(255, 255, 255) }
                         )
+                        activeTweens.Parry = tween
                         tween:Play()
                     end
                 end
@@ -781,7 +830,6 @@ function BaitAttack.Init(UI, Core, notify)
             'ForceStopKeyBA'
         })
 
-        -- Visuals section for keybind displays
         UI.Sections.BaitAttackKeybinds = UI.Tabs.Visuals:Section({ Name = "BaitAttackKeybinds", Side = "Left" })
         UI.Sections.BaitAttackKeybinds:Header({ Name = "BaitAttack KeyBind" })
         UI.Sections.BaitAttackKeybinds:SubLabel({ Text = "Displays keybinds for BaitAttack actions on screen" })
@@ -798,6 +846,7 @@ function BaitAttack.Init(UI, Core, notify)
                         display.Frame:Destroy()
                     end
                     keybindDisplays = {}
+                    activeTweens = {}
                     notify("BaitAttack", "Keybind Displays Disabled", true)
                 end
             end,
