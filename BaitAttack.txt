@@ -1,5 +1,5 @@
 local BaitAttack = {}
-
+print('2')
 function BaitAttack.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,17 +37,9 @@ function BaitAttack.Init(UI, Core, notify)
     local parryHoldConnection = nil
     local inputConnection = nil
 
-    local function safeNotify(message, success)
-        if notify and typeof(notify) == "function" then
-            notify("BaitAttack", message, success)
-        else
-            print("[BaitAttack] " .. (success and "Success: " or "Error: ") .. message)
-        end
-    end
-
     local function getLocalWeaponSettings()
         if not localCharacter then
-            safeNotify("No character found", false)
+            notify("BaitAttack", "No character found", false)
             return nil, nil
         end
         local weapon
@@ -58,17 +50,17 @@ function BaitAttack.Init(UI, Core, notify)
             end
         end
         if not weapon then
-            safeNotify("No weapon equipped", false)
+            notify("BaitAttack", "No weapon equipped", false)
             return nil, nil
         end
         local settingsModule = weapon:FindFirstChild("Settings")
         if not settingsModule then
-            safeNotify("No settings module found", false)
+            notify("BaitAttack", "No settings module found", false)
             return nil, nil
         end
         local settings = require(settingsModule)
         if not settings or type(settings) ~= "table" or not settings.Type then
-            safeNotify("Invalid weapon settings", false)
+            notify("BaitAttack", "Invalid weapon settings", false)
             return nil, nil
         end
         return settings, weapon
@@ -88,17 +80,17 @@ function BaitAttack.Init(UI, Core, notify)
 
     local function playAnimation(action)
         if isPerformingAction or tick() - lastActionTime < State.BaitAttack.Cooldown.Value then
-            safeNotify("Action on cooldown or already performing", false)
+            notify("BaitAttack", "Action on cooldown or already performing", false)
             return false
         end
         if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
-            safeNotify("Character or Humanoid invalid", false)
+            notify("BaitAttack", "Character or Humanoid invalid", false)
             return false
         end
         if State.BaitAttack.CheckStance.Value then
             local currentStance = getCurrentStance()
             if currentStance ~= "Idle" and currentStance ~= "Recovery" then
-                safeNotify("Invalid stance: " .. tostring(currentStance), false)
+                notify("BaitAttack", "Invalid stance: " .. tostring(currentStance), false)
                 return false
             end
         end
@@ -110,13 +102,13 @@ function BaitAttack.Init(UI, Core, notify)
         end
         local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
         if not animationsModule then
-            safeNotify("WeaponAnimations module not found", false)
+            notify("BaitAttack", "WeaponAnimations module not found", false)
             isPerformingAction = false
             return false
         end
         local animations = require(animationsModule)[settings.Type]
         if not animations then
-            safeNotify("No animations for weapon type: " .. tostring(settings.Type), false)
+            notify("BaitAttack", "No animations for weapon type: " .. tostring(settings.Type), false)
             isPerformingAction = false
             return false
         end
@@ -128,7 +120,7 @@ function BaitAttack.Init(UI, Core, notify)
             animationId = animations[action]
         end
         if not animationId then
-            safeNotify("No animation ID for action: " .. action, false)
+            notify("BaitAttack", "No animation ID for action: " .. action, false)
             isPerformingAction = false
             return false
         end
@@ -138,12 +130,11 @@ function BaitAttack.Init(UI, Core, notify)
             return localHumanoid:LoadAnimation(animation)
         end)
         if not success or not animationTrack then
-            safeNotify("Failed to load animation for " .. action, false)
+            notify("BaitAttack", "Failed to load animation for " .. action, false)
             animation:Destroy()
             isPerformingAction = false
             return false
         end
-        safeNotify("Playing animation: " .. action, true)
         
         if action == "Parry" then
             parryAnimationTrack = animationTrack
@@ -223,50 +214,59 @@ function BaitAttack.Init(UI, Core, notify)
                     lastActionTime = tick()
                 end
             end)
-        elseif action == "Idle" then
-            animationTrack:Play(0.1)
-            animationTrack.Priority = Enum.AnimationPriority.Movement
-            if localHumanoid then
-                localHumanoid.WalkSpeed = defaultWalkSpeed
-            end
-            task.spawn(function()
-                task.wait(0.1)
-                isPerformingAction = false
-                lastActionTime = tick()
-            end)
         end
         return true
     end
 
     local function forceStop()
         if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
-            safeNotify("Cannot force stop: invalid character", false)
+            notify("BaitAttack", "Cannot force stop: invalid character", false)
             return false
-        end
-        local settings, weapon = getLocalWeaponSettings()
-        if not settings or not settings.Type then
-            return false
-        end
-        local animationsModule = ReplicatedStorage:FindFirstChild("ClientModule") and ReplicatedStorage.ClientModule:FindFirstChild("WeaponAnimations")
-        if not animationsModule then
-            safeNotify("WeaponAnimations module not found for force stop", false)
-            return false
-        end
-        local animations = require(animationsModule)[settings.Type]
-        if not animations or not animations.Idle then
-            safeNotify("No Idle animation for weapon type: " .. tostring(settings.Type), false)
-            return false
-        end
-        local stanceValue = localCharacter:FindFirstChild("Stance", true)
-        if stanceValue then
-            stanceValue.Value = "Idle"
         end
         if parryAnimationTrack and parryAnimationTrack.IsPlaying then
             parryAnimationTrack:Stop(0.2)
             parryAnimationTrack:Destroy()
             parryAnimationTrack = nil
         end
-        return playAnimation("Idle")
+        -- Stop all animations
+        if localHumanoid then
+            for _, track in pairs(localHumanoid:GetPlayingAnimationTracks()) do
+                track:Stop(0.2)
+                track:Destroy()
+            end
+            localHumanoid.WalkSpeed = defaultWalkSpeed
+        end
+        isPerformingAction = false
+        lastActionTime = tick()
+        State.BaitAttack.FakeParry.Value = false
+        State.BaitAttack.FakeRiposte.Value = false
+        State.BaitAttack.FakeAttack.Value = false
+        Core.BulwarkTarget.CombatState = nil
+
+        -- Set Stance to Idle and maintain it for 3 seconds
+        local stanceValue = localCharacter:FindFirstChild("Stance", true)
+        if stanceValue then
+            stanceValue.Value = "Idle"
+        end
+        -- Send ChangeStance to server
+        local changeStanceEvent = ReplicatedStorage:FindFirstChild("ChangeStance")
+        if changeStanceEvent and changeStanceEvent:IsA("RemoteEvent") then
+            changeStanceEvent:FireServer("Idle")
+        end
+        -- Maintain Idle stance for 3 seconds
+        task.spawn(function()
+            local startTime = tick()
+            while tick() - startTime < 3 do
+                if stanceValue and stanceValue.Value ~= "Idle" then
+                    stanceValue.Value = "Idle"
+                    if changeStanceEvent and changeStanceEvent:IsA("RemoteEvent") then
+                        changeStanceEvent:FireServer("Idle")
+                    end
+                end
+                task.wait(0.1)
+            end
+        end)
+        return true
     end
 
     local function onInputBegan(input, gameProcessedEvent)
@@ -276,7 +276,7 @@ function BaitAttack.Init(UI, Core, notify)
         if input.KeyCode == State.BaitAttack.FakeParryKey.Value and not State.BaitAttack.FakeParry.Value then
             State.BaitAttack.FakeParry.Value = true
             if playAnimation("Parry") then
-                safeNotify("Fake Parry Activated", true)
+                notify("BaitAttack", "Fake Parry Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeParry)"
                 if State.BaitAttack.ParryHold.Value then
                     parryHoldConnection = UserInputService.InputEnded:Connect(function(endInput)
@@ -313,7 +313,7 @@ function BaitAttack.Init(UI, Core, notify)
         elseif input.KeyCode == State.BaitAttack.FakeRiposteKey.Value and not State.BaitAttack.FakeRiposte.Value then
             State.BaitAttack.FakeRiposte.Value = true
             if playAnimation("Riposte") then
-                safeNotify("Fake Riposte Activated", true)
+                notify("BaitAttack", "Fake Riposte Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeRiposte)"
                 task.spawn(function()
                     task.wait(State.BaitAttack.Cooldown.Value)
@@ -326,7 +326,7 @@ function BaitAttack.Init(UI, Core, notify)
         elseif input.KeyCode == State.BaitAttack.FakeAttackKey.Value and not State.BaitAttack.FakeAttack.Value then
             State.BaitAttack.FakeAttack.Value = true
             if playAnimation("FakeAttack") then
-                safeNotify("Fake Attack Activated", true)
+                notify("BaitAttack", "Fake Attack Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeAttack)"
                 task.spawn(function()
                     task.wait(State.BaitAttack.Cooldown.Value)
@@ -338,8 +338,7 @@ function BaitAttack.Init(UI, Core, notify)
             end
         elseif input.KeyCode == State.BaitAttack.ForceStopKey.Value and State.BaitAttack.ForceStopEnabled.Value then
             if forceStop() then
-                safeNotify("Force Stop Activated", true)
-                Core.BulwarkTarget.CombatState = "Idle"
+                notify("BaitAttack", "Force Stop Activated", true)
             end
         end
     end
@@ -349,7 +348,6 @@ function BaitAttack.Init(UI, Core, notify)
             return
         end
         inputConnection = UserInputService.InputBegan:Connect(onInputBegan)
-        safeNotify("BaitAttack Started", true)
     end
 
     local function stop()
@@ -367,6 +365,10 @@ function BaitAttack.Init(UI, Core, notify)
             parryHoldConnection = nil
         end
         if localHumanoid then
+            for _, track in pairs(localHumanoid:GetPlayingAnimationTracks()) do
+                track:Stop(0.2)
+                track:Destroy()
+            end
             localHumanoid.WalkSpeed = defaultWalkSpeed
         end
         isPerformingAction = false
@@ -374,17 +376,11 @@ function BaitAttack.Init(UI, Core, notify)
         State.BaitAttack.FakeRiposte.Value = false
         State.BaitAttack.FakeAttack.Value = false
         Core.BulwarkTarget.CombatState = nil
-        safeNotify("BaitAttack Stopped", true)
     end
 
     LocalPlayer.CharacterAdded:Connect(function(character)
         localCharacter = character
         localHumanoid = character:WaitForChild("Humanoid", 5)
-        if localHumanoid then
-            safeNotify("Character loaded", true)
-        else
-            safeNotify("Failed to load Humanoid", false)
-        end
         if State.BaitAttack.Enabled.Value then
             start()
         end
@@ -404,7 +400,6 @@ function BaitAttack.Init(UI, Core, notify)
                 else
                     stop()
                 end
-                safeNotify("BaitAttack: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'BaitAttackEnabled'
         })
@@ -414,7 +409,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 if value ~= State.BaitAttack.FakeParryKey.Value then
                     State.BaitAttack.FakeParryKey.Value = value
-                    safeNotify("Fake Parry Key set to: " .. tostring(value), true)
+                    notify("BaitAttack", "Fake Parry Key set to: " .. tostring(value), true)
                 end
             end,
             'FakeParryKeyBA'
@@ -425,7 +420,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 if value ~= State.BaitAttack.FakeRiposteKey.Value then
                     State.BaitAttack.FakeRiposteKey.Value = value
-                    safeNotify("Fake Riposte Key set to: " .. tostring(value), true)
+                    notify("BaitAttack", "Fake Riposte Key set to: " .. tostring(value), true)
                 end
             end,
             'FakeRiposteKeyBA'
@@ -436,7 +431,7 @@ function BaitAttack.Init(UI, Core, notify)
             Callback = function(value)
                 if value ~= State.BaitAttack.FakeAttackKey.Value then
                     State.BaitAttack.FakeAttackKey.Value = value
-                    safeNotify("Fake Attack Key set to: " .. tostring(value), true)
+                    notify("BaitAttack", "Fake Attack Key set to: " .. tostring(value), true)
                 end
             end,
             'FakeAttackKeyBA'
@@ -450,7 +445,7 @@ function BaitAttack.Init(UI, Core, notify)
             Precision = 2,
             Callback = function(value)
                 State.BaitAttack.Cooldown.Value = value
-                safeNotify("Cooldown set to: " .. value, true)
+                notify("BaitAttack", "Cooldown set to: " .. value, true)
             end,
             'CooldownBA'
         })
@@ -459,7 +454,7 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.CheckStance.Default,
             Callback = function(value)
                 State.BaitAttack.CheckStance.Value = value
-                safeNotify("Check Stance: " .. (value and "Enabled" or "Disabled"), true)
+                notify("BaitAttack", "Check Stance: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'CheckStanceBA'
         })
@@ -471,7 +466,7 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ParryHold.Default,
             Callback = function(value)
                 State.BaitAttack.ParryHold.Value = value
-                safeNotify("Parry Hold: " .. (value and "Enabled" or "Disabled"), true)
+                notify("BaitAttack", "Parry Hold: " .. (value and "Enabled" or "Disabled"), true)
                 if not value and parryAnimationTrack and parryAnimationTrack.IsPlaying then
                     parryAnimationTrack:Stop(0.2)
                     parryAnimationTrack:Destroy()
@@ -492,7 +487,7 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.AutoHoldEnabled.Default,
             Callback = function(value)
                 State.BaitAttack.AutoHoldEnabled.Value = value
-                safeNotify("Auto Hold: " .. (value and "Enabled" or "Disabled"), true)
+                notify("BaitAttack", "Auto Hold: " .. (value and "Enabled" or "Disabled"), true)
                 if not value and parryAnimationTrack and parryAnimationTrack.IsPlaying and not State.BaitAttack.ParryHold.Value then
                     parryAnimationTrack:Stop(0.2)
                     parryAnimationTrack:Destroy()
@@ -516,7 +511,7 @@ function BaitAttack.Init(UI, Core, notify)
             Precision = 1,
             Callback = function(value)
                 State.BaitAttack.ParryAutoHold.Value = value
-                safeNotify("Parry Auto Hold set to: " .. value .. " seconds", true)
+                notify("BaitAttack", "Parry Auto Hold set to: " .. value .. " seconds", true)
             end,
             'ParryAutoHoldBA'
         })
@@ -527,18 +522,18 @@ function BaitAttack.Init(UI, Core, notify)
             Default = State.BaitAttack.ForceStopEnabled.Default,
             Callback = function(value)
                 State.BaitAttack.ForceStopEnabled.Value = value
-                safeNotify("Force Stop: " .. (value and "Enabled" or "Disabled"), true)
+                notify("BaitAttack", "Force Stop: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'ForceStopEnabledBA'
         })
-        UI.Sections.BaitAttack:SubLabel({ Text = "Forces Stance to Idle and plays Idle animation to cancel ongoing actions" })
+        UI.Sections.BaitAttack:SubLabel({ Text = "Stops all animations and sets Stance to Idle" })
         UI.Sections.BaitAttack:Keybind({
             Name = "Force Stop Key",
             Default = State.BaitAttack.ForceStopKey.Default,
             Callback = function(value)
                 if value ~= State.BaitAttack.ForceStopKey.Value then
                     State.BaitAttack.ForceStopKey.Value = value
-                    safeNotify("Force Stop Key set to: " .. tostring(value), true)
+                    notify("BaitAttack", "Force Stop Key set to: " .. tostring(value), true)
                 end
             end,
             'ForceStopKeyBA'
