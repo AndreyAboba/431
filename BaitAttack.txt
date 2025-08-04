@@ -9,13 +9,17 @@ function BaitAttack.Init(UI, Core, notify)
     local LocalPlayer = Players.LocalPlayer
     local localCharacter = LocalPlayer.Character
     local localHumanoid = localCharacter and localCharacter:FindFirstChild("Humanoid")
-    
+    local defaultWalkSpeed = game:GetService("StarterPlayer").StarterHumanoid.WalkSpeed
+    local swingWalkSpeed = defaultWalkSpeed * 0.75
+
     local State = {
         BaitAttack = {
             FakeParry = { Value = false, Default = false },
             FakeRiposte = { Value = false, Default = false },
+            FakeAttack = { Value = false, Default = false },
             FakeParryKey = { Value = Enum.KeyCode.F, Default = Enum.KeyCode.F },
             FakeRiposteKey = { Value = Enum.KeyCode.R, Default = Enum.KeyCode.R },
+            FakeAttackKey = { Value = Enum.KeyCode.G, Default = Enum.KeyCode.G },
             Cooldown = { Value = 0.5, Default = 0.5 }
         }
     }
@@ -67,29 +71,42 @@ function BaitAttack.Init(UI, Core, notify)
             return false
         end
         local animations = require(animationsModule)[settings.Type]
-        if not animations or not animations[action] then
+        if not animations then
+            isPerformingAction = false
+            return false
+        end
+        local animationId
+        if action == "FakeAttack" then
+            local swingAnimations = {animations.RightSwing, animations.LeftSwing}
+            animationId = swingAnimations[math.random(1, #swingAnimations)]
+        else
+            animationId = animations[action]
+        end
+        if not animationId then
             isPerformingAction = false
             return false
         end
         local animation = Instance.new("Animation")
-        animation.AnimationId = "rbxassetid://" .. animations[action]
+        animation.AnimationId = "rbxassetid://" .. animationId
         local animationTrack = localHumanoid:LoadAnimation(animation)
-        animationTrack:Play(0.1)
-        animationTrack:AdjustSpeed(action == "Riposte" and 0 or 1)
         
         if action == "Parry" then
+            animationTrack:Play(0.1)
+            animationTrack:AdjustSpeed(1)
             localHumanoid.WalkSpeed = 7
             task.spawn(function()
-                task.wait(0.5)
+                task.wait(0.4)
                 if animationTrack and animationTrack.IsPlaying then
                     animationTrack:Stop(0.2)
                     animationTrack:Destroy()
                 end
-                localHumanoid.WalkSpeed = 9
+                localHumanoid.WalkSpeed = defaultWalkSpeed
                 isPerformingAction = false
                 lastActionTime = tick()
             end)
         elseif action == "Riposte" then
+            animationTrack:Play(0.1)
+            animationTrack:AdjustSpeed(0)
             localHumanoid.WalkSpeed = 1
             task.spawn(function()
                 task.wait(0.5)
@@ -97,9 +114,27 @@ function BaitAttack.Init(UI, Core, notify)
                     animationTrack:Stop(0.7)
                     animationTrack:Destroy()
                 end
-                localHumanoid.WalkSpeed = 9
+                localHumanoid.WalkSpeed = defaultWalkSpeed
                 isPerformingAction = false
                 lastActionTime = tick()
+            end)
+        elseif action == "FakeAttack" then
+            animationTrack:Play(settings.Windup or 0.3)
+            animationTrack:AdjustSpeed(0)
+            localHumanoid.WalkSpeed = swingWalkSpeed
+            task.spawn(function()
+                task.wait(settings.Windup or 0.3)
+                if animationTrack and animationTrack.IsPlaying then
+                    animationTrack:AdjustSpeed((animationTrack.Length / (settings.Release or 0.3)) * 2)
+                    task.wait(settings.Release or 0.3)
+                    if animationTrack and animationTrack.IsPlaying then
+                        animationTrack:Stop(settings.Recovery or 0.45)
+                        animationTrack:Destroy()
+                    end
+                    localHumanoid.WalkSpeed = defaultWalkSpeed
+                    isPerformingAction = false
+                    lastActionTime = tick()
+                end
             end)
         end
         return true
@@ -135,6 +170,19 @@ function BaitAttack.Init(UI, Core, notify)
             else
                 State.BaitAttack.FakeRiposte.Value = false
             end
+        elseif input.KeyCode == State.BaitAttack.FakeAttackKey.Value and not State.BaitAttack.FakeAttack.Value then
+            State.BaitAttack.FakeAttack.Value = true
+            if playAnimation("FakeAttack") then
+                notify("BaitAttack", "Fake Attack Activated", true)
+                Core.BulwarkTarget.CombatState = "BaitAttack (FakeAttack)"
+                task.spawn(function()
+                    task.wait(State.BaitAttack.Cooldown.Value)
+                    State.BaitAttack.FakeAttack.Value = false
+                    Core.BulwarkTarget.CombatState = nil
+                end)
+            else
+                State.BaitAttack.FakeAttack.Value = false
+            end
         end
     end
 
@@ -148,7 +196,7 @@ function BaitAttack.Init(UI, Core, notify)
     if UI.Tabs and UI.Tabs.Combat then
         UI.Sections.BaitAttack = UI.Sections.BaitAttack or UI.Tabs.Combat:Section({ Name = "Bait Attack", Side = "Left" })
         UI.Sections.BaitAttack:Header({ Name = "Bait Attack" })
-        UI.Sections.BaitAttack:SubLabel({ Text = "Plays fake Parry/Riposte animations without server interaction" })
+        UI.Sections.BaitAttack:SubLabel({ Text = "Plays fake Parry/Riposte/Attack animations without server interaction" })
         UI.Sections.BaitAttack:Keybind({
             Name = "Fake Parry Key",
             Default = State.BaitAttack.FakeParryKey.Default,
@@ -166,6 +214,15 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Fake Riposte Key set to: " .. tostring(value), true)
             end,
             'FakeRiposteKeyBA'
+        })
+        UI.Sections.BaitAttack:Keybind({
+            Name = "Fake Attack Key",
+            Default = State.BaitAttack.FakeAttackKey.Default,
+            Callback = function(value)
+                State.BaitAttack.FakeAttackKey.Value = value
+                notify("BaitAttack", "Fake Attack Key set to: " .. tostring(value), true)
+            end,
+            'FakeAttackKeyBA'
         })
         UI.Sections.BaitAttack:Slider({
             Name = "Cooldown",
