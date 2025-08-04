@@ -342,8 +342,8 @@ function BaitAttack.Init(UI, Core, notify)
             topFrameContainer.Parent = frame
 
             local topFrame = Instance.new("Frame")
-            topFrame.Size = UDim2.new(1, 0, 1, 8) -- Extend slightly to ensure upper corners are visible
-            topFrame.Position = UDim2.new(0, 0, 0, -8) -- Shift up to clip bottom corners
+            topFrame.Size = UDim2.new(1, 0, 1, -8 * scale) -- Extend to clip top corners
+            topFrame.Position = UDim2.new(0, 0, 0, 8 * scale) -- Shift down to clip top corners
             topFrame.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
             topFrame.BorderSizePixel = 0
             local uiCornerTop = Instance.new("UICorner")
@@ -396,7 +396,7 @@ function BaitAttack.Init(UI, Core, notify)
             keyLabel.Text = keybind.Key.Value and tostring(keybind.Key.Value):match("Enum%.KeyCode%.(.+)") or ""
             keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             keyLabel.TextScaled = false
-            keyLabel.TextSize = 14 * scale
+            keyLabel.TextSize = 18 * scale
             keyLabel.Font = Enum.Font.Gotham
             keyLabel.BackgroundTransparency = 1
             keyLabel.Parent = bottomFrameContainer
@@ -807,8 +807,8 @@ function BaitAttack.Init(UI, Core, notify)
             Name = "Scale",
             Minimum = 0.5,
             Maximum = 2.0,
-            Precision = 1,
             Default = State.BaitAttack.KeybindDisplayScale.Default,
+            Precision = 1,
             Callback = function(value)
                 State.BaitAttack.KeybindDisplayScale.Value = value
                 updateKeybindDisplays()
