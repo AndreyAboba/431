@@ -807,8 +807,8 @@ function BaitAttack.Init(UI, Core, notify)
             Name = "Scale",
             Minimum = 0.5,
             Maximum = 2.0,
+            Precision = 1,
             Default = State.BaitAttack.KeybindDisplayScale.Default,
-            Precision = 0.1,
             Callback = function(value)
                 State.BaitAttack.KeybindDisplayScale.Value = value
                 updateKeybindDisplays()
