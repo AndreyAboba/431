@@ -1,5 +1,5 @@
 local BaitAttack = {}
-print('2')
+
 function BaitAttack.Init(UI, Core, notify)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,7 +22,6 @@ function BaitAttack.Init(UI, Core, notify)
             FakeRiposteKey = { Value = nil, Default = nil },
             FakeAttackKey = { Value = nil, Default = nil },
             ForceStopKey = { Value = nil, Default = nil },
-            Cooldown = { Value = 0.5, Default = 0.5 },
             CheckStance = { Value = false, Default = false },
             ParryHold = { Value = false, Default = false },
             ParryAutoHold = { Value = 2, Default = 2 },
@@ -31,7 +30,6 @@ function BaitAttack.Init(UI, Core, notify)
         }
     }
 
-    local lastActionTime = 0
     local isPerformingAction = false
     local parryAnimationTrack = nil
     local parryHoldConnection = nil
@@ -79,8 +77,8 @@ function BaitAttack.Init(UI, Core, notify)
     end
 
     local function playAnimation(action)
-        if isPerformingAction or tick() - lastActionTime < State.BaitAttack.Cooldown.Value then
-            notify("BaitAttack", "Action on cooldown or already performing", false)
+        if isPerformingAction then
+            notify("BaitAttack", "Already performing an action", false)
             return false
         end
         if not (localCharacter and localHumanoid and localHumanoid.Health > 0) then
@@ -157,7 +155,6 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
-                    lastActionTime = tick()
                 end)
             else
                 task.spawn(function()
@@ -171,7 +168,6 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
-                    lastActionTime = tick()
                 end)
             end
         elseif action == "Riposte" then
@@ -190,7 +186,6 @@ function BaitAttack.Init(UI, Core, notify)
                     localHumanoid.WalkSpeed = defaultWalkSpeed
                 end
                 isPerformingAction = false
-                lastActionTime = tick()
             end)
         elseif action == "FakeAttack" then
             animationTrack:Play(settings.Windup or 0.3)
@@ -211,7 +206,6 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
-                    lastActionTime = tick()
                 end
             end)
         end
@@ -224,7 +218,6 @@ function BaitAttack.Init(UI, Core, notify)
             return false
         end
         isPerformingAction = false
-        lastActionTime = tick()
         State.BaitAttack.FakeParry.Value = false
         State.BaitAttack.FakeRiposte.Value = false
         State.BaitAttack.FakeAttack.Value = false
@@ -278,7 +271,6 @@ function BaitAttack.Init(UI, Core, notify)
                                 localHumanoid.WalkSpeed = defaultWalkSpeed
                             end
                             isPerformingAction = false
-                            lastActionTime = tick()
                             State.BaitAttack.FakeParry.Value = false
                             Core.BulwarkTarget.CombatState = nil
                             if parryHoldConnection then
@@ -304,7 +296,7 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Fake Riposte Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeRiposte)"
                 task.spawn(function()
-                    task.wait(State.BaitAttack.Cooldown.Value)
+                    task.wait(0.5)
                     State.BaitAttack.FakeRiposte.Value = false
                     Core.BulwarkTarget.CombatState = nil
                 end)
@@ -317,7 +309,7 @@ function BaitAttack.Init(UI, Core, notify)
                 notify("BaitAttack", "Fake Attack Activated", true)
                 Core.BulwarkTarget.CombatState = "BaitAttack (FakeAttack)"
                 task.spawn(function()
-                    task.wait(State.BaitAttack.Cooldown.Value)
+                    task.wait(0.5)
                     State.BaitAttack.FakeAttack.Value = false
                     Core.BulwarkTarget.CombatState = nil
                 end)
@@ -418,18 +410,6 @@ function BaitAttack.Init(UI, Core, notify)
             'FakeAttackKeyBA'
         })
         UI.Sections.BaitAttack:Divider()
-        UI.Sections.BaitAttack:Slider({
-            Name = "Cooldown",
-            Minimum = 0.1,
-            Maximum = 1.0,
-            Default = State.BaitAttack.Cooldown.Default,
-            Precision = 2,
-            Callback = function(value)
-                State.BaitAttack.Cooldown.Value = value
-                notify("BaitAttack", "Cooldown set to: " .. value, false)
-            end,
-            'CooldownBA'
-        })
         UI.Sections.BaitAttack:Toggle({
             Name = "Check Stance",
             Default = State.BaitAttack.CheckStance.Default,
@@ -456,7 +436,6 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
-                    lastActionTime = tick()
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
                 end
@@ -477,7 +456,6 @@ function BaitAttack.Init(UI, Core, notify)
                         localHumanoid.WalkSpeed = defaultWalkSpeed
                     end
                     isPerformingAction = false
-                    lastActionTime = tick()
                     State.BaitAttack.FakeParry.Value = false
                     Core.BulwarkTarget.CombatState = nil
                 end
@@ -520,4 +498,5 @@ function BaitAttack.Init(UI, Core, notify)
 
     return BaitAttack
 end
+
 return BaitAttack
