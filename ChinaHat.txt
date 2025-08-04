@@ -20,12 +20,7 @@ function ChinaHat.Init(UI, Core, notify)
             HatGradient = { Value = true, Default = true },
             HatColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             HatYOffset = { Value = 1.6, Default = 1.6 },
-            CircleActive = { Value = false, Default = false },
-            CircleParts = { Value = 30, Default = 30 }, -- 30 сегментов для 3D-круга
-            CircleGradientSpeed = { Value = 4, Default = 4 },
-            CircleGradient = { Value = true, Default = true },
-            CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            JumpAnimate = { Value = false, Default = false }
+            OutlineCircle = { Value = false, Default = false }
         },
         Circle = {
             CircleActive = { Value = false, Default = false },
@@ -34,7 +29,8 @@ function ChinaHat.Init(UI, Core, notify)
             CircleGradientSpeed = { Value = 4, Default = 4 },
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            CircleYOffset = { Value = -3, Default = -3 }
+            CircleYOffset = { Value = -3, Default = -3 },
+            JumpAnimate = { Value = false, Default = false }
         }
     }
 
@@ -62,13 +58,13 @@ function ChinaHat.Init(UI, Core, notify)
             line.Color = State.ChinaHat.HatGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.ChinaHat.HatParts.Value) or State.ChinaHat.HatColor.Value
             table.insert(hatLines, line)
         end
-        if State.ChinaHat.CircleActive.Value and #hatCircleQuads == 0 then
-            for i = 1, State.ChinaHat.CircleParts.Value do
+        if State.ChinaHat.OutlineCircle.Value and #hatCircleQuads == 0 then
+            for i = 1, 40 do -- 40 сегментов для 3D-круга
                 local quad = Drawing.new("Quad")
                 quad.Visible = false
                 quad.Thickness = 1
                 quad.Filled = false
-                quad.Color = State.ChinaHat.CircleGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.ChinaHat.CircleParts.Value) or State.ChinaHat.CircleColor.Value
+                quad.Color = State.ChinaHat.HatGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / 40) or State.ChinaHat.HatColor.Value
                 table.insert(hatCircleQuads, quad)
             end
         end
@@ -132,7 +128,7 @@ function ChinaHat.Init(UI, Core, notify)
             end
         end
 
-        if State.ChinaHat.CircleActive.Value and #hatCircleQuads > 0 then
+        if State.ChinaHat.OutlineCircle.Value and #hatCircleQuads > 0 then
             local center = Vector3.new(0, 0, 0)
             local visibleEnds = 0
             for i, line in ipairs(hatLines) do
@@ -157,13 +153,13 @@ function ChinaHat.Init(UI, Core, notify)
             local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
             if onScreenCenter and screenCenter.Z > 0 then
                 local circleSegments = #hatCircleQuads
-                local circleRadius = 2.0 * State.ChinaHat.HatScale.Value -- Радиус как 2.0 * hatScale
+                local circleRadius = 2.0 * State.ChinaHat.HatScale.Value
                 for i, quad in ipairs(hatCircleQuads) do
                     local angle1 = ((i - 1) / circleSegments) * 2 * math.pi
                     local angle2 = (i / circleSegments) * 2 * math.pi
                     local point1Bottom = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
                     local point2Bottom = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
-                    local point1Top = point1Bottom + Vector3.new(0, 0, 0) -- Плоский круг
+                    local point1Top = point1Bottom + Vector3.new(0, 0, 0)
                     local point2Top = point2Bottom + Vector3.new(0, 0, 0)
                     local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
                     local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
@@ -178,11 +174,11 @@ function ChinaHat.Init(UI, Core, notify)
                         quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
                         quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
                         quad.Visible = true
-                        if State.ChinaHat.CircleGradient.Value then
-                            local factor = (math.sin(t * State.ChinaHat.CircleGradientSpeed.Value + (i / circleSegments) * 2 * math.pi) + 1) / 2
+                        if State.ChinaHat.HatGradient.Value then
+                            local factor = (math.sin(t * State.ChinaHat.HatGradientSpeed.Value + (i / circleSegments) * 2 * math.pi) + 1) / 2
                             quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
                         else
-                            quad.Color = State.ChinaHat.CircleColor.Value
+                            quad.Color = State.ChinaHat.HatColor.Value
                         end
                     else
                         quad.Visible = false
@@ -211,7 +207,7 @@ function ChinaHat.Init(UI, Core, notify)
                 local angle2 = (i / circleSegments) * 2 * math.pi
                 local point1Bottom = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
                 local point2Bottom = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
-                local point1Top = point1Bottom + Vector3.new(0, 0, 0) -- Плоский круг
+                local point1Top = point1Bottom + Vector3.new(0, 0, 0)
                 local point2Top = point2Bottom + Vector3.new(0, 0, 0)
                 local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
                 local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
@@ -244,21 +240,20 @@ function ChinaHat.Init(UI, Core, notify)
     end
 
     local function animateJump()
-        if not State.ChinaHat.JumpAnimate.Value or #hatLines == 0 or jumpAnimationActive then return end
+        if not State.Circle.JumpAnimate.Value or #circleQuads == 0 or jumpAnimationActive then return end
         jumpAnimationActive = true
         local t = 0
         local duration = 0.55
-        local initialRadius = 2.0 * State.ChinaHat.HatScale.Value
-        local maxRadius = initialRadius * 1.6
+        local initialRadius = State.Circle.CircleRadius.Value
+        local maxRadius = State.Circle.CircleRadius.Value * 1.6
         while t < duration do
             local dt = RunService.RenderStepped:Wait()
             t = t + dt
             local factor = t / duration
-            local tempRadius = initialRadius + (maxRadius - initialRadius) * math.sin(factor * math.pi)
-            State.ChinaHat.HatScale.Value = tempRadius / 2.0 -- Обновляем HatScale для анимации
-            updateHat()
+            State.Circle.CircleRadius.Value = initialRadius + (maxRadius - initialRadius) * math.sin(factor * math.pi)
+            updateCircle()
         end
-        State.ChinaHat.HatScale.Value = 0.75 -- Возвращаем исходное значение
+        State.Circle.CircleRadius.Value = initialRadius
         jumpAnimationActive = false
     end
 
@@ -291,7 +286,7 @@ function ChinaHat.Init(UI, Core, notify)
     end)
 
     local function onStateChanged(oldState, newState)
-        if State.ChinaHat.JumpAnimate.Value and newState == Enum.HumanoidStateType.Jumping and not jumpAnimationActive then
+        if State.Circle.JumpAnimate.Value and newState == Enum.HumanoidStateType.Jumping and not jumpAnimationActive then
             animateJump()
         end
     end
@@ -421,85 +416,17 @@ function ChinaHat.Init(UI, Core, notify)
             'HatYOffset'
         })
         chinaHatSection:Toggle({
-            Name = "Circle Enabled",
-            Default = State.ChinaHat.CircleActive.Default,
+            Name = "Outline Circle",
+            Default = State.ChinaHat.OutlineCircle.Default,
             Callback = function(value)
-                State.ChinaHat.CircleActive.Value = value
+                State.ChinaHat.OutlineCircle.Value = value
                 if State.ChinaHat.HatActive.Value then
                     removeParts(hatCircleQuads)
                     createHat()
                 end
-                notify("ChinaHat", "Circle: " .. (value and "Enabled" or "Disabled"), true)
+                notify("ChinaHat", "Outline Circle: " .. (value and "Enabled" or "Disabled"), true)
             end,
-            'CircleEnabled'
-        })
-        chinaHatSection:Slider({
-            Name = "Circle Parts",
-            Minimum = 20,
-            Maximum = 100,
-            Default = State.ChinaHat.CircleParts.Default,
-            Precision = 0,
-            Callback = function(value)
-                if State.ChinaHat.HatActive.Value and State.ChinaHat.CircleActive.Value then
-                    removeParts(hatCircleQuads)
-                    State.ChinaHat.CircleParts.Value = value
-                    createHat()
-                else
-                    State.ChinaHat.CircleParts.Value = value
-                end
-                notify("ChinaHat", "Circle Parts set to: " .. value, false)
-            end,
-            'CircleParts'
-        })
-        chinaHatSection:Slider({
-            Name = "Circle Gradient Speed",
-            Minimum = 1,
-            Maximum = 10,
-            Default = State.ChinaHat.CircleGradientSpeed.Default,
-            Precision = 1,
-            Callback = function(value)
-                State.ChinaHat.CircleGradientSpeed.Value = value
-                if State.ChinaHat.HatActive.Value and State.ChinaHat.CircleActive.Value then
-                    updateHat()
-                end
-                notify("ChinaHat", "Circle Gradient Speed set to: " .. value, false)
-            end,
-            'CircleGradientSpeed'
-        })
-        chinaHatSection:Toggle({
-            Name = "Circle Gradient",
-            Default = State.ChinaHat.CircleGradient.Default,
-            Callback = function(value)
-                State.ChinaHat.CircleGradient.Value = value
-                if State.ChinaHat.HatActive.Value and State.ChinaHat.CircleActive.Value then
-                    removeParts(hatCircleQuads)
-                    createHat()
-                end
-                notify("ChinaHat", "Circle Gradient: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'CircleGradient'
-        })
-        chinaHatSection:Colorpicker({
-            Name = "Circle Color",
-            Default = State.ChinaHat.CircleColor.Default,
-            Callback = function(value)
-                State.ChinaHat.CircleColor.Value = value
-                if State.ChinaHat.HatActive.Value and State.ChinaHat.CircleActive.Value and not State.ChinaHat.CircleGradient.Value then
-                    removeParts(hatCircleQuads)
-                    createHat()
-                end
-                notify("ChinaHat", "Circle Color updated", false)
-            end,
-            'CircleColor'
-        })
-        chinaHatSection:Toggle({
-            Name = "Jump Animate",
-            Default = State.ChinaHat.JumpAnimate.Default,
-            Callback = function(value)
-                State.ChinaHat.JumpAnimate.Value = value
-                notify("ChinaHat", "Jump Animation: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'JumpAnimate'
+            'OutlineCircle'
         })
 
         local circleSection = UI.Sections.Circle or UI.Tabs.Visuals:Section({ Name = "Circle", Side = "Left" })
@@ -608,6 +535,15 @@ function ChinaHat.Init(UI, Core, notify)
                 notify("Circle", "Circle Y Offset set to: " .. value, false)
             end,
             'CircleYOffset'
+        })
+        circleSection:Toggle({
+            Name = "Jump Animate",
+            Default = State.Circle.JumpAnimate.Default,
+            Callback = function(value)
+                State.Circle.JumpAnimate.Value = value
+                notify("Circle", "Jump Animation: " .. (value and "Enabled" or "Disabled"), true)
+            end,
+            'JumpAnimate'
         })
     end
 
