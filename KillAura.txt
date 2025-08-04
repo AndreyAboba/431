@@ -95,8 +95,8 @@ function KillAura.Init(UI, Core, notify)
 
     local INVALID_STANCES = {"windup", "release", "parrying", "unparry", "punching", "kickwindup", "kicking", "flinch", "recovery"}
     local VALID_HUMANOID_STATES = {Enum.HumanoidStateType.Running, Enum.HumanoidStateType.None}
-    local LATENCY_BUFFER = 0.05 -- Buffer for server latency
-    local PREDICTION_THRESHOLD = 0.5 -- Distance threshold for predicting imminent collision
+    local LATENCY_BUFFER = 0.05 -- Буфер для компенсации серверной задержки
+    local PREDICTION_THRESHOLD = 0.7 -- Порог для предсказания столкновения (увеличен для более раннего срабатывания)
 
     local function getPlayerStance(player)
         local character = player.Character
@@ -424,7 +424,7 @@ function KillAura.Init(UI, Core, notify)
             for _, hitbox in pairs(hitboxes) do
                 local distance = (damagePoint.WorldPosition - hitbox.Position).Magnitude
                 local hitboxSize = hitbox.Size.Magnitude / 2
-                if distance <= hitboxSize + PREDICTION_THRESHOLD then -- Predict imminent collision
+                if distance <= hitboxSize + PREDICTION_THRESHOLD then
                     return true
                 end
             end
@@ -445,6 +445,12 @@ function KillAura.Init(UI, Core, notify)
         if State.AutoDodge.ResolveAngle.Value then
             if checkDamagePointCollision(targetPlayer, weapon) then
                 return true, math.max(0, releaseTime - LATENCY_BUFFER - State.AutoDodge.PredictionTime.Value)
+            else
+                -- Переключение на стандартный метод предикта, если ResolveAngle не сработал
+                local distance = getDmgPointDistance(targetPlayer, weapon)
+                if distance <= State.AutoDodge.Range.Value then
+                    return true, releaseTime * (State.AutoDodge.BaseMultiplier.Value + distance * State.AutoDodge.DistanceFactor.Value) - LATENCY_BUFFER
+                end
             end
         else
             local distance = getDmgPointDistance(targetPlayer, weapon)
