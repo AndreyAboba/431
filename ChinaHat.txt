@@ -366,29 +366,49 @@ function ChinaHat.Init(UI, Core, notify)
         end
     end
 
+    local function connectHumanoid(character)
+        if humanoidConnection then
+            humanoidConnection:Disconnect()
+        end
+        localCharacter = character
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        if humanoid then
+            localHumanoid = humanoid
+            humanoidConnection = humanoid.StateChanged:Connect(onStateChanged)
+        end
+        -- Воссоздаем элементы, если они активны
+        if State.ChinaHat.HatActive.Value then
+            createHat()
+        end
+        if State.Circle.CircleActive.Value then
+            createCircle()
+        end
+        if State.Nimb.NimbActive.Value then
+            createNimb()
+        end
+    end
+
     renderConnection = RunService.RenderStepped:Connect(function()
         if localCharacter then
             updateHat()
             updateCircle()
             updateNimb()
         else
-            destroyParts(hatLines)
-            destroyParts(hatCircleQuads)
-            destroyParts(circleQuads)
-            destroyParts(nimbQuads)
+            -- Не уничтожаем части, а просто скрываем их
+            for _, line in ipairs(hatLines) do
+                line.Visible = false
+            end
+            for _, quad in ipairs(hatCircleQuads) do
+                quad.Visible = false
+            end
+            for _, quad in ipairs(circleQuads) do
+                quad.Visible = false
+            end
+            for _, quad in ipairs(nimbQuads) do
+                quad.Visible = false
+            end
         end
     end)
-
-    local function connectHumanoid(character)
-        if humanoidConnection then
-            humanoidConnection:Disconnect()
-        end
-        local humanoid = character:WaitForChild("Humanoid", 5)
-        if humanoid then
-            localHumanoid = humanoid
-            humanoidConnection = humanoid.StateChanged:Connect(onStateChanged)
-        end
-    end
 
     LocalPlayer.CharacterAdded:Connect(connectHumanoid)
     if localCharacter then
@@ -685,6 +705,83 @@ function ChinaHat.Init(UI, Core, notify)
                 notify("Nimb", "Nimb Y Offset set to: " .. value, false)
             end,
             'NimbYOffset'
+        })
+
+        local configSection = UI.Tabs.Visuals:Section({ Name = "ChinaHat Sync", Side = "Right" })
+        configSection:Header({ Name = "ChinaHat Settings Sync" })
+        configSection:Button({
+            Name = "Sync Config",
+            Callback = function()
+                -- Синхронизация ChinaHat
+                if UI.Sections.ChinaHat.HatScale and UI.Sections.ChinaHat.HatScale.Value then
+                    State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale.Value:GetValue()
+                    if State.ChinaHat.HatActive.Value then
+                        createHat()
+                    end
+                    notify("ChinaHat", "Hat Scale synced to: " .. State.ChinaHat.HatScale.Value, false)
+                end
+                if UI.Sections.ChinaHat.HatParts and UI.Sections.ChinaHat.HatParts.Value then
+                    State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts.Value:GetValue()
+                    if State.ChinaHat.HatActive.Value then
+                        createHat()
+                    end
+                    notify("ChinaHat", "Hat Parts synced to: " .. State.ChinaHat.HatParts.Value, false)
+                end
+                if UI.Sections.ChinaHat.HatGradientSpeed and UI.Sections.ChinaHat.HatGradientSpeed.Value then
+                    State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed.Value:GetValue()
+                    notify("ChinaHat", "Hat Gradient Speed synced to: " .. State.ChinaHat.HatGradientSpeed.Value, false)
+                end
+                if UI.Sections.ChinaHat.HatYOffset and UI.Sections.ChinaHat.HatYOffset.Value then
+                    State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset.Value:GetValue()
+                    notify("ChinaHat", "Hat Y Offset synced to: " .. State.ChinaHat.HatYOffset.Value, false)
+                end
+
+                -- Синхронизация Circle
+                if UI.Sections.Circle.CircleRadius and UI.Sections.Circle.CircleRadius.Value then
+                    State.Circle.CircleRadius.Value = UI.Sections.Circle.CircleRadius.Value:GetValue()
+                    if State.Circle.CircleActive.Value then
+                        createCircle()
+                    end
+                    notify("Circle", "Circle Radius synced to: " .. State.Circle.CircleRadius.Value, false)
+                end
+                if UI.Sections.Circle.CircleParts and UI.Sections.Circle.CircleParts.Value then
+                    State.Circle.CircleParts.Value = UI.Sections.Circle.CircleParts.Value:GetValue()
+                    if State.Circle.CircleActive.Value then
+                        createCircle()
+                    end
+                    notify("Circle", "Circle Parts synced to: " .. State.Circle.CircleParts.Value, false)
+                end
+                if UI.Sections.Circle.CircleGradientSpeed and UI.Sections.Circle.CircleGradientSpeed.Value then
+                    State.Circle.CircleGradientSpeed.Value = UI.Sections.Circle.CircleGradientSpeed.Value:GetValue()
+                    notify("Circle", "Circle Gradient Speed synced to: " .. State.Circle.CircleGradientSpeed.Value, false)
+                end
+
+                -- Синхронизация Nimb
+                if UI.Sections.Nimb.NimbRadius and UI.Sections.Nimb.NimbRadius.Value then
+                    State.Nimb.NimbRadius.Value = UI.Sections.Nimb.NimbRadius.Value:GetValue()
+                    if State.Nimb.NimbActive.Value then
+                        createNimb()
+                    end
+                    notify("Nimb", "Nimb Radius synced to: " .. State.Nimb.NimbRadius.Value, false)
+                end
+                if UI.Sections.Nimb.NimbParts and UI.Sections.Nimb.NimbParts.Value then
+                    State.Nimb.NimbParts.Value = UI.Sections.Nimb.NimbParts.Value:GetValue()
+                    if State.Nimb.NimbActive.Value then
+                        createNimb()
+                    end
+                    notify("Nimb", "Nimb Parts synced to: " .. State.Nimb.NimbParts.Value, false)
+                end
+                if UI.Sections.Nimb.NimbGradientSpeed and UI.Sections.Nimb.NimbGradientSpeed.Value then
+                    State.Nimb.NimbGradientSpeed.Value = UI.Sections.Nimb.NimbGradientSpeed.Value:GetValue()
+                    notify("Nimb", "Nimb Gradient Speed synced to: " .. State.Nimb.NimbGradientSpeed.Value, false)
+                end
+                if UI.Sections.Nimb.NimbYOffset and UI.Sections.Nimb.NimbYOffset.Value then
+                    State.Nimb.NimbYOffset.Value = UI.Sections.Nimb.NimbYOffset.Value:GetValue()
+                    notify("Nimb", "Nimb Y Offset synced to: " .. State.Nimb.NimbYOffset.Value, false)
+                end
+
+                notify("ChinaHat", "Config synchronized!", true)
+            end
         })
     end
 
