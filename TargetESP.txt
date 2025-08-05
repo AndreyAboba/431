@@ -1,5 +1,5 @@
 local TargetESP = {}
-print('1')
+
 function TargetESP.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -27,11 +27,12 @@ function TargetESP.Init(UI, Core, notify)
     local targetESPBlurQuads = {}
     local animationProgress = 0
     local animationDirection = 1
+    local lastTarget = nil
 
     local function destroyParts(parts)
         for _, part in ipairs(parts) do
             if part and part.Destroy then
-                part:Destroy() -- Используем Destroy вместо Remove для корректной очистки
+                part:Destroy()
             end
         end
         table.clear(parts)
@@ -75,7 +76,7 @@ function TargetESP.Init(UI, Core, notify)
         for i = 1, partsCount do
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = 1
+            quad.Thickness = 2 -- Увеличена толщина для более плавного вида
             quad.Filled = false
             quad.Color = State.TargetESP.TargetESPGradient.Value and
                 interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
@@ -85,7 +86,7 @@ function TargetESP.Init(UI, Core, notify)
             if State.TargetESP.AnimateCircle.Value == "Jello" then
                 local blurQuad = Drawing.new("Quad")
                 blurQuad.Visible = false
-                blurQuad.Thickness = 1
+                blurQuad.Thickness = 2
                 blurQuad.Filled = true
                 blurQuad.Color = quad.Color
                 blurQuad.Transparency = 0.3
@@ -105,7 +106,22 @@ function TargetESP.Init(UI, Core, notify)
         if not rootPart then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            lastTarget = nil
             return
+        end
+
+        local currentTargetName
+        if State.TargetESP.TargetESPMethod.Value == "All" then
+            currentTargetName = Core.BulwarkTarget.CurrentTarget
+        elseif State.TargetESP.TargetESPMethod.Value == "KillAura" then
+            currentTargetName = Core.BulwarkTarget.KillAuraTarget
+        elseif State.TargetESP.TargetESPMethod.Value == "AutoDodge" then
+            currentTargetName = Core.BulwarkTarget.AutoDodgeTarget
+        end
+
+        if currentTargetName ~= lastTarget then
+            lastTarget = currentTargetName
+            createTargetESP()
         end
 
         local t = tick()
@@ -130,16 +146,21 @@ function TargetESP.Init(UI, Core, notify)
             local angle1 = ((i - 1) / partsCount) * 2 * math.pi
             local angle2 = (i / partsCount) * 2 * math.pi
 
-            -- Создаем 3D-эффект для Jello
-            local depthOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.2) or 0
+            -- Улучшение для более плавных линий
+            local depthOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.15) or 0
             local point1 = center + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
             local point2 = center + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
+            local point3 = center + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
+            local point4 = center + Vector3.new(math.cos(angle2) * espRadius * 0.95, depthOffset, math.sin(angle2) * espRadius * 0.95)
+
             local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
             local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
+            local screenPoint3, onScreen3 = camera:WorldToViewportPoint(point3)
+            local screenPoint4, onScreen4 = camera:WorldToViewportPoint(point4)
 
-            if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
-                quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+            if onScreen1 and onScreen2 and onScreen3 and onScreen4 and screenPoint1.Z > 0 and screenPoint2.Z > 0 and screenPoint3.Z > 0 and screenPoint4.Z > 0 then
+                quad.PointA = Vector2.new(screenPoint3.X, screenPoint3.Y)
+                quad.PointB = Vector2.new(screenPoint4.X, screenPoint4.Y)
                 quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
                 quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
                 quad.Visible = true
@@ -156,12 +177,17 @@ function TargetESP.Init(UI, Core, notify)
                     local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
                     local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
                     local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
+                    local blurPoint3 = blurCenter + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
+                    local blurPoint4 = blurCenter + Vector3.new(math.cos(angle2) * espRadius * 0.95, depthOffset, math.sin(angle2) * espRadius * 0.95)
+
                     local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
                     local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
+                    local screenBlurPoint3, onScreenBlur3 = camera:WorldToViewportPoint(blurPoint3)
+                    local screenBlurPoint4, onScreenBlur4 = camera:WorldToViewportPoint(blurPoint4)
 
-                    if onScreenBlur1 and onScreenBlur2 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 then
-                        blurQuad.PointA = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                        blurQuad.PointB = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                    if onScreenBlur1 and onScreenBlur2 and onScreenBlur3 and onScreenBlur4 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 and screenBlurPoint3.Z > 0 and screenBlurPoint4.Z > 0 then
+                        blurQuad.PointA = Vector2.new(screenBlurPoint3.X, screenBlurPoint3.Y)
+                        blurQuad.PointB = Vector2.new(screenBlurPoint4.X, screenBlurPoint4.Y)
                         blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
                         blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
                         blurQuad.Visible = true
@@ -187,6 +213,7 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            lastTarget = nil
             notify("TargetESP", "Target ESP Disabled", true)
         end
     end
@@ -198,6 +225,7 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            lastTarget = nil
         end
     end)
 
@@ -224,6 +252,7 @@ function TargetESP.Init(UI, Core, notify)
             Options = State.TargetESP.TargetESPMethod.Options,
             Callback = function(value)
                 State.TargetESP.TargetESPMethod.Value = value
+                lastTarget = nil -- Сбрасываем для пересоздания
                 if State.TargetESP.TargetESPActive.Value then
                     createTargetESP()
                 end
@@ -329,7 +358,6 @@ function TargetESP.Init(UI, Core, notify)
         })
     end
 
-    -- Очистка при завершении работы
     function TargetESP:Destroy()
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
