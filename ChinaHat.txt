@@ -79,12 +79,12 @@ function ChinaHat.Init(UI, Core, notify)
             table.insert(hatLines, line)
         end
         if State.ChinaHat.OutlineCircle.Value then
-            for i = 1, 20 do
+            for i = 1, 40 do
                 local quad = Drawing.new("Quad")
                 quad.Visible = false
                 quad.Thickness = 1
                 quad.Filled = false
-                quad.Color = State.ChinaHat.HatGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / 20) or State.ChinaHat.HatColor.Value
+                quad.Color = State.ChinaHat.HatGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / 40) or State.ChinaHat.HatColor.Value
                 table.insert(hatCircleQuads, quad)
             end
         end
