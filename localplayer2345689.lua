@@ -25,7 +25,7 @@ MovementEnhancements.Config = {
         PulseTPDist = 5,
         PulseTPDelay = 0.2,
         ToggleKey = nil,
-        SmoothnessFactor = 0.2 -- Уменьшено для более плавного разгона
+        SmoothnessFactor = 0.2
     },
     Fly = {
         Enabled = false,
@@ -69,7 +69,8 @@ local SpeedStatus = {
     PulseTPDistance = MovementEnhancements.Config.Speed.PulseTPDist,
     PulseTPFrequency = MovementEnhancements.Config.Speed.PulseTPDelay,
     SmoothnessFactor = MovementEnhancements.Config.Speed.SmoothnessFactor,
-    CurrentMoveDirection = Vector3.new(0, 0, 0)
+    CurrentMoveDirection = Vector3.new(0, 0, 0),
+    LastPulseTPTime = 0
 }
 
 local FlyStatus = {
@@ -238,16 +239,17 @@ Disabler.Stop = function()
 end
 
 local Speed = {}
-Speed.UpdateMovement = function(humanoid, rootPart, moveDirection, currentTime)
+Speed.UpdateMovement = function(humanoid, rootPart, moveDirection, currentTime, dt)
     if not isCharacterValid(humanoid, rootPart) then return end
     if SpeedStatus.Method == "CFrame" then
         if moveDirection.Magnitude > 0 then
-            local newCFrame = rootPart.CFrame + (moveDirection * SpeedStatus.Speed * 0.0167)
+            local newCFrame = rootPart.CFrame + (moveDirection * SpeedStatus.Speed * dt)
             rootPart.CFrame = CFrame.new(newCFrame.Position, newCFrame.Position + moveDirection)
         end
     elseif SpeedStatus.Method == "PulseTP" then
         if moveDirection.Magnitude > 0 and currentTime - SpeedStatus.LastPulseTPTime >= SpeedStatus.PulseTPFrequency then
-            local teleportVector = moveDirection.Unit * SpeedStatus.PulseTPDistance
+            local scaledDistance = SpeedStatus.PulseTPDistance * (SpeedStatus.Speed / 16) -- Масштабируем дистанцию на основе Speed
+            local teleportVector = moveDirection.Unit * scaledDistance
             local destination = rootPart.Position + teleportVector
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {LocalPlayerObj.Character}
@@ -284,7 +286,7 @@ Speed.Start = function()
         if not isCharacterValid(humanoid, rootPart) then return end
         local currentTime = tick()
         local moveDirection = getCustomMoveDirection()
-        Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime)
+        Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime, dt)
         Speed.UpdateJumps(humanoid, rootPart, currentTime, moveDirection)
     end)
     notify("Speed", "Started with Method: " .. SpeedStatus.Method, true)
@@ -300,7 +302,7 @@ Speed.Stop = function()
 end
 
 Speed.SetSpeed = function(newSpeed)
-    SpeedStatus.Speed = math.clamp(newSpeed, 16, 250)
+    SpeedStatus.Speed = math.clamp(newSpeed, 2, 250) -- Изменен минимум на 2
     MovementEnhancements.Config.Speed.Speed = SpeedStatus.Speed
     notify("Speed", "Speed set to: " .. SpeedStatus.Speed, false)
 end
@@ -608,8 +610,8 @@ local function SetupUI(UI)
         }, "SpeedMethod")
         uiElements.Speed = UI.Sections.Speed:Slider({
             Name = "Speed",
-            Minimum = 2,
-            Maximum = 40,
+            Minimum = 2, -- Изменен минимум на 2
+            Maximum = 250,
             Default = MovementEnhancements.Config.Speed.Speed,
             Precision = 1,
             Callback = function(value)
