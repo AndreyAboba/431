@@ -25,7 +25,7 @@ function TargetESP.Init(UI, Core, notify)
 
     local targetESPQuads = {}
     local targetESPBlurQuads = {}
-    local targetESPOppositeQuads = {} -- Второй круг с противоположным вращением
+    local targetESPOppositeQuads = {}
     local lastTarget = nil
 
     local function destroyParts(parts)
@@ -74,29 +74,26 @@ function TargetESP.Init(UI, Core, notify)
 
         local partsCount = State.TargetESP.TargetESPParts.Value
         for i = 1, partsCount do
-            -- Основной круг
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = State.TargetESP.AnimateCircle.Value == "None" and 1 or 2
+            quad.Thickness = State.TargetESP.AnimateCircle.Value == "None" and 1 or 1.5
             quad.Filled = false
             quad.Color = State.TargetESP.TargetESPGradient.Value and
                 interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
                 State.TargetESP.TargetESPColor.Value
             table.insert(targetESPQuads, quad)
 
-            -- Противоположный круг
             local oppositeQuad = Drawing.new("Quad")
             oppositeQuad.Visible = false
-            oppositeQuad.Thickness = State.TargetESP.AnimateCircle.Value == "None" and 1 or 2
+            oppositeQuad.Thickness = State.TargetESP.AnimateCircle.Value == "None" and 1 or 1.5
             oppositeQuad.Filled = false
             oppositeQuad.Color = quad.Color
             table.insert(targetESPOppositeQuads, oppositeQuad)
 
-            -- BlurQuad для основного круга
             if State.TargetESP.AnimateCircle.Value == "Orbit" then
                 local blurQuad = Drawing.new("Quad")
                 blurQuad.Visible = false
-                blurQuad.Thickness = 2
+                blurQuad.Thickness = 1.5
                 blurQuad.Filled = true
                 blurQuad.Color = quad.Color
                 blurQuad.Transparency = 0.3
@@ -160,11 +157,10 @@ function TargetESP.Init(UI, Core, notify)
         for i, quad in ipairs(targetESPQuads) do
             local angle1 = ((i - 1) / partsCount) * 2 * math.pi
             local angle2 = (i / partsCount) * 2 * math.pi
-            local oppositeAngle1 = -angle1 -- Противоположное вращение
+            local oppositeAngle1 = -angle1
             local oppositeAngle2 = -angle2
 
-            -- Увеличенный наклон для Orbit
-            local depthOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.3) or 0
+            local depthOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.5) or 0
             local point1 = center + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
             local point2 = center + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
             local point3 = center + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
@@ -188,7 +184,6 @@ function TargetESP.Init(UI, Core, notify)
                     quad.Color = State.TargetESP.TargetESPColor.Value
                 end
 
-                -- Противоположный круг
                 local oppositeQuad = targetESPOppositeQuads[i]
                 local oppPoint1 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius, -depthOffset, math.sin(oppositeAngle1) * espRadius)
                 local oppPoint2 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius, -depthOffset, math.sin(oppositeAngle2) * espRadius)
@@ -211,10 +206,9 @@ function TargetESP.Init(UI, Core, notify)
                     oppositeQuad.Visible = false
                 end
 
-                -- BlurQuad для основного круга
                 if State.TargetESP.AnimateCircle.Value == "Orbit" and targetESPBlurQuads[i] then
                     local blurQuad = targetESPBlurQuads[i]
-                    local blurOffset = 0.05 -- Уменьшен для приближения к основному кругу
+                    local blurOffset = 0.05
                     local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
                     local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
                     local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
