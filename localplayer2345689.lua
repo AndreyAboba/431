@@ -143,7 +143,7 @@ local function getCustomMoveDirection()
             SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection.Unit
         end
     else
-        -- Обнуляем направление, если клавиши не нажаты
+        -- Сбрасываем направление при отсутствии ввода
         SpeedStatus.CurrentMoveDirection = Vector3.new(0, 0, 0)
     end
     return SpeedStatus.CurrentMoveDirection
@@ -255,7 +255,7 @@ Speed.UpdateJumps = function(humanoid, rootPart, currentTime)
     if not isCharacterValid(humanoid, rootPart) then return end
     if SpeedStatus.AutoJump and currentTime - SpeedStatus.LastJumpTime >= SpeedStatus.JumpInterval then
         local state = humanoid:GetState()
-        if state == Enum.HumanoidStateType.Running or state ==(Enum.HumanoidStateType.Landed then
+        if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Landed then
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             SpeedStatus.LastJumpTime = currentTime
         end
