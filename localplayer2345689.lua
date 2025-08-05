@@ -609,8 +609,8 @@ local function SetupUI(UI)
         }, "SpeedMethod")
         uiElements.Speed = UI.Sections.Speed:Slider({
             Name = "Speed",
-            Minimum = 10,
-            Maximum = 50,
+            Minimum = 5,
+            Maximum = 40,
             Default = MovementEnhancements.Config.Speed.Speed,
             Precision = 1,
             Callback = function(value)
