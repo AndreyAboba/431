@@ -342,10 +342,11 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function toggleCircle(value)
         State.Circle.CircleActive.Value = value
-        if value and ((Core.BulwarkTarget.isAutoDodge and State.Circle.AutoDodgeOnly.Value) or (Core.BulwarkTarget.isKillAura and State.Circle.KillAuraOnly.Value)) then
+        local shouldShow = value and ((Core.BulwarkTarget.isAutoDodge and State.Circle.AutoDodgeOnly.Value) or (Core.BulwarkTarget.isKillAura and State.Circle.KillAuraOnly.Value))
+        if shouldShow and #circleQuads == 0 then
             createCircle()
             notify("Circle", "Circle Enabled", true)
-        else
+        elseif not shouldShow and #circleQuads > 0 then
             removeParts(circleQuads)
             notify("Circle", "Circle Disabled", true)
         end
@@ -364,14 +365,6 @@ function ChinaHat.Init(UI, Core, notify)
 
     RunService.Stepped:Connect(function(deltaTime)
         updateHat()
-        local shouldShowCircle = State.Circle.CircleActive.Value and ((Core.BulwarkTarget.isAutoDodge and State.Circle.AutoDodgeOnly.Value) or (Core.BulwarkTarget.isKillAura and State.Circle.KillAuraOnly.Value))
-        if shouldShowCircle and #circleQuads == 0 then
-            createCircle()
-            notify("Circle", "Circle Enabled", true)
-        elseif not shouldShowCircle and #circleQuads > 0 then
-            removeParts(circleQuads)
-            notify("Circle", "Circle Disabled", true)
-        end
         updateCircle()
         updateNimb()
     end)
@@ -539,12 +532,10 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleRadius.Default,
             Precision = 1,
             Callback = function(value)
-                if State.Circle.CircleActive.Value then
+                State.Circle.CircleRadius.Value = value
+                if State.Circle.CircleActive.Value and #circleQuads > 0 then
                     removeParts(circleQuads)
-                    State.Circle.CircleRadius.Value = value
                     createCircle()
-                else
-                    State.Circle.CircleRadius.Value = value
                 end
                 notify("Circle", "Circle Radius set to: " .. value, false)
             end,
@@ -557,12 +548,10 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleParts.Default,
             Precision = 0,
             Callback = function(value)
-                if State.Circle.CircleActive.Value then
+                State.Circle.CircleParts.Value = value
+                if State.Circle.CircleActive.Value and #circleQuads > 0 then
                     removeParts(circleQuads)
-                    State.Circle.CircleParts.Value = value
                     createCircle()
-                else
-                    State.Circle.CircleParts.Value = value
                 end
                 notify("Circle", "Circle Parts set to: " .. value, false)
             end,
@@ -588,7 +577,7 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleGradient.Default,
             Callback = function(value)
                 State.Circle.CircleGradient.Value = value
-                if State.Circle.CircleActive.Value then
+                if State.Circle.CircleActive.Value and #circleQuads > 0 then
                     removeParts(circleQuads)
                     createCircle()
                 end
@@ -601,7 +590,7 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleColor.Default,
             Callback = function(value)
                 State.Circle.CircleColor.Value = value
-                if State.Circle.CircleActive.Value and not State.Circle.CircleGradient.Value then
+                if State.Circle.CircleActive.Value and #circleQuads > 0 and not State.Circle.CircleGradient.Value then
                     removeParts(circleQuads)
                     createCircle()
                 end
@@ -623,13 +612,7 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.KillAuraOnly.Default,
             Callback = function(value)
                 State.Circle.KillAuraOnly.Value = value
-                if not value and not State.Circle.AutoDodgeOnly.Value then
-                    State.Circle.CircleActive.Value = false
-                    removeParts(circleQuads)
-                    notify("Circle", "Circle Disabled (No mode selected)", true)
-                elseif value or State.Circle.AutoDodgeOnly.Value then
-                    toggleCircle(State.Circle.CircleActive.Value)
-                end
+                toggleCircle(State.Circle.CircleActive.Value)
                 notify("Circle", "KillAura Only: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'KillAuraOnly'
@@ -639,13 +622,7 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.AutoDodgeOnly.Default,
             Callback = function(value)
                 State.Circle.AutoDodgeOnly.Value = value
-                if not value and not State.Circle.KillAuraOnly.Value then
-                    State.Circle.CircleActive.Value = false
-                    removeParts(circleQuads)
-                    notify("Circle", "Circle Disabled (No mode selected)", true)
-                elseif value or State.Circle.KillAuraOnly.Value then
-                    toggleCircle(State.Circle.CircleActive.Value)
-                end
+                toggleCircle(State.Circle.CircleActive.Value)
                 notify("Circle", "AutoDodge Only: " .. (value and "Enabled" or "Disabled"), true)
             end,
             'AutoDodgeOnly'
