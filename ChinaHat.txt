@@ -174,7 +174,7 @@ function ChinaHat.Init(UI, Core, notify)
 
             local screenCenter, onScreenCenter = camera:WorldToViewportPoint(topCenter)
             if onScreenCenter and screenCenter.Z > 0 then
-                local circleRadius = 0.2 * State.ChinaHat.HatScale.Value
+                local circleRadius = 2.0 * State.ChinaHat.HatScale.Value
                 for i, quad in ipairs(hatCircleQuads) do
                     local angle1 = ((i - 1) / 40) * 2 * math.pi
                     local angle2 = (i / 40) * 2 * math.pi
