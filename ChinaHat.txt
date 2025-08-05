@@ -29,10 +29,7 @@ function ChinaHat.Init(UI, Core, notify)
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             JumpAnimate = { Value = false, Default = false },
-            CircleYOffset = { Value = -3, Default = -3 },
-            AnimateCircle = { Value = "None", Default = "None", Options = {"None", "Orbit", "Jello", "OrbitSwirl"} },
-            AnimationSpeed = { Value = 2, Default = 2 },
-            OrbitTilt = { Value = 0.7, Default = 0.7 }
+            CircleYOffset = { Value = -3, Default = -3 }
         },
         Nimb = {
             NimbActive = { Value = false, Default = false },
@@ -41,19 +38,14 @@ function ChinaHat.Init(UI, Core, notify)
             NimbGradientSpeed = { Value = 4, Default = 4 },
             NimbGradient = { Value = true, Default = true },
             NimbColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            NimbYOffset = { Value = 1.5, Default = 1.5 },
-            AnimateNimb = { Value = "None", Default = "None", Options = {"None", "Orbit", "Jello", "OrbitSwirl"} },
-            AnimationSpeed = { Value = 2, Default = 2 },
-            OrbitTilt = { Value = 0.7, Default = 0.7 }
+            NimbYOffset = { Value = 1.5, Default = 1.5 }
         }
     }
 
     local hatLines = {}
     local hatCircleQuads = {}
     local circleQuads = {}
-    local circleBlurQuads = {}
     local nimbQuads = {}
-    local nimbBlurQuads = {}
     local jumpAnimationActive = false
     local renderConnection
     local humanoidConnection
@@ -107,56 +99,30 @@ function ChinaHat.Init(UI, Core, notify)
     local function createCircle()
         if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
         destroyParts(circleQuads)
-        destroyParts(circleBlurQuads)
-        local partsCount = State.Circle.CircleParts.Value
-        for i = 1, partsCount do
+        for i = 1, State.Circle.CircleParts.Value do
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = (State.Circle.AnimateCircle.Value == "Orbit" or State.Circle.AnimateCircle.Value == "OrbitSwirl") and 1.5 or 1
+            quad.Thickness = 1
             quad.Filled = false
             quad.Color = State.Circle.CircleGradient.Value and
-                interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
+                interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.Circle.CircleParts.Value) or
                 State.Circle.CircleColor.Value
             table.insert(circleQuads, quad)
-        end
-        if State.Circle.AnimateCircle.Value == "Orbit" or State.Circle.AnimateCircle.Value == "OrbitSwirl" then
-            for i = 1, partsCount do
-                local blurQuad = Drawing.new("Quad")
-                blurQuad.Visible = false
-                blurQuad.Thickness = 1.5
-                blurQuad.Filled = true
-                blurQuad.Color = circleQuads[i].Color
-                blurQuad.Transparency = 0.3
-                table.insert(circleBlurQuads, blurQuad)
-            end
         end
     end
 
     local function createNimb()
         if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
         destroyParts(nimbQuads)
-        destroyParts(nimbBlurQuads)
-        local partsCount = State.Nimb.NimbParts.Value
-        for i = 1, partsCount do
+        for i = 1, State.Nimb.NimbParts.Value do
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = (State.Nimb.AnimateNimb.Value == "Orbit" or State.Nimb.AnimateNimb.Value == "OrbitSwirl") and 1.5 or 1
+            quad.Thickness = 1
             quad.Filled = false
             quad.Color = State.Nimb.NimbGradient.Value and
-                interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
+                interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.Nimb.NimbParts.Value) or
                 State.Nimb.NimbColor.Value
             table.insert(nimbQuads, quad)
-        end
-        if State.Nimb.AnimateNimb.Value == "Orbit" or State.Nimb.AnimateNimb.Value == "OrbitSwirl" then
-            for i = 1, partsCount do
-                local blurQuad = Drawing.new("Quad")
-                blurQuad.Visible = false
-                blurQuad.Thickness = 1.5
-                blurQuad.Filled = true
-                blurQuad.Color = nimbQuads[i].Color
-                blurQuad.Transparency = 0.3
-                table.insert(nimbBlurQuads, blurQuad)
-            end
         end
     end
 
@@ -206,8 +172,8 @@ function ChinaHat.Init(UI, Core, notify)
             for i, line in ipairs(hatLines) do
                 if line.Visible then
                     local angle = (i / State.ChinaHat.HatParts.Value) * 2 * math.pi
-                    local x = math.cos(angle) * hatRadius
-                    local z = math.sin(angle) * hatRadius
+                    x = math.cos(angle) * hatRadius
+                    z = math.sin(angle) * hatRadius
                     local topPosition = Vector3.new(head.Position.X + x, y - hatHeight / 3, head.Position.Z + z)
                     topCenter = topCenter + topPosition
                     visibleEnds = visibleEnds + 1
@@ -257,27 +223,15 @@ function ChinaHat.Init(UI, Core, notify)
     local function updateCircle()
         if not State.Circle.CircleActive.Value or not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then
             destroyParts(circleQuads)
-            destroyParts(circleBlurQuads)
             return
         end
         local rootPart = localCharacter.HumanoidRootPart
         local t = tick()
-        local yOffset
-        if State.Circle.AnimateCircle.Value == "Jello" then
-            yOffset = math.sin(t * State.Circle.AnimationSpeed.Value) * 2.75 - 0.25 -- От -3 до 2.5
-        elseif State.Circle.AnimateCircle.Value == "Orbit" then
-            yOffset = math.sin(t * State.Circle.AnimationSpeed.Value) * 0.5
-        else
-            yOffset = State.Circle.CircleYOffset.Value
-        end
-        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Circle.CircleYOffset.Value, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if not (onScreenCenter and screenCenter.Z > 0) then
             for _, quad in ipairs(circleQuads) do
                 quad.Visible = false
-            end
-            for _, blurQuad in ipairs(circleBlurQuads) do
-                blurQuad.Visible = false
             end
             return
         end
@@ -285,49 +239,19 @@ function ChinaHat.Init(UI, Core, notify)
         local circleRadius = State.Circle.CircleRadius.Value
         local partsCount = #circleQuads
         for i, quad in ipairs(circleQuads) do
-            local angleOffset
-            if State.Circle.AnimateCircle.Value == "Jello" then
-                angleOffset = math.sin(t * State.Circle.AnimationSpeed.Value) * 0.2
-            elseif State.Circle.AnimateCircle.Value == "OrbitSwirl" then
-                angleOffset = t * (State.Circle.AnimationSpeed.Value * 0.75)
-            else
-                angleOffset = 0
-            end
-
-            local angle1 = ((i - 1) / partsCount) * 2 * math.pi + angleOffset
-            local angle2 = (i / partsCount) * 2 * math.pi + angleOffset
-            local depthOffset = (State.Circle.AnimateCircle.Value == "Orbit" or State.Circle.AnimateCircle.Value == "OrbitSwirl") and
-                                (math.cos(t * State.Circle.AnimationSpeed.Value + (i / partsCount) * 2 * math.pi) * State.Circle.OrbitTilt.Value) or 0
-            local point1 = center + Vector3.new(math.cos(angle1) * circleRadius, depthOffset, math.sin(angle1) * circleRadius)
-            local point2 = center + Vector3.new(math.cos(angle2) * circleRadius, depthOffset, math.sin(angle2) * circleRadius)
-
+            local angle1 = ((i - 1) / partsCount) * 2 * math.pi
+            local angle2 = (i / partsCount) * 2 * math.pi
+            local point1 = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
+            local point2 = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
             local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
             local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
 
             if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
-                if State.Circle.AnimateCircle.Value == "Orbit" or State.Circle.AnimateCircle.Value == "OrbitSwirl" then
-                    local point3 = center + Vector3.new(math.cos(angle1) * circleRadius * 0.95, depthOffset, math.sin(angle1) * circleRadius * 0.95)
-                    local point4 = center + Vector3.new(math.cos(angle2) * circleRadius * 0.95, depthOffset, math.sin(angle2) * circleRadius * 0.95)
-                    local screenPoint3, onScreen3 = camera:WorldToViewportPoint(point3)
-                    local screenPoint4, onScreen4 = camera:WorldToViewportPoint(point4)
-
-                    if onScreen3 and onScreen4 and screenPoint3.Z > 0 and screenPoint4.Z > 0 then
-                        quad.PointA = Vector2.new(screenPoint3.X, screenPoint3.Y)
-                        quad.PointB = Vector2.new(screenPoint4.X, screenPoint4.Y)
-                        quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                        quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                        quad.Visible = true
-                    else
-                        quad.Visible = false
-                    end
-                else
-                    quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                    quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                    quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                    quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                    quad.Visible = true
-                end
-
+                quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                quad.Visible = true
                 if State.Circle.CircleGradient.Value then
                     local factor = (math.sin(t * State.Circle.CircleGradientSpeed.Value + (i / partsCount) * 2 * math.pi) + 1) / 2
                     quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
@@ -338,61 +262,20 @@ function ChinaHat.Init(UI, Core, notify)
                 quad.Visible = false
             end
         end
-
-        if State.Circle.AnimateCircle.Value == "Orbit" or State.Circle.AnimateCircle.Value == "OrbitSwirl" then
-            for i, blurQuad in ipairs(circleBlurQuads) do
-                local angle1 = ((i - 1) / partsCount) * 2 * math.pi + (State.Circle.AnimateCircle.Value == "OrbitSwirl" and (t * (State.Circle.AnimationSpeed.Value * 0.75)) or 0)
-                local angle2 = (i / partsCount) * 2 * math.pi + (State.Circle.AnimateCircle.Value == "OrbitSwirl" and (t * (State.Circle.AnimationSpeed.Value * 0.75)) or 0)
-                local blurOffset = 0.05
-                local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
-                local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * circleRadius, depthOffset, math.sin(angle1) * circleRadius)
-                local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * circleRadius, depthOffset, math.sin(angle2) * circleRadius)
-                local blurPoint3 = blurCenter + Vector3.new(math.cos(angle1) * circleRadius * 0.95, depthOffset, math.sin(angle1) * circleRadius * 0.95)
-                local blurPoint4 = blurCenter + Vector3.new(math.cos(angle2) * circleRadius * 0.95, depthOffset, math.sin(angle2) * circleRadius * 0.95)
-
-                local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
-                local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
-                local screenBlurPoint3, onScreenBlur3 = camera:WorldToViewportPoint(blurPoint3)
-                local screenBlurPoint4, onScreenBlur4 = camera:WorldToViewportPoint(blurPoint4)
-
-                if onScreenBlur1 and onScreenBlur2 and onScreenBlur3 and onScreenBlur4 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 and screenBlurPoint3.Z > 0 and screenBlurPoint4.Z > 0 then
-                    blurQuad.PointA = Vector2.new(screenBlurPoint3.X, screenBlurPoint3.Y)
-                    blurQuad.PointB = Vector2.new(screenBlurPoint4.X, screenBlurPoint4.Y)
-                    blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
-                    blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                    blurQuad.Visible = true
-                    blurQuad.Color = circleQuads[i].Color
-                else
-                    blurQuad.Visible = false
-                end
-            end
-        end
     end
 
     local function updateNimb()
         if not State.Nimb.NimbActive.Value or not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then
             destroyParts(nimbQuads)
-            destroyParts(nimbBlurQuads)
             return
         end
         local rootPart = localCharacter.HumanoidRootPart
         local t = tick()
-        local yOffset
-        if State.Nimb.AnimateNimb.Value == "Jello" then
-            yOffset = math.sin(t * State.Nimb.AnimationSpeed.Value) * 2.75 - 0.25 -- От -3 до 2.5
-        elseif State.Nimb.AnimateNimb.Value == "Orbit" then
-            yOffset = math.sin(t * State.Nimb.AnimationSpeed.Value) * 0.5
-        else
-            yOffset = State.Nimb.NimbYOffset.Value
-        end
-        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Nimb.NimbYOffset.Value, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if not (onScreenCenter and screenCenter.Z > 0) then
             for _, quad in ipairs(nimbQuads) do
                 quad.Visible = false
-            end
-            for _, blurQuad in ipairs(nimbBlurQuads) do
-                blurQuad.Visible = false
             end
             return
         end
@@ -400,49 +283,19 @@ function ChinaHat.Init(UI, Core, notify)
         local nimbRadius = State.Nimb.NimbRadius.Value
         local partsCount = #nimbQuads
         for i, quad in ipairs(nimbQuads) do
-            local angleOffset
-            if State.Nimb.AnimateNimb.Value == "Jello" then
-                angleOffset = math.sin(t * State.Nimb.AnimationSpeed.Value) * 0.2
-            elseif State.Nimb.AnimateNimb.Value == "OrbitSwirl" then
-                angleOffset = t * (State.Nimb.AnimationSpeed.Value * 0.75)
-            else
-                angleOffset = 0
-            end
-
-            local angle1 = ((i - 1) / partsCount) * 2 * math.pi + angleOffset
-            local angle2 = (i / partsCount) * 2 * math.pi + angleOffset
-            local depthOffset = (State.Nimb.AnimateNimb.Value == "Orbit" or State.Nimb.AnimateNimb.Value == "OrbitSwirl") and
-                                (math.cos(t * State.Nimb.AnimationSpeed.Value + (i / partsCount) * 2 * math.pi) * State.Nimb.OrbitTilt.Value) or 0
-            local point1 = center + Vector3.new(math.cos(angle1) * nimbRadius, depthOffset, math.sin(angle1) * nimbRadius)
-            local point2 = center + Vector3.new(math.cos(angle2) * nimbRadius, depthOffset, math.sin(angle2) * nimbRadius)
-
+            local angle1 = ((i - 1) / partsCount) * 2 * math.pi
+            local angle2 = (i / partsCount) * 2 * math.pi
+            local point1 = center + Vector3.new(math.cos(angle1) * nimbRadius, 0, math.sin(angle1) * nimbRadius)
+            local point2 = center + Vector3.new(math.cos(angle2) * nimbRadius, 0, math.sin(angle2) * nimbRadius)
             local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
             local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
 
             if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
-                if State.Nimb.AnimateNimb.Value == "Orbit" or State.Nimb.AnimateNimb.Value == "OrbitSwirl" then
-                    local point3 = center + Vector3.new(math.cos(angle1) * nimbRadius * 0.95, depthOffset, math.sin(angle1) * nimbRadius * 0.95)
-                    local point4 = center + Vector3.new(math.cos(angle2) * nimbRadius * 0.95, depthOffset, math.sin(angle2) * nimbRadius * 0.95)
-                    local screenPoint3, onScreen3 = camera:WorldToViewportPoint(point3)
-                    local screenPoint4, onScreen4 = camera:WorldToViewportPoint(point4)
-
-                    if onScreen3 and onScreen4 and screenPoint3.Z > 0 and screenPoint4.Z > 0 then
-                        quad.PointA = Vector2.new(screenPoint3.X, screenPoint3.Y)
-                        quad.PointB = Vector2.new(screenPoint4.X, screenPoint4.Y)
-                        quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                        quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                        quad.Visible = true
-                    else
-                        quad.Visible = false
-                    end
-                else
-                    quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                    quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                    quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                    quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                    quad.Visible = true
-                end
-
+                quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                quad.Visible = true
                 if State.Nimb.NimbGradient.Value then
                     local factor = (math.sin(t * State.Nimb.NimbGradientSpeed.Value + (i / partsCount) * 2 * math.pi) + 1) / 2
                     quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
@@ -451,35 +304,6 @@ function ChinaHat.Init(UI, Core, notify)
                 end
             else
                 quad.Visible = false
-            end
-        end
-
-        if State.Nimb.AnimateNimb.Value == "Orbit" or State.Nimb.AnimateNimb.Value == "OrbitSwirl" then
-            for i, blurQuad in ipairs(nimbBlurQuads) do
-                local angle1 = ((i - 1) / partsCount) * 2 * math.pi + (State.Nimb.AnimateNimb.Value == "OrbitSwirl" and (t * (State.Nimb.AnimationSpeed.Value * 0.75)) or 0)
-                local angle2 = (i / partsCount) * 2 * math.pi + (State.Nimb.AnimateNimb.Value == "OrbitSwirl" and (t * (State.Nimb.AnimationSpeed.Value * 0.75)) or 0)
-                local blurOffset = 0.05
-                local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
-                local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * nimbRadius, depthOffset, math.sin(angle1) * nimbRadius)
-                local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * nimbRadius, depthOffset, math.sin(angle2) * nimbRadius)
-                local blurPoint3 = blurCenter + Vector3.new(math.cos(angle1) * nimbRadius * 0.95, depthOffset, math.sin(angle1) * nimbRadius * 0.95)
-                local blurPoint4 = blurCenter + Vector3.new(math.cos(angle2) * nimbRadius * 0.95, depthOffset, math.sin(angle2) * nimbRadius * 0.95)
-
-                local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
-                local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
-                local screenBlurPoint3, onScreenBlur3 = camera:WorldToViewportPoint(blurPoint3)
-                local screenBlurPoint4, onScreenBlur4 = camera:WorldToViewportPoint(blurPoint4)
-
-                if onScreenBlur1 and onScreenBlur2 and onScreenBlur3 and onScreenBlur4 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 and screenBlurPoint3.Z > 0 and screenBlurPoint4.Z > 0 then
-                    blurQuad.PointA = Vector2.new(screenBlurPoint3.X, screenBlurPoint3.Y)
-                    blurQuad.PointB = Vector2.new(screenBlurPoint4.X, screenBlurPoint4.Y)
-                    blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
-                    blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                    blurQuad.Visible = true
-                    blurQuad.Color = nimbQuads[i].Color
-                else
-                    blurQuad.Visible = false
-                end
             end
         end
     end
@@ -521,7 +345,6 @@ function ChinaHat.Init(UI, Core, notify)
             notify("Circle", "Circle Enabled", true)
         else
             destroyParts(circleQuads)
-            destroyParts(circleBlurQuads)
             notify("Circle", "Circle Disabled", true)
         end
     end
@@ -533,7 +356,6 @@ function ChinaHat.Init(UI, Core, notify)
             notify("Nimb", "Nimb Enabled", true)
         else
             destroyParts(nimbQuads)
-            destroyParts(nimbBlurQuads)
             notify("Nimb", "Nimb Disabled", true)
         end
     end
@@ -553,9 +375,7 @@ function ChinaHat.Init(UI, Core, notify)
             destroyParts(hatLines)
             destroyParts(hatCircleQuads)
             destroyParts(circleQuads)
-            destroyParts(circleBlurQuads)
             destroyParts(nimbQuads)
-            destroyParts(nimbBlurQuads)
         end
     end)
 
@@ -766,46 +586,6 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'JumpAnimate'
         })
-        circleSection:Dropdown({
-            Name = "Animate Circle",
-            Default = State.Circle.AnimateCircle.Default,
-            Options = State.Circle.AnimateCircle.Options,
-            Callback = function(value)
-                State.Circle.AnimateCircle.Value = value
-                if State.Circle.CircleActive.Value then
-                    createCircle()
-                end
-                notify("Circle", "Animate Circle set to: " .. value, false)
-            end,
-            'AnimateCircle'
-        })
-        circleSection:Slider({
-            Name = "Animation Speed",
-            Minimum = 1,
-            Maximum = 5,
-            Default = State.Circle.AnimationSpeed.Default,
-            Precision = 1,
-            Callback = function(value)
-                State.Circle.AnimationSpeed.Value = value
-                notify("Circle", "Animation Speed set to: " .. value, false)
-            end,
-            'CircleAnimationSpeed'
-        })
-        circleSection:Slider({
-            Name = "Orbit Tilt",
-            Minimum = 0.1,
-            Maximum = 1.0,
-            Default = State.Circle.OrbitTilt.Default,
-            Precision = 2,
-            Callback = function(value)
-                State.Circle.OrbitTilt.Value = value
-                if State.Circle.CircleActive.Value and (State.Circle.AnimateCircle.Value == "Orbit" or State.Circle.AnimateCircle.Value == "OrbitSwirl") then
-                    createCircle()
-                end
-                notify("Circle", "Orbit Tilt set to: " .. value, false)
-            end,
-            'CircleOrbitTilt'
-        })
 
         local nimbSection = UI.Sections.Nimb or UI.Tabs.Visuals:Section({ Name = "Nimb", Side = "Right" })
         UI.Sections.Nimb = nimbSection
@@ -897,55 +677,13 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'NimbYOffset'
         })
-        nimbSection:Dropdown({
-            Name = "Animate Nimb",
-            Default = State.Nimb.AnimateNimb.Default,
-            Options = State.Nimb.AnimateNimb.Options,
-            Callback = function(value)
-                State.Nimb.AnimateNimb.Value = value
-                if State.Nimb.NimbActive.Value then
-                    createNimb()
-                end
-                notify("Nimb", "Animate Nimb set to: " .. value, false)
-            end,
-            'AnimateNimb'
-        })
-        nimbSection:Slider({
-            Name = "Animation Speed",
-            Minimum = 1,
-            Maximum = 5,
-            Default = State.Nimb.AnimationSpeed.Default,
-            Precision = 1,
-            Callback = function(value)
-                State.Nimb.AnimationSpeed.Value = value
-                notify("Nimb", "Animation Speed set to: " .. value, false)
-            end,
-            'NimbAnimationSpeed'
-        })
-        nimbSection:Slider({
-            Name = "Orbit Tilt",
-            Minimum = 0.1,
-            Maximum = 1.0,
-            Default = State.Nimb.OrbitTilt.Default,
-            Precision = 2,
-            Callback = function(value)
-                State.Nimb.OrbitTilt.Value = value
-                if State.Nimb.NimbActive.Value and (State.Nimb.AnimateNimb.Value == "Orbit" or State.Nimb.AnimateNimb.Value == "OrbitSwirl") then
-                    createNimb()
-                end
-                notify("Nimb", "Orbit Tilt set to: " .. value, false)
-            end,
-            'NimbOrbitTilt'
-        })
     end
 
     function ChinaHat:Destroy()
         destroyParts(hatLines)
         destroyParts(hatCircleQuads)
         destroyParts(circleQuads)
-        destroyParts(circleBlurQuads)
         destroyParts(nimbQuads)
-        destroyParts(nimbBlurQuads)
         if renderConnection then
             renderConnection:Disconnect()
         end
