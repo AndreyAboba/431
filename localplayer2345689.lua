@@ -106,27 +106,26 @@ local function isInputFocused()
     return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
 end
 
-local function getCustomMoveDirection(humanoid, deltaTime)
-    if not Services.UserInputService or not humanoid then return humanoid.MoveDirection end
-    local moveDirection = Vector3.new(0, 0, 0)
+local function getCustomMoveDirection(deltaTime)
+    if not Services.UserInputService then return Vector3.new(0, 0, 0) end
     local camera = Services.Workspace.CurrentCamera
+    if not camera then return Vector3.new(0, 0, 0) end
+
     local forward = Services.UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0
     local backward = Services.UserInputService:IsKeyDown(Enum.KeyCode.S) and -1 or 0
     local left = Services.UserInputService:IsKeyDown(Enum.KeyCode.A) and -1 or 0
     local right = Services.UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0
 
     local inputVector = Vector3.new(left + right, 0, forward + backward)
+    local moveDirection = Vector3.new(0, 0, 0)
     if inputVector.Magnitude > 0 then
         local cameraCFrame = camera.CFrame
         local flatCameraDirection = Vector3.new(cameraCFrame.LookVector.X, 0, cameraCFrame.LookVector.Z).Unit
-        moveDirection = flatCameraDirection * inputVector.Z + cameraCFrame.RightVector * inputVector.X
-        moveDirection = moveDirection.Unit
-    elseif humanoid.MoveDirection.Magnitude > 0 then
-        moveDirection = humanoid.MoveDirection.Unit
+        moveDirection = (flatCameraDirection * inputVector.Z + cameraCFrame.RightVector * inputVector.X).Unit
     end
 
     -- Сглаживание направления
-    local lerpAlpha = math.min(1, deltaTime * 10) -- Скорость сглаживания (настраиваемая)
+    local lerpAlpha = math.min(1, deltaTime * 10) -- Скорость сглаживания
     lastMoveDirection = lastMoveDirection:Lerp(moveDirection, lerpAlpha)
     return lastMoveDirection
 end
@@ -255,7 +254,7 @@ Speed.Start = function()
         local humanoid, rootPart = getCharacterData()
         if not isCharacterValid(humanoid, rootPart) then return end
         local currentTime = tick()
-        local moveDirection = getCustomMoveDirection(humanoid, deltaTime)
+        local moveDirection = getCustomMoveDirection(deltaTime)
         Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime)
         Speed.UpdateJumps(humanoid, rootPart, currentTime)
     end)
@@ -338,7 +337,7 @@ Fly.Start = function()
             notify("Fly", "Stopped: invalid character or in vehicle.", true)
             return
         end
-        local moveDirection = getCustomMoveDirection(humanoid, deltaTime)
+        local moveDirection = getCustomMoveDirection(deltaTime)
         local verticalInput = 0
         if FlyStatus.UpKey and Services.UserInputService:IsKeyDown(FlyStatus.UpKey) then
             verticalInput = 1
