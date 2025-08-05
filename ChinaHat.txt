@@ -114,31 +114,6 @@ function ChinaHat.Init(UI, Core, notify)
         end
     end
 
-    local function createTargetESP()
-        local targetName = nil
-        if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget then
-            targetName = Core.BulwarkTarget.CurrentTarget
-        elseif State.TargetESP.TargetESPType.Value == "KillAura" and Core.BulwarkTarget.KillAuraTarget then
-            targetName = Core.BulwarkTarget.KillAuraTarget
-        elseif State.TargetESP.TargetESPType.Value == "AutoDodge" and Core.BulwarkTarget.AutoDodgeTarget then
-            targetName = Core.BulwarkTarget.AutoDodgeTarget
-        end
-
-        if targetName and Players:FindFirstChild(targetName) then
-            local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                for i = 1, State.TargetESP.TargetESPParts.Value do
-                    local quad = Drawing.new("Quad")
-                    quad.Visible = false
-                    quad.Thickness = 1
-                    quad.Filled = false
-                    quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
-                    table.insert(targetESPQuads, quad)
-                end
-            end
-        end
-    end
-
     local function removeParts(parts)
         for _, part in ipairs(parts) do
             part:Remove()
@@ -344,7 +319,11 @@ function ChinaHat.Init(UI, Core, notify)
     end
 
     local function updateTargetESP()
-        if not State.TargetESP.TargetESPActive.Value or #targetESPQuads == 0 then return end
+        if not State.TargetESP.TargetESPActive.Value then
+            removeParts(targetESPQuads)
+            return
+        end
+
         local targetName = nil
         if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget then
             targetName = Core.BulwarkTarget.CurrentTarget
@@ -354,56 +333,70 @@ function ChinaHat.Init(UI, Core, notify)
             targetName = Core.BulwarkTarget.AutoDodgeTarget
         end
 
-        if targetName and Players:FindFirstChild(targetName) then
-            local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local rootPart = targetPlayer.Character.HumanoidRootPart
-                local t = tick()
-                local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.TargetESP.TargetESPYOffset.Value, rootPart.Position.Z)
-                local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
-                if onScreenCenter and screenCenter.Z > 0 then
-                    local espSegments = #targetESPQuads
-                    local espRadius = State.TargetESP.TargetESPRadius.Value
-                    for i, quad in ipairs(targetESPQuads) do
-                        local angle1 = ((i - 1) / espSegments) * 2 * math.pi
-                        local angle2 = (i / espSegments) * 2 * math.pi
-                        local point1Bottom = center + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                        local point2Bottom = center + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-                        local point1Top = point1Bottom + Vector3.new(0, 0, 0)
-                        local point2Top = point2Bottom + Vector3.new(0, 0, 0)
-                        local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
-                        local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
-                        local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
-                        local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
+        if not targetName or not Players:FindFirstChild(targetName) then
+            removeParts(targetESPQuads)
+            return
+        end
 
-                        if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
-                           screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
-                           screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
-                            quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
-                            quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
-                            quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
-                            quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
-                            quad.Visible = true
-                            if State.TargetESP.TargetESPGradient.Value then
-                                local factor = (math.sin(t * State.TargetESP.TargetESPGradientSpeed.Value + (i / espSegments) * 2 * math.pi) + 1) / 2
-                                quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
-                            else
-                                quad.Color = State.TargetESP.TargetESPColor.Value
-                            end
-                        else
-                            quad.Visible = false
-                        end
+        local targetPlayer = Players:FindFirstChild(targetName)
+        if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            removeParts(targetESPQuads)
+            return
+        }
+
+        local rootPart = targetPlayer.Character.HumanoidRootPart
+        local t = tick()
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.TargetESP.TargetESPYOffset.Value, rootPart.Position.Z)
+        local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
+
+        if #targetESPQuads == 0 then
+            for i = 1, State.TargetESP.TargetESPParts.Value do
+                local quad = Drawing.new("Quad")
+                quad.Visible = false
+                quad.Thickness = 1
+                quad.Filled = false
+                quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
+                table.insert(targetESPQuads, quad)
+            end
+        end
+
+        if onScreenCenter and screenCenter.Z > 0 then
+            local espSegments = #targetESPQuads
+            local espRadius = State.TargetESP.TargetESPRadius.Value
+            for i, quad in ipairs(targetESPQuads) do
+                local angle1 = ((i - 1) / espSegments) * 2 * math.pi
+                local angle2 = (i / espSegments) * 2 * math.pi
+                local point1Bottom = center + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
+                local point2Bottom = center + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
+                local point1Top = point1Bottom + Vector3.new(0, 0, 0)
+                local point2Top = point2Bottom + Vector3.new(0, 0, 0)
+                local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
+                local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
+                local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
+                local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
+
+                if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
+                   screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
+                   screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
+                    quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
+                    quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
+                    quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
+                    quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
+                    quad.Visible = true
+                    if State.TargetESP.TargetESPGradient.Value then
+                        local factor = (math.sin(t * State.TargetESP.TargetESPGradientSpeed.Value + (i / espSegments) * 2 * math.pi) + 1) / 2
+                        quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
+                    else
+                        quad.Color = State.TargetESP.TargetESPColor.Value
                     end
                 else
-                    for _, quad in ipairs(targetESPQuads) do
-                        quad.Visible = false
-                    end
+                    quad.Visible = false
                 end
-            else
-                removeParts(targetESPQuads)
             end
         else
-            removeParts(targetESPQuads)
+            for _, quad in ipairs(targetESPQuads) do
+                quad.Visible = false
+            end
         end
     end
 
@@ -461,12 +454,11 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function toggleTargetESP(value)
         State.TargetESP.TargetESPActive.Value = value
-        if value then
-            createTargetESP()
-            notify("TargetESP", "Target ESP Enabled", true)
-        else
+        if not value then
             removeParts(targetESPQuads)
             notify("TargetESP", "Target ESP Disabled", true)
+        else
+            notify("TargetESP", "Target ESP Enabled", true)
         end
     end
 
@@ -850,9 +842,6 @@ function ChinaHat.Init(UI, Core, notify)
                 if State.TargetESP.TargetESPActive.Value then
                     removeParts(targetESPQuads)
                     State.TargetESP.TargetESPRadius.Value = value
-                    createTargetESP()
-                else
-                    State.TargetESP.TargetESPRadius.Value = value
                 end
                 notify("TargetESP", "Target ESP Radius set to: " .. value, false)
             end,
@@ -867,9 +856,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 if State.TargetESP.TargetESPActive.Value then
                     removeParts(targetESPQuads)
-                    State.TargetESP.TargetESPParts.Value = value
-                    createTargetESP()
-                else
                     State.TargetESP.TargetESPParts.Value = value
                 end
                 notify("TargetESP", "Target ESP Parts set to: " .. value, false)
@@ -897,8 +883,7 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.TargetESP.TargetESPGradient.Value = value
                 if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    createTargetESP()
+                    updateTargetESP()
                 end
                 notify("TargetESP", "Target ESP Gradient: " .. (value and "Enabled" or "Disabled"), true)
             end,
@@ -910,8 +895,7 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.TargetESP.TargetESPColor.Value = value
                 if State.TargetESP.TargetESPActive.Value and not State.TargetESP.TargetESPGradient.Value then
-                    removeParts(targetESPQuads)
-                    createTargetESP()
+                    updateTargetESP()
                 end
                 notify("TargetESP", "Target ESP Color updated", false)
             end,
@@ -924,12 +908,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.TargetESP.TargetESPYOffset.Default,
             Precision = 2,
             Callback = function(value)
+                State.TargetESP.TargetESPYOffset.Value = value
                 if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    State.TargetESP.TargetESPYOffset.Value = value
-                    createTargetESP()
-                else
-                    State.TargetESP.TargetESPYOffset.Value = value
+                    updateTargetESP()
                 end
                 notify("TargetESP", "Target ESP Y Offset set to: " .. value, false)
             end,
@@ -943,7 +924,7 @@ function ChinaHat.Init(UI, Core, notify)
                 State.TargetESP.TargetESPType.Value = value
                 if State.TargetESP.TargetESPActive.Value then
                     removeParts(targetESPQuads)
-                    createTargetESP()
+                    updateTargetESP()
                 end
                 notify("TargetESP", "Target Type set to: " .. value, false)
             end,
