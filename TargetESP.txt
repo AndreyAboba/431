@@ -59,9 +59,12 @@ function TargetESP.Init(UI, Core, notify)
 
     local function createTargetESP()
         local targetName = getTargetName()
+        removeParts(targetESPQuads)
+        removeParts(targetESPBlurQuads)
+
         if not targetName then
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     if Core.BulwarkTarget.CurrentTarget == player.Name or
                        Core.BulwarkTarget.KillAuraTarget == player.Name or
                        Core.BulwarkTarget.AutoDodgeTarget == player.Name then
@@ -72,28 +75,22 @@ function TargetESP.Init(UI, Core, notify)
             end
         end
 
-        removeParts(targetESPQuads)
-        removeParts(targetESPBlurQuads)
+        if targetName and Players:FindFirstChild(targetName) and Players[targetName].Character and Players[targetName].Character:FindFirstChild("HumanoidRootPart") then
+            for i = 1, State.TargetESP.TargetESPParts.Value do
+                local quad = Drawing.new("Quad")
+                quad.Visible = false
+                quad.Thickness = 1
+                quad.Filled = false
+                quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
+                table.insert(targetESPQuads, quad)
 
-        if targetName and Players:FindFirstChild(targetName) then
-            local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                for i = 1, State.TargetESP.TargetESPParts.Value do
-                    local quad = Drawing.new("Quad")
-                    quad.Visible = false
-                    quad.Thickness = 1
-                    quad.Filled = false
-                    quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
-                    table.insert(targetESPQuads, quad)
-
-                    local blurQuad = Drawing.new("Quad")
-                    blurQuad.Visible = false
-                    blurQuad.Thickness = 1
-                    blurQuad.Filled = false
-                    blurQuad.Color = quad.Color
-                    blurQuad.Transparency = 0.3
-                    table.insert(targetESPBlurQuads, blurQuad)
-                end
+                local blurQuad = Drawing.new("Quad")
+                blurQuad.Visible = false
+                blurQuad.Thickness = 1
+                blurQuad.Filled = false
+                blurQuad.Color = quad.Color
+                blurQuad.Transparency = 0.3
+                table.insert(targetESPBlurQuads, blurQuad)
             end
         end
     end
@@ -102,7 +99,7 @@ function TargetESP.Init(UI, Core, notify)
         local targetName = getTargetName()
         if not targetName then
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     if Core.BulwarkTarget.CurrentTarget == player.Name or
                        Core.BulwarkTarget.KillAuraTarget == player.Name or
                        Core.BulwarkTarget.AutoDodgeTarget == player.Name then
@@ -125,7 +122,7 @@ function TargetESP.Init(UI, Core, notify)
             removeParts(targetESPBlurQuads)
             createTargetESP()
             return
-        end
+        }
 
         local rootPart = targetPlayer.Character.HumanoidRootPart
         local t = tick()
@@ -141,7 +138,7 @@ function TargetESP.Init(UI, Core, notify)
                 animationProgress = 0
                 animationDirection = 1
             end
-            yOffset = (2.5 * math.sin(animationProgress * math.pi)) - 3
+            yOffset = (6 * math.sin(animationProgress * math.pi)) - 3
         end
 
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
@@ -170,7 +167,7 @@ function TargetESP.Init(UI, Core, notify)
                     end
 
                     local blurQuad = targetESPBlurQuads[i]
-                    local blurOffset = 0.3
+                    local blurOffset = 0.1
                     local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
                     local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
                     local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
