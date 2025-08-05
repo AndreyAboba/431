@@ -324,17 +324,18 @@ function TargetESP.Init(UI, Core, notify)
         local targetESPSection = UI.Sections.TargetESP or UI.Tabs.Visuals:Section({ Name = "TargetESP", Side = "Right" })
         UI.Sections.TargetESP = targetESPSection
         targetESPSection:Header({ Name = "Target ESP" })
-        targetESPSection:SubLabel({ Text = "Displays a circle effect above the target player" })
+        targetESPSection:SubLabel({ Text = "Displays a circle above the target player" })
         targetESPSection:Toggle({
-            Name = "Target ESP Enabled",
+            Name = "Enabled",
             Default = State.TargetESP.TargetESPActive.Default,
             Callback = function(value)
                 toggleTargetESP(value)
             end,
             'TargetESPEnabled'
         })
+        targetESPSection:Divider()
         targetESPSection:Dropdown({
-            Name = "Target ESP Method",
+            Name = "Method",
             Default = State.TargetESP.TargetESPMethod.Default,
             Options = State.TargetESP.TargetESPMethod.Options,
             Callback = function(value)
@@ -343,14 +344,14 @@ function TargetESP.Init(UI, Core, notify)
                 if State.TargetESP.TargetESPActive.Value then
                     createTargetESP()
                 end
-                notify("TargetESP", "Target ESP Method set to: " .. value, false)
+                notify("TargetESP", "Method set to: " .. value, false)
             end,
             'TargetESPMethod'
         })
         targetESPSection:Slider({
-            Name = "Target ESP Radius",
-            Minimum = 1.0,
-            Maximum = 3.0,
+            Name = "Radius",
+            Minimum = 0.5,
+            Maximum = 4.0,
             Default = State.TargetESP.TargetESPRadius.Default,
             Precision = 1,
             Callback = function(value)
@@ -363,7 +364,7 @@ function TargetESP.Init(UI, Core, notify)
             'TargetESPRadius'
         })
         targetESPSection:Slider({
-            Name = "Target ESP Parts",
+            Name = "Parts",
             Minimum = 20,
             Maximum = 100,
             Default = State.TargetESP.TargetESPParts.Default,
@@ -377,6 +378,7 @@ function TargetESP.Init(UI, Core, notify)
             end,
             'TargetESPParts'
         })
+        targetESPSection:Divider()
         targetESPSection:Slider({
             Name = "Gradient Speed",
             Minimum = 1,
@@ -413,6 +415,7 @@ function TargetESP.Init(UI, Core, notify)
             end,
             'TargetESPColor'
         })
+        targetESPSection:Divider()
         targetESPSection:Slider({
             Name = "Y Offset",
             Minimum = -5,
@@ -430,6 +433,7 @@ function TargetESP.Init(UI, Core, notify)
             end,
             'TargetESPYOffset'
         })
+        targetESPSection:Divider()
         targetESPSection:Dropdown({
             Name = "Animate Circle",
             Default = State.TargetESP.AnimateCircle.Default,
@@ -446,7 +450,7 @@ function TargetESP.Init(UI, Core, notify)
         targetESPSection:Slider({
             Name = "Animation Speed",
             Minimum = 1,
-            Maximum = 5,
+            Maximum = 10,
             Default = State.TargetESP.AnimationSpeed.Default,
             Precision = 1,
             Callback = function(value)
@@ -458,7 +462,7 @@ function TargetESP.Init(UI, Core, notify)
         targetESPSection:Slider({
             Name = "Orbit Tilt",
             Minimum = 0.1,
-            Maximum = 1.0,
+            Maximum = 2,
             Default = State.TargetESP.OrbitTilt.Default,
             Precision = 2,
             Callback = function(value)
