@@ -25,8 +25,7 @@ function TargetESP.Init(UI, Core, notify)
 
     local targetESPQuads = {}
     local targetESPBlurQuads = {}
-    local targetESPBlurQuads2 = {} -- Второй круг блюра для Jello
-    local targetESPBlurQuads3 = {} -- Третий круг блюра для Jello
+    local targetESPBlurQuadsExtra = {} -- Для дополнительных 9 кругов в Jello (итого 10)
     local targetESPOppositeQuads = {}
     local lastTarget = nil
 
@@ -72,15 +71,14 @@ function TargetESP.Init(UI, Core, notify)
 
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
-        destroyParts(targetESPBlurQuads2)
-        destroyParts(targetESPBlurQuads3)
+        destroyParts(targetESPBlurQuadsExtra)
         destroyParts(targetESPOppositeQuads)
 
         local partsCount = State.TargetESP.TargetESPParts.Value
         for i = 1, partsCount do
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = State.TargetESP.AnimateCircle.Value == "Orbit" and 1.5 or 0.5
+            quad.Thickness = State.TargetESP.AnimateCircle.Value == "Orbit" and 1.5 or 1
             quad.Filled = false
             quad.Color = State.TargetESP.TargetESPGradient.Value and
                 interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
@@ -89,7 +87,7 @@ function TargetESP.Init(UI, Core, notify)
 
             local oppositeQuad = Drawing.new("Quad")
             oppositeQuad.Visible = false
-            oppositeQuad.Thickness = State.TargetESP.AnimateCircle.Value == "Orbit" and 1.5 or 0.5
+            oppositeQuad.Thickness = State.TargetESP.AnimateCircle.Value == "Orbit" and 1.5 or 1
             oppositeQuad.Filled = false
             oppositeQuad.Color = quad.Color
             table.insert(targetESPOppositeQuads, oppositeQuad)
@@ -106,31 +104,17 @@ function TargetESP.Init(UI, Core, notify)
                 table.insert(targetESPBlurQuads, blurQuad)
             end
         elseif State.TargetESP.AnimateCircle.Value == "Jello" then
-            local blurPartsCount = 18
+            local blurPartsCount = 14
             for i = 1, blurPartsCount do
-                local blurQuad = Drawing.new("Quad")
-                blurQuad.Visible = false
-                blurQuad.Thickness = 0.5
-                blurQuad.Filled = true
-                blurQuad.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
-                blurQuad.Transparency = 0.6
-                table.insert(targetESPBlurQuads, blurQuad)
-
-                local blurQuad2 = Drawing.new("Quad")
-                blurQuad2.Visible = false
-                blurQuad2.Thickness = 0.5
-                blurQuad2.Filled = true
-                blurQuad2.Color = blurQuad.Color
-                blurQuad2.Transparency = 0.4
-                table.insert(targetESPBlurQuads2, blurQuad2)
-
-                local blurQuad3 = Drawing.new("Quad")
-                blurQuad3.Visible = false
-                blurQuad3.Thickness = 0.5
-                blurQuad3.Filled = true
-                blurQuad3.Color = blurQuad.Color
-                blurQuad3.Transparency = 0.25
-                table.insert(targetESPBlurQuads3, blurQuad3)
+                for j = 1, 10 do
+                    local blurQuad = Drawing.new("Quad")
+                    blurQuad.Visible = false
+                    blurQuad.Thickness = 1
+                    blurQuad.Filled = true
+                    blurQuad.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
+                    blurQuad.Transparency = 0.6 - (j - 1) * (0.45 / 9) -- От 0.6 до 0.15
+                    table.insert(targetESPBlurQuadsExtra, blurQuad)
+                end
             end
         end
     end
@@ -139,8 +123,7 @@ function TargetESP.Init(UI, Core, notify)
         if not State.TargetESP.TargetESPActive.Value then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuads2)
-            destroyParts(targetESPBlurQuads3)
+            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             return
         end
@@ -149,8 +132,7 @@ function TargetESP.Init(UI, Core, notify)
         if not rootPart then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuads2)
-            destroyParts(targetESPBlurQuads3)
+            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             lastTarget = nil
             return
@@ -173,7 +155,7 @@ function TargetESP.Init(UI, Core, notify)
         local t = tick()
         local yOffset
         if State.TargetESP.AnimateCircle.Value == "Jello" then
-            yOffset = math.sin(t * 4) * 4.25 + 1.25 -- От -3 до 5.5 (амплитуда 4.25, центр 1.25)
+            yOffset = math.sin(t * 4) * 3 -- От -3 до 3
         elseif State.TargetESP.AnimateCircle.Value == "Orbit" then
             yOffset = math.sin(t * 2) * 0.5
         else
@@ -189,11 +171,8 @@ function TargetESP.Init(UI, Core, notify)
             for _, blurQuad in ipairs(targetESPBlurQuads) do
                 blurQuad.Visible = false
             end
-            for _, blurQuad2 in ipairs(targetESPBlurQuads2) do
-                blurQuad2.Visible = false
-            end
-            for _, blurQuad3 in ipairs(targetESPBlurQuads3) do
-                blurQuad3.Visible = false
+            for _, blurQuadExtra in ipairs(targetESPBlurQuadsExtra) do
+                blurQuadExtra.Visible = false
             end
             for _, oppositeQuad in ipairs(targetESPOppositeQuads) do
                 oppositeQuad.Visible = false
@@ -203,7 +182,7 @@ function TargetESP.Init(UI, Core, notify)
 
         local espRadius = State.TargetESP.TargetESPRadius.Value
         local partsCount = #targetESPQuads
-        local blurPartsCount = #targetESPBlurQuads
+        local blurPartsCount = State.TargetESP.AnimateCircle.Value == "Jello" and 14 or partsCount
         for i, quad in ipairs(targetESPQuads) do
             local angle1 = ((i - 1) / partsCount) * 2 * math.pi
             local angle2 = (i / partsCount) * 2 * math.pi
@@ -213,20 +192,34 @@ function TargetESP.Init(UI, Core, notify)
             local depthOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.5) or 0
             local point1 = center + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
             local point2 = center + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
-            local point3 = center + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
-            local point4 = center + Vector3.new(math.cos(angle2) * espRadius * 0.95, depthOffset, math.sin(angle2) * espRadius * 0.95)
 
             local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
             local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
-            local screenPoint3, onScreen3 = camera:WorldToViewportPoint(point3)
-            local screenPoint4, onScreen4 = camera:WorldToViewportPoint(point4)
 
-            if onScreen1 and onScreen2 and onScreen3 and onScreen4 and screenPoint1.Z > 0 and screenPoint2.Z > 0 and screenPoint3.Z > 0 and screenPoint4.Z > 0 then
-                quad.PointA = Vector2.new(screenPoint3.X, screenPoint3.Y)
-                quad.PointB = Vector2.new(screenPoint4.X, screenPoint4.Y)
-                quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                quad.Visible = true
+            if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
+                if State.TargetESP.AnimateCircle.Value == "Orbit" then
+                    local point3 = center + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
+                    local point4 = center + Vector3.new(math.cos(angle2) * espRadius * 0.95, depthOffset, math.sin(angle2) * espRadius * 0.95)
+                    local screenPoint3, onScreen3 = camera:WorldToViewportPoint(point3)
+                    local screenPoint4, onScreen4 = camera:WorldToViewportPoint(point4)
+
+                    if onScreen3 and onScreen4 and screenPoint3.Z > 0 and screenPoint4.Z > 0 then
+                        quad.PointA = Vector2.new(screenPoint3.X, screenPoint3.Y)
+                        quad.PointB = Vector2.new(screenPoint4.X, screenPoint4.Y)
+                        quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                        quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                        quad.Visible = true
+                    else
+                        quad.Visible = false
+                    end
+                else
+                    quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                    quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                    quad.Visible = true
+                end
+
                 if State.TargetESP.TargetESPGradient.Value then
                     local factor = (math.sin(t * State.TargetESP.TargetESPGradientSpeed.Value + (i / partsCount) * 2 * math.pi) + 1) / 2
                     quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
@@ -237,20 +230,33 @@ function TargetESP.Init(UI, Core, notify)
                 local oppositeQuad = targetESPOppositeQuads[i]
                 local oppPoint1 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius, -depthOffset, math.sin(oppositeAngle1) * espRadius)
                 local oppPoint2 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius, -depthOffset, math.sin(oppositeAngle2) * espRadius)
-                local oppPoint3 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle1) * espRadius * 0.95)
-                local oppPoint4 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle2) * espRadius * 0.95)
 
                 local screenOppPoint1, onScreenOpp1 = camera:WorldToViewportPoint(oppPoint1)
                 local screenOppPoint2, onScreenOpp2 = camera:WorldToViewportPoint(oppPoint2)
-                local screenOppPoint3, onScreenOpp3 = camera:WorldToViewportPoint(oppPoint3)
-                local screenOppPoint4, onScreenOpp4 = camera:WorldToViewportPoint(oppPoint4)
 
-                if onScreenOpp1 and onScreenOpp2 and onScreenOpp3 and onScreenOpp4 and screenOppPoint1.Z > 0 and screenOppPoint2.Z > 0 and screenOppPoint3.Z > 0 and screenOppPoint4.Z > 0 then
-                    oppositeQuad.PointA = Vector2.new(screenOppPoint3.X, screenOppPoint3.Y)
-                    oppositeQuad.PointB = Vector2.new(screenOppPoint4.X, screenOppPoint4.Y)
-                    oppositeQuad.PointC = Vector2.new(screenOppPoint2.X, screenOppPoint2.Y)
-                    oppositeQuad.PointD = Vector2.new(screenOppPoint1.X, screenOppPoint1.Y)
-                    oppositeQuad.Visible = true
+                if onScreenOpp1 and onScreenOpp2 and screenOppPoint1.Z > 0 and screenOppPoint2.Z > 0 then
+                    if State.TargetESP.AnimateCircle.Value == "Orbit" then
+                        local oppPoint3 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle1) * espRadius * 0.95)
+                        local oppPoint4 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle2) * espRadius * 0.95)
+                        local screenOppPoint3, onScreenOpp3 = camera:WorldToViewportPoint(oppPoint3)
+                        local screenOppPoint4, onScreenOpp4 = camera:WorldToViewportPoint(oppPoint4)
+
+                        if onScreenOpp3 and onScreenOpp4 and screenOppPoint3.Z > 0 and screenOppPoint4.Z > 0 then
+                            oppositeQuad.PointA = Vector2.new(screenOppPoint3.X, screenOppPoint3.Y)
+                            oppositeQuad.PointB = Vector2.new(screenOppPoint4.X, screenOppPoint4.Y)
+                            oppositeQuad.PointC = Vector2.new(screenOppPoint2.X, screenOppPoint2.Y)
+                            oppositeQuad.PointD = Vector2.new(screenOppPoint1.X, screenOppPoint1.Y)
+                            oppositeQuad.Visible = true
+                        else
+                            oppositeQuad.Visible = false
+                        end
+                    else
+                        oppositeQuad.PointA = Vector2.new(screenOppPoint1.X, screenOppPoint1.Y)
+                        oppositeQuad.PointB = Vector2.new(screenOppPoint2.X, screenOppPoint2.Y)
+                        oppositeQuad.PointC = Vector2.new(screenOppPoint2.X, screenOppPoint2.Y)
+                        oppositeQuad.PointD = Vector2.new(screenOppPoint1.X, screenOppPoint1.Y)
+                        oppositeQuad.Visible = true
+                    end
                     oppositeQuad.Color = quad.Color
                 else
                     oppositeQuad.Visible = false
@@ -294,77 +300,26 @@ function TargetESP.Init(UI, Core, notify)
             for i = 1, blurPartsCount do
                 local angle1 = ((i - 1) / blurPartsCount) * 2 * math.pi
                 local angle2 = (i / blurPartsCount) * 2 * math.pi
-                local blurOffset1 = 0.05
-                local blurOffset2 = 0.10
-                local blurOffset3 = 0.15
-                local blurCenter1 = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset1, rootPart.Position.Z)
-                local blurCenter2 = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset2, rootPart.Position.Z)
-                local blurCenter3 = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset3, rootPart.Position.Z)
+                for j = 1, 10 do
+                    local blurOffset = 0.05 + (j - 1) * 0.02 -- От 0.05 до 0.23
+                    local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
+                    local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
+                    local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
 
-                local blurPoint1 = blurCenter1 + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                local blurPoint2 = blurCenter1 + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-                local blurPoint3 = blurCenter1 + Vector3.new(math.cos(angle1) * espRadius * 0.95, 0, math.sin(angle1) * espRadius * 0.95)
-                local blurPoint4 = blurCenter1 + Vector3.new(math.cos(angle2) * espRadius * 0.95, 0, math.sin(angle2) * espRadius * 0.95)
+                    local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
+                    local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
 
-                local blurPoint1_2 = blurCenter2 + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                local blurPoint2_2 = blurCenter2 + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-                local blurPoint3_2 = blurCenter2 + Vector3.new(math.cos(angle1) * espRadius * 0.95, 0, math.sin(angle1) * espRadius * 0.95)
-                local blurPoint4_2 = blurCenter2 + Vector3.new(math.cos(angle2) * espRadius * 0.95, 0, math.sin(angle2) * espRadius * 0.95)
-
-                local blurPoint1_3 = blurCenter3 + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                local blurPoint2_3 = blurCenter3 + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-                local blurPoint3_3 = blurCenter3 + Vector3.new(math.cos(angle1) * espRadius * 0.95, 0, math.sin(angle1) * espRadius * 0.95)
-                local blurPoint4_3 = blurCenter3 + Vector3.new(math.cos(angle2) * espRadius * 0.95, 0, math.sin(angle2) * espRadius * 0.95)
-
-                local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
-                local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
-                local screenBlurPoint3, onScreenBlur3 = camera:WorldToViewportPoint(blurPoint3)
-                local screenBlurPoint4, onScreenBlur4 = camera:WorldToViewportPoint(blurPoint4)
-
-                local screenBlurPoint1_2, onScreenBlur1_2 = camera:WorldToViewportPoint(blurPoint1_2)
-                local screenBlurPoint2_2, onScreenBlur2_2 = camera:WorldToViewportPoint(blurPoint2_2)
-                local screenBlurPoint3_2, onScreenBlur3_2 = camera:WorldToViewportPoint(blurPoint3_2)
-                local screenBlurPoint4_2, onScreenBlur4_2 = camera:WorldToViewportPoint(blurPoint4_2)
-
-                local screenBlurPoint1_3, onScreenBlur1_3 = camera:WorldToViewportPoint(blurPoint1_3)
-                local screenBlurPoint2_3, onScreenBlur2_3 = camera:WorldToViewportPoint(blurPoint2_3)
-                local screenBlurPoint3_3, onScreenBlur3_3 = camera:WorldToViewportPoint(blurPoint3_3)
-                local screenBlurPoint4_3, onScreenBlur4_3 = camera:WorldToViewportPoint(blurPoint4_3)
-
-                if onScreenBlur1 and onScreenBlur2 and onScreenBlur3 and onScreenBlur4 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 and screenBlurPoint3.Z > 0 and screenBlurPoint4.Z > 0 then
-                    local blurQuad = targetESPBlurQuads[i]
-                    blurQuad.PointA = Vector2.new(screenBlurPoint3.X, screenBlurPoint3.Y)
-                    blurQuad.PointB = Vector2.new(screenBlurPoint4.X, screenBlurPoint4.Y)
-                    blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
-                    blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                    blurQuad.Visible = true
-                    blurQuad.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
-                else
-                    targetESPBlurQuads[i].Visible = false
-                end
-
-                if onScreenBlur1_2 and onScreenBlur2_2 and onScreenBlur3_2 and onScreenBlur4_2 and screenBlurPoint1_2.Z > 0 and screenBlurPoint2_2.Z > 0 and screenBlurPoint3_2.Z > 0 and screenBlurPoint4_2.Z > 0 then
-                    local blurQuad2 = targetESPBlurQuads2[i]
-                    blurQuad2.PointA = Vector2.new(screenBlurPoint3_2.X, screenBlurPoint3_2.Y)
-                    blurQuad2.PointB = Vector2.new(screenBlurPoint4_2.X, screenBlurPoint4_2.Y)
-                    blurQuad2.PointC = Vector2.new(screenBlurPoint2_2.X, screenBlurPoint2_2.Y)
-                    blurQuad2.PointD = Vector2.new(screenBlurPoint1_2.X, screenBlurPoint1_2.Y)
-                    blurQuad2.Visible = true
-                    blurQuad2.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
-                else
-                    targetESPBlurQuads2[i].Visible = false
-                end
-
-                if onScreenBlur1_3 and onScreenBlur2_3 and onScreenBlur3_3 and onScreenBlur4_3 and screenBlurPoint1_3.Z > 0 and screenBlurPoint2_3.Z > 0 and screenBlurPoint3_3.Z > 0 and screenBlurPoint4_3.Z > 0 then
-                    local blurQuad3 = targetESPBlurQuads3[i]
-                    blurQuad3.PointA = Vector2.new(screenBlurPoint3_3.X, screenBlurPoint3_3.Y)
-                    blurQuad3.PointB = Vector2.new(screenBlurPoint4_3.X, screenBlurPoint4_3.Y)
-                    blurQuad3.PointC = Vector2.new(screenBlurPoint2_3.X, screenBlurPoint2_3.Y)
-                    blurQuad3.PointD = Vector2.new(screenBlurPoint1_3.X, screenBlurPoint1_3.Y)
-                    blurQuad3.Visible = true
-                    blurQuad3.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
-                else
-                    targetESPBlurQuads3[i].Visible = false
+                    if onScreenBlur1 and onScreenBlur2 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 then
+                        local blurQuad = targetESPBlurQuadsExtra[(i - 1) * 10 + j]
+                        blurQuad.PointA = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
+                        blurQuad.PointB = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                        blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                        blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
+                        blurQuad.Visible = true
+                        blurQuad.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
+                    else
+                        targetESPBlurQuadsExtra[(i - 1) * 10 + j].Visible = false
+                    end
                 end
             end
         end
@@ -378,8 +333,7 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuads2)
-            destroyParts(targetESPBlurQuads3)
+            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             lastTarget = nil
             notify("TargetESP", "Target ESP Disabled", true)
@@ -393,8 +347,7 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuads2)
-            destroyParts(targetESPBlurQuads3)
+            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             lastTarget = nil
         end
@@ -453,7 +406,7 @@ function TargetESP.Init(UI, Core, notify)
             Default = State.TargetESP.TargetESPParts.Default,
             Precision = 0,
             Callback = function(value)
-                State.TargetESP.TargetESPParts.Value = value
+                State.TargetESP.TargetESPRadius.Value = value
                 if State.TargetESP.TargetESPActive.Value then
                     createTargetESP()
                 end
@@ -532,8 +485,7 @@ function TargetESP.Init(UI, Core, notify)
     function TargetESP:Destroy()
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
-        destroyParts(targetESPBlurQuads2)
-        destroyParts(targetESPBlurQuads3)
+        destroyParts(targetESPBlurQuadsExtra)
         destroyParts(targetESPOppositeQuads)
         if connection then
             connection:Disconnect()
