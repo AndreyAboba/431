@@ -5,6 +5,7 @@ local PlayerData = nil
 local notify = nil
 local LocalPlayerObj = nil
 local core = nil
+local lastMoveDirection = Vector3.new(0, 0, 0) -- Для сглаживания MoveDirection
 
 MovementEnhancements.Config = {
     Timer = {
@@ -24,6 +25,13 @@ MovementEnhancements.Config = {
         JumpInterval = 0.3,
         PulseTPDist = 5,
         PulseTPDelay = 0.2,
+        ToggleKey = nil
+    },
+    Fly = {
+        Enabled = false,
+        Speed = 10,
+        VerticalSpeed = 10,
+        ControlMode = "E/Q",
         ToggleKey = nil
     }
 }
@@ -59,6 +67,18 @@ local SpeedStatus = {
     LastPulseTPTime = 0
 }
 
+local FlyStatus = {
+    Running = false,
+    Connection = nil,
+    Enabled = MovementEnhancements.Config.Fly.Enabled,
+    Speed = MovementEnhancements.Config.Fly.Speed,
+    VerticalSpeed = MovementEnhancements.Config.Fly.VerticalSpeed,
+    ControlMode = MovementEnhancements.Config.Fly.ControlMode,
+    Key = MovementEnhancements.Config.Fly.ToggleKey,
+    UpKey = nil,
+    DownKey = nil
+}
+
 local function getCharacterData()
     local character = LocalPlayerObj and LocalPlayerObj.Character
     if not character then return nil, nil end
@@ -86,7 +106,7 @@ local function isInputFocused()
     return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
 end
 
-local function getCustomMoveDirection(humanoid)
+local function getCustomMoveDirection(humanoid, deltaTime)
     if not Services.UserInputService or not humanoid then return humanoid.MoveDirection end
     local moveDirection = Vector3.new(0, 0, 0)
     local camera = Services.Workspace.CurrentCamera
@@ -98,14 +118,17 @@ local function getCustomMoveDirection(humanoid)
     local inputVector = Vector3.new(left + right, 0, forward + backward)
     if inputVector.Magnitude > 0 then
         local cameraCFrame = camera.CFrame
-        local flatCameraDirection = (cameraCFrame - cameraCFrame.Position).LookVector
-        flatCameraDirection = Vector3.new(flatCameraDirection.X, 0, flatCameraDirection.Z).Unit
+        local flatCameraDirection = Vector3.new(cameraCFrame.LookVector.X, 0, cameraCFrame.LookVector.Z).Unit
         moveDirection = flatCameraDirection * inputVector.Z + cameraCFrame.RightVector * inputVector.X
         moveDirection = moveDirection.Unit
     elseif humanoid.MoveDirection.Magnitude > 0 then
         moveDirection = humanoid.MoveDirection.Unit
     end
-    return moveDirection
+
+    -- Сглаживание направления
+    local lerpAlpha = math.min(1, deltaTime * 10) -- Скорость сглаживания (настраиваемая)
+    lastMoveDirection = lastMoveDirection:Lerp(moveDirection, lerpAlpha)
+    return lastMoveDirection
 end
 
 local Timer = {}
@@ -224,7 +247,7 @@ end
 Speed.Start = function()
     if SpeedStatus.Running or not Services then return end
     SpeedStatus.Running = true
-    SpeedStatus.Connection = Services.RunService.Heartbeat:Connect(function()
+    SpeedStatus.Connection = Services.RunService.Heartbeat:Connect(function(deltaTime)
         if not SpeedStatus.Enabled then
             SpeedStatus.Running = false
             return
@@ -232,7 +255,7 @@ Speed.Start = function()
         local humanoid, rootPart = getCharacterData()
         if not isCharacterValid(humanoid, rootPart) then return end
         local currentTime = tick()
-        local moveDirection = getCustomMoveDirection(humanoid)
+        local moveDirection = getCustomMoveDirection(humanoid, deltaTime)
         Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime)
         Speed.UpdateJumps(humanoid, rootPart, currentTime)
     end)
@@ -249,7 +272,7 @@ Speed.Stop = function()
 end
 
 Speed.SetSpeed = function(newSpeed)
-    SpeedStatus.Speed = math.clamp(newSpeed, 16, 250)
+    SpeedStatus.Speed = math.clamp(newSpeed, 10, 250)
     MovementEnhancements.Config.Speed.Speed = SpeedStatus.Speed
     notify("Speed", "Speed set to: " .. SpeedStatus.Speed, false)
 end
@@ -280,6 +303,96 @@ Speed.SetJumpInterval = function(newInterval)
     SpeedStatus.JumpInterval = math.clamp(newInterval, 0.1, 2)
     MovementEnhancements.Config.Speed.JumpInterval = SpeedStatus.JumpInterval
     notify("Speed", "JumpInterval set to: " .. SpeedStatus.JumpInterval, false)
+end
+
+local Fly = {}
+Fly.UpdateControlKeys = function()
+    if FlyStatus.ControlMode == "E/Q" then
+        FlyStatus.UpKey = Enum.KeyCode.E
+        FlyStatus.DownKey = Enum.KeyCode.Q
+    elseif FlyStatus.ControlMode == "Space/LShift" then
+        FlyStatus.UpKey = Enum.KeyCode.Space
+        FlyStatus.DownKey = Enum.KeyCode.LeftShift
+    end
+end
+
+Fly.Start = function()
+    if FlyStatus.Running or not Services then return end
+    local humanoid, rootPart = getCharacterData()
+    if not isCharacterValid(humanoid, rootPart) or isInVehicle(rootPart) then
+        notify("Fly", "Cannot start Fly: invalid character or in vehicle.", true)
+        return
+    end
+    FlyStatus.Running = true
+    humanoid:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+    Fly.UpdateControlKeys()
+    
+    FlyStatus.Connection = Services.RunService.Heartbeat:Connect(function(deltaTime)
+        if not FlyStatus.Enabled then
+            FlyStatus.Running = false
+            return
+        end
+        local humanoid, rootPart = getCharacterData()
+        if not isCharacterValid(humanoid, rootPart) or isInVehicle(rootPart) then
+            Fly.Stop()
+            notify("Fly", "Stopped: invalid character or in vehicle.", true)
+            return
+        end
+        local moveDirection = getCustomMoveDirection(humanoid, deltaTime)
+        local verticalInput = 0
+        if FlyStatus.UpKey and Services.UserInputService:IsKeyDown(FlyStatus.UpKey) then
+            verticalInput = 1
+        elseif FlyStatus.DownKey and Services.UserInputService:IsKeyDown(FlyStatus.DownKey) then
+            verticalInput = -1
+        end
+        if moveDirection.Magnitude > 0 or verticalInput ~= 0 then
+            local horizontalOffset = moveDirection * FlyStatus.Speed * deltaTime
+            local verticalOffset = Vector3.new(0, verticalInput * FlyStatus.VerticalSpeed * deltaTime, 0)
+            local newCFrame = rootPart.CFrame + horizontalOffset + verticalOffset
+            rootPart.CFrame = CFrame.new(newCFrame.Position, newCFrame.Position + moveDirection)
+        end
+    end)
+    notify("Fly", "Started with Speed: " .. FlyStatus.Speed .. ", Vertical Speed: " .. FlyStatus.VerticalSpeed, true)
+end
+
+Fly.Stop = function()
+    if FlyStatus.Connection then
+        FlyStatus.Connection:Disconnect()
+        FlyStatus.Connection = nil
+    end
+    FlyStatus.Running = false
+    local humanoid, _ = getCharacterData()
+    if humanoid then
+        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+    end
+    notify("Fly", "Stopped", true)
+end
+
+Fly.SetSpeed = function(newSpeed)
+    FlyStatus.Speed = math.clamp(newSpeed, 6, 20)
+    MovementEnhancements.Config.Fly.Speed = FlyStatus.Speed
+    notify("Fly", "Speed set to: " .. FlyStatus.Speed, false)
+end
+
+Fly.SetVerticalSpeed = function(newSpeed)
+    FlyStatus.VerticalSpeed = math.clamp(newSpeed, 6, 20)
+    MovementEnhancements.Config.Fly.VerticalSpeed = FlyStatus.VerticalSpeed
+    notify("Fly", "Vertical Speed set to: " .. FlyStatus.VerticalSpeed, false)
+end
+
+Fly.SetControlMode = function(newMode)
+    if newMode == "E/Q" or newMode == "Space/LShift" then
+        FlyStatus.ControlMode = newMode
+        MovementEnhancements.Config.Fly.ControlMode = newMode
+        Fly.UpdateControlKeys()
+        notify("Fly", "Control Mode set to: " .. newMode, false)
+        if FlyStatus.Running then
+            Fly.Stop()
+            Fly.Start()
+        end
+    else
+        notify("Fly", "Invalid control mode selected!", true)
+    end
 end
 
 local function SetupUI(UI)
@@ -379,7 +492,7 @@ local function SetupUI(UI)
         }, "SpeedMethod")
         uiElements.Speed = UI.Sections.Speed:Slider({
             Name = "Speed",
-            Minimum = 16,
+            Minimum = 10,
             Maximum = 250,
             Default = MovementEnhancements.Config.Speed.Speed,
             Precision = 1,
@@ -433,6 +546,61 @@ local function SetupUI(UI)
         }, "SpeedKey")
     end
 
+    if UI.Sections.Fly then
+        UI.Sections.Fly:Header({ Name = "Fly", Side = "Right" })
+        uiElements.FlyEnabled = UI.Sections.Fly:Toggle({
+            Name = "Enabled",
+            Default = MovementEnhancements.Config.Fly.Enabled,
+            Callback = function(value)
+                FlyStatus.Enabled = value
+                MovementEnhancements.Config.Fly.Enabled = value
+                if value then Fly.Start() else Fly.Stop() end
+            end
+        }, "FlyEnabled")
+        uiElements.FlySpeed = UI.Sections.Fly:Slider({
+            Name = "Speed",
+            Minimum = 6,
+            Maximum = 20,
+            Default = MovementEnhancements.Config.Fly.Speed,
+            Precision = 1,
+            Callback = function(value)
+                Fly.SetSpeed(value)
+            end
+        }, "FlySpeed")
+        uiElements.FlyVerticalSpeed = UI.Sections.Fly:Slider({
+            Name = "Vertical Speed",
+            Minimum = 6,
+            Maximum = 20,
+            Default = MovementEnhancements.Config.Fly.VerticalSpeed,
+            Precision = 1,
+            Callback = function(value)
+                Fly.SetVerticalSpeed(value)
+            end
+        }, "FlyVerticalSpeed")
+        uiElements.FlyControlMode = UI.Sections.Fly:Dropdown({
+            Name = "Control Mode",
+            Options = {"E/Q", "Space/LShift"},
+            Default = MovementEnhancements.Config.Fly.ControlMode,
+            Callback = function(value)
+                Fly.SetControlMode(value)
+            end
+        }, "FlyControlMode")
+        uiElements.FlyKey = UI.Sections.Fly:Keybind({
+            Name = "Toggle Key",
+            Default = MovementEnhancements.Config.Fly.ToggleKey,
+            Callback = function(value)
+                FlyStatus.Key = value
+                MovementEnhancements.Config.Fly.ToggleKey = value
+                if isInputFocused() then return end
+                if FlyStatus.Enabled then
+                    if FlyStatus.Running then Fly.Stop() else Fly.Start() end
+                else
+                    notify("Fly", "Enable Fly to use keybind.", true)
+                end
+            end
+        }, "FlyKey")
+    end
+
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Movement Enhancements Sync", Side = "Right" })
     localconfigSection:Header({ Name = "Movement Enhancements Settings Sync" })
     localconfigSection:Button({
@@ -459,6 +627,18 @@ local function SetupUI(UI)
             MovementEnhancements.Config.Speed.PulseTPDist = uiElements.SpeedPulseTPDistance:GetValue()
             MovementEnhancements.Config.Speed.PulseTPDelay = uiElements.SpeedPulseTPFrequency:GetValue()
             MovementEnhancements.Config.Speed.ToggleKey = uiElements.SpeedKey:GetBind()
+
+            MovementEnhancements.Config.Fly.Enabled = uiElements.FlyEnabled:GetState()
+            MovementEnhancements.Config.Fly.Speed = uiElements.FlySpeed:GetValue()
+            MovementEnhancements.Config.Fly.VerticalSpeed = uiElements.FlyVerticalSpeed:GetValue()
+            local flyControlModeOptions = uiElements.FlyControlMode:GetOptions()
+            for option, selected in pairs(flyControlModeOptions) do
+                if selected then
+                    MovementEnhancements.Config.Fly.ControlMode = option
+                    break
+                end
+            end
+            MovementEnhancements.Config.Fly.ToggleKey = uiElements.FlyKey:GetBind()
 
             TimerStatus.Enabled = MovementEnhancements.Config.Timer.Enabled
             TimerStatus.Speed = MovementEnhancements.Config.Timer.Speed
@@ -491,6 +671,18 @@ local function SetupUI(UI)
                 if SpeedStatus.Running then Speed.Stop() end
             end
 
+            FlyStatus.Enabled = MovementEnhancements.Config.Fly.Enabled
+            FlyStatus.Speed = MovementEnhancements.Config.Fly.Speed
+            FlyStatus.VerticalSpeed = MovementEnhancements.Config.Fly.VerticalSpeed
+            FlyStatus.ControlMode = MovementEnhancements.Config.Fly.ControlMode
+            FlyStatus.Key = MovementEnhancements.Config.Fly.ToggleKey
+            Fly.UpdateControlKeys()
+            if FlyStatus.Enabled then
+                if not FlyStatus.Running then Fly.Start() end
+            else
+                if FlyStatus.Running then Fly.Stop() end
+            end
+
             notify("MovementEnhancements", "Config synchronized!", true)
         end
     })
@@ -505,6 +697,8 @@ function MovementEnhancements.Init(UI, coreParam, notifyFunc)
 
     _G.setTimerSpeed = Timer.SetSpeed
     _G.setSpeed = Speed.SetSpeed
+    _G.setFlySpeed = Fly.SetSpeed
+    _G.setFlyVerticalSpeed = Fly.SetVerticalSpeed
 
     if LocalPlayerObj then
         LocalPlayerObj.CharacterAdded:Connect(function(newChar)
@@ -513,6 +707,9 @@ function MovementEnhancements.Init(UI, coreParam, notifyFunc)
             end
             if SpeedStatus.Enabled then
                 Speed.Start()
+            end
+            if FlyStatus.Enabled then
+                Fly.Start()
             end
         end)
     end
@@ -533,9 +730,14 @@ function MovementEnhancements:Destroy()
         SpeedStatus.Connection:Disconnect()
         SpeedStatus.Connection = nil
     end
+    if FlyStatus.Connection then
+        FlyStatus.Connection:Disconnect()
+        FlyStatus.Connection = nil
+    end
     TimerStatus.Running = false
     DisablerStatus.Running = false
     SpeedStatus.Running = false
+    FlyStatus.Running = false
 end
 
 return MovementEnhancements
