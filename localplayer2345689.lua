@@ -87,7 +87,8 @@ local NoStaminaStatus = {
     Running = false,
     Connection = nil,
     Enabled = MovementEnhancements.Config.NoStamina.Enabled,
-    Mode = MovementEnhancements.Config.NoStamina.Mode
+    Mode = MovementEnhancements.Config.NoStamina.Mode,
+    OriginalFireServer = nil
 }
 
 local function getCharacterData()
@@ -147,14 +148,12 @@ local function getCustomMoveDirection()
         if targetDirection.Magnitude > 0 then
             targetDirection = targetDirection.Unit
         end
-        -- Применяем сглаживание только при активном вводе
         local alpha = SpeedStatus.SmoothnessFactor
         SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection * (1 - alpha) + targetDirection * alpha
         if SpeedStatus.CurrentMoveDirection.Magnitude > 0 then
             SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection.Unit
         end
     else
-        -- Сбрасываем направление при отсутствии ввода
         SpeedStatus.CurrentMoveDirection = Vector3.new(0, 0, 0)
     end
     return SpeedStatus.CurrentMoveDirection
@@ -442,19 +441,35 @@ NoStamina.Start = function()
     NoStaminaStatus.Running = true
 
     if NoStaminaStatus.Mode == "Block" then
-        local success, err = pcall(function()
-            local staminaEvent = Services.ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer"):WaitForChild("Stamina")
-            for _, connection in ipairs(getconnections(staminaEvent.OnClientEvent)) do
-                pcall(function() hookfunction(connection.Function, function() end) end)
-            end
-            for _, connection in ipairs(getconnections(staminaEvent.OnServerEvent)) do
-                pcall(function() hookfunction(connection.Function, function() end) end)
-            end
+        local success, staminaEvent = pcall(function()
+            return Services.ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer"):WaitForChild("Stamina")
         end)
-        if not success then
-            warn("NoStamina: Failed to hook Stamina RemoteEvent: " .. tostring(err))
-            notify("NoStamina", "Failed to block Stamina RemoteEvent.", true)
+        if not success or not staminaEvent then
+            warn("NoStamina: Failed to find Stamina RemoteEvent")
+            notify("NoStamina", "Failed to find Stamina RemoteEvent.", true)
             return
+        end
+
+        if hookmetamethod then
+            local oldFireServer
+            oldFireServer = hookmetamethod(game, "__namecall", function(self, ...)
+                if self == staminaEvent and getnamecallmethod() == "FireServer" and NoStaminaStatus.Enabled and NoStaminaStatus.Mode == "Block" then
+                    return
+                end
+                return oldFireServer(self, ...)
+            end)
+            NoStaminaStatus.OriginalFireServer = oldFireServer
+        else
+            local success, err = pcall(function()
+                for _, connection in ipairs(getconnections(staminaEvent.OnClientEvent)) do
+                    pcall(function() connection:Disable() end)
+                end
+            end)
+            if not success then
+                warn("NoStamina: Failed to disable Stamina RemoteEvent connections: " .. tostring(err))
+                notify("NoStamina", "Failed to block Stamina RemoteEvent.", true)
+                return
+            end
         end
     elseif NoStaminaStatus.Mode == "RemoveValue" then
         NoStaminaStatus.Connection = LocalPlayerObj.CharacterAdded:Connect(function(newChar)
@@ -472,6 +487,11 @@ NoStamina.Stop = function()
     if NoStaminaStatus.Connection then
         NoStaminaStatus.Connection:Disconnect()
         NoStaminaStatus.Connection = nil
+    end
+    if NoStaminaStatus.OriginalFireServer and hookmetamethod then
+        -- Restore original FireServer if hooked
+        hookmetamethod(game, "__namecall", NoStaminaStatus.OriginalFireServer)
+        NoStaminaStatus.OriginalFireServer = nil
     end
     NoStaminaStatus.Running = false
     notify("NoStamina", "Stopped", true)
@@ -892,6 +912,10 @@ function MovementEnhancements:Destroy()
     if NoStaminaStatus.Connection then
         NoStaminaStatus.Connection:Disconnect()
         NoStaminaStatus.Connection = nil
+    end
+    if NoStaminaStatus.OriginalFireServer and hookmetamethod then
+        hookmetamethod(game, "__namecall", NoStaminaStatus.OriginalFireServer)
+        NoStaminaStatus.OriginalFireServer = nil
     end
     TimerStatus.Running = false
     DisablerStatus.Running = false
