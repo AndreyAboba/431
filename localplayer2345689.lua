@@ -108,6 +108,7 @@ end
 
 local function getCustomMoveDirection()
     if not Services.UserInputService or not Services.Workspace.CurrentCamera then
+        SpeedStatus.CurrentMoveDirection = Vector3.new(0, 0, 0)
         return Vector3.new(0, 0, 0)
     end
 
@@ -116,6 +117,7 @@ local function getCustomMoveDirection()
     local flatCameraForward = Vector3.new(cameraCFrame.LookVector.X, 0, cameraCFrame.LookVector.Z)
     local flatCameraRight = Vector3.new(cameraCFrame.RightVector.X, 0, cameraCFrame.RightVector.Z)
     if flatCameraForward.Magnitude == 0 or flatCameraRight.Magnitude == 0 then
+        SpeedStatus.CurrentMoveDirection = Vector3.new(0, 0, 0)
         return Vector3.new(0, 0, 0)
     end
     flatCameraForward = flatCameraForward.Unit
@@ -134,13 +136,15 @@ local function getCustomMoveDirection()
         if targetDirection.Magnitude > 0 then
             targetDirection = targetDirection.Unit
         end
-    end
-
-    -- Простое сглаживание с фиксированным коэффициентом
-    local alpha = SpeedStatus.SmoothnessFactor
-    SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection * (1 - alpha) + targetDirection * alpha
-    if SpeedStatus.CurrentMoveDirection.Magnitude > 0 then
-        SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection.Unit
+        -- Применяем сглаживание только при активном вводе
+        local alpha = SpeedStatus.SmoothnessFactor
+        SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection * (1 - alpha) + targetDirection * alpha
+        if SpeedStatus.CurrentMoveDirection.Magnitude > 0 then
+            SpeedStatus.CurrentMoveDirection = SpeedStatus.CurrentMoveDirection.Unit
+        end
+    else
+        -- Обнуляем направление, если клавиши не нажаты
+        SpeedStatus.CurrentMoveDirection = Vector3.new(0, 0, 0)
     end
     return SpeedStatus.CurrentMoveDirection
 end
@@ -251,7 +255,7 @@ Speed.UpdateJumps = function(humanoid, rootPart, currentTime)
     if not isCharacterValid(humanoid, rootPart) then return end
     if SpeedStatus.AutoJump and currentTime - SpeedStatus.LastJumpTime >= SpeedStatus.JumpInterval then
         local state = humanoid:GetState()
-        if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Landed then
+        if state == Enum.HumanoidStateType.Running or state ==(Enum.HumanoidStateType.Landed then
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             SpeedStatus.LastJumpTime = currentTime
         end
