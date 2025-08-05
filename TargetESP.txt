@@ -1,5 +1,5 @@
 local TargetESP = {}
-print('1')
+
 function TargetESP.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -45,6 +45,12 @@ function TargetESP.Init(UI, Core, notify)
         )
     end
 
+    local function logTargetDebug()
+        print("Debug - CurrentTarget: ", Core.BulwarkTarget.CurrentTarget or "nil")
+        print("Debug - KillAuraTarget: ", Core.BulwarkTarget.KillAuraTarget or "nil")
+        print("Debug - AutoDodgeTarget: ", Core.BulwarkTarget.AutoDodgeTarget or "nil")
+    end
+
     local function getTargetRootPart()
         local method = State.TargetESP.TargetESPMethod.Value
         local targetName = nil
@@ -56,6 +62,8 @@ function TargetESP.Init(UI, Core, notify)
         elseif method == "AutoDodge" then
             targetName = Core.BulwarkTarget.AutoDodgeTarget
         end
+
+        logTargetDebug()
 
         if targetName and Players:FindFirstChild(targetName) then
             local targetPlayer = Players:FindFirstChild(targetName)
