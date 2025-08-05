@@ -33,6 +33,10 @@ MovementEnhancements.Config = {
         VerticalSpeed = 50,
         ToggleKey = nil,
         VerticalKeys = "E/Q"
+    },
+    NoStamina = {
+        Enabled = false,
+        Mode = "Block"
     }
 }
 
@@ -77,6 +81,13 @@ local FlyStatus = {
     VerticalSpeed = MovementEnhancements.Config.Fly.VerticalSpeed,
     VerticalKeys = MovementEnhancements.Config.Fly.VerticalKeys,
     BodyVelocity = nil
+}
+
+local NoStaminaStatus = {
+    Running = false,
+    Connection = nil,
+    Enabled = MovementEnhancements.Config.NoStamina.Enabled,
+    Mode = MovementEnhancements.Config.NoStamina.Mode
 }
 
 local function getCharacterData()
@@ -414,6 +425,73 @@ Fly.SetVerticalKeys = function(newKeys)
     end
 end
 
+local NoStamina = {}
+NoStamina.RemoveMaxStaminaValue = function(character)
+    if not character then return end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    local maxStamina = humanoid:FindFirstChild("MaxStamina")
+    if maxStamina and maxStamina:IsA("IntValue") then
+        maxStamina:Destroy()
+        notify("NoStamina", "MaxStamina value removed", true)
+    end
+end
+
+NoStamina.Start = function()
+    if NoStaminaStatus.Running or not Services or not LocalPlayerObj then return end
+    NoStaminaStatus.Running = true
+
+    if NoStaminaStatus.Mode == "Block" then
+        local success, err = pcall(function()
+            local staminaEvent = Services.ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("ToServer"):WaitForChild("Stamina")
+            for _, connection in ipairs(getconnections(staminaEvent.OnClientEvent)) do
+                pcall(function() hookfunction(connection.Function, function() end) end)
+            end
+            for _, connection in ipairs(getconnections(staminaEvent.OnServerEvent)) do
+                pcall(function() hookfunction(connection.Function, function() end) end)
+            end
+        end)
+        if not success then
+            warn("NoStamina: Failed to hook Stamina RemoteEvent: " .. tostring(err))
+            notify("NoStamina", "Failed to block Stamina RemoteEvent.", true)
+            return
+        end
+    elseif NoStaminaStatus.Mode == "RemoveValue" then
+        NoStaminaStatus.Connection = LocalPlayerObj.CharacterAdded:Connect(function(newChar)
+            NoStamina.RemoveMaxStaminaValue(newChar)
+        end)
+        if LocalPlayerObj.Character then
+            NoStamina.RemoveMaxStaminaValue(LocalPlayerObj.Character)
+        end
+    end
+
+    notify("NoStamina", "Started with Mode: " .. NoStaminaStatus.Mode, true)
+end
+
+NoStamina.Stop = function()
+    if NoStaminaStatus.Connection then
+        NoStaminaStatus.Connection:Disconnect()
+        NoStaminaStatus.Connection = nil
+    end
+    NoStaminaStatus.Running = false
+    notify("NoStamina", "Stopped", true)
+end
+
+NoStamina.SetMode = function(newMode)
+    if newMode == "Block" or newMode == "RemoveValue" then
+        if NoStaminaStatus.Running then
+            NoStamina.Stop()
+            NoStaminaStatus.Mode = newMode
+            MovementEnhancements.Config.NoStamina.Mode = newMode
+            NoStamina.Start()
+        else
+            NoStaminaStatus.Mode = newMode
+            MovementEnhancements.Config.NoStamina.Mode = newMode
+        end
+        notify("NoStamina", "Mode set to: " .. newMode, false)
+    end
+end
+
 local function SetupUI(UI)
     local uiElements = {}
 
@@ -630,6 +708,27 @@ local function SetupUI(UI)
         }, "FlyKey")
     end
 
+    if UI.Sections.NoStamina then
+        UI.Sections.NoStamina:Header({ Name = "No Stamina" })
+        uiElements.NoStaminaEnabled = UI.Sections.NoStamina:Toggle({
+            Name = "Enabled",
+            Default = MovementEnhancements.Config.NoStamina.Enabled,
+            Callback = function(value)
+                NoStaminaStatus.Enabled = value
+                MovementEnhancements.Config.NoStamina.Enabled = value
+                if value then NoStamina.Start() else NoStamina.Stop() end
+            end
+        }, "NoStaminaEnabled")
+        uiElements.NoStaminaMode = UI.Sections.NoStamina:Dropdown({
+            Name = "Mode",
+            Options = {"Block", "RemoveValue"},
+            Default = MovementEnhancements.Config.NoStamina.Mode,
+            Callback = function(value)
+                NoStamina.SetMode(value)
+            end
+        }, "NoStaminaMode")
+    end
+
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Movement Enhancements Sync", Side = "Right" })
     localconfigSection:Header({ Name = "Movement Enhancements Settings Sync" })
     localconfigSection:Button({
@@ -669,6 +768,15 @@ local function SetupUI(UI)
                 end
             end
             MovementEnhancements.Config.Fly.ToggleKey = uiElements.FlyKey:GetBind()
+
+            MovementEnhancements.Config.NoStamina.Enabled = uiElements.NoStaminaEnabled:GetState()
+            local noStaminaModeOptions = uiElements.NoStaminaMode:GetOptions()
+            for option, selected in pairs(noStaminaModeOptions) do
+                if selected then
+                    MovementEnhancements.Config.NoStamina.Mode = option
+                    break
+                end
+            end
 
             TimerStatus.Enabled = MovementEnhancements.Config.Timer.Enabled
             TimerStatus.Speed = MovementEnhancements.Config.Timer.Speed
@@ -713,6 +821,14 @@ local function SetupUI(UI)
                 if FlyStatus.Running then Fly.Stop() end
             end
 
+            NoStaminaStatus.Enabled = MovementEnhancements.Config.NoStamina.Enabled
+            NoStaminaStatus.Mode = MovementEnhancements.Config.NoStamina.Mode
+            if NoStaminaStatus.Enabled then
+                if not NoStaminaStatus.Running then NoStamina.Start() end
+            else
+                if NoStaminaStatus.Running then NoStamina.Stop() end
+            end
+
             notify("MovementEnhancements", "Config synchronized!", true)
         end
     })
@@ -730,6 +846,7 @@ function MovementEnhancements.Init(UI, coreParam, notifyFunc)
     _G.setFlySpeed = Fly.SetSpeed
     _G.setFlyVerticalSpeed = Fly.SetVerticalSpeed
     _G.setFlyVerticalKeys = Fly.SetVerticalKeys
+    _G.setNoStaminaMode = NoStamina.SetMode
 
     if LocalPlayerObj then
         LocalPlayerObj.CharacterAdded:Connect(function(newChar)
@@ -741,6 +858,9 @@ function MovementEnhancements.Init(UI, coreParam, notifyFunc)
             end
             if FlyStatus.Enabled then
                 Fly.Start()
+            end
+            if NoStaminaStatus.Enabled and NoStaminaStatus.Mode == "RemoveValue" then
+                NoStamina.RemoveMaxStaminaValue(newChar)
             end
         end)
     end
@@ -769,10 +889,15 @@ function MovementEnhancements:Destroy()
         FlyStatus.BodyVelocity:Destroy()
         FlyStatus.BodyVelocity = nil
     end
+    if NoStaminaStatus.Connection then
+        NoStaminaStatus.Connection:Disconnect()
+        NoStaminaStatus.Connection = nil
+    end
     TimerStatus.Running = false
     DisablerStatus.Running = false
     SpeedStatus.Running = false
     FlyStatus.Running = false
+    NoStaminaStatus.Running = false
 end
 
 return MovementEnhancements
