@@ -19,7 +19,7 @@ function TargetESP.Init(UI, Core, notify)
             TargetESPGradient = { Value = true, Default = true },
             TargetESPColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             TargetESPYOffset = { Value = 0, Default = 0 },
-            AnimateCircle = { Value = "None", Default = "None", Options = {"None", "Orbit", "Jello"} }
+            AnimateCircle = { Value = "None", Default = "None", Options = {"None", "Orbit", "Jello", "OrbitSwirl", "Ripple"} }
         }
     }
 
@@ -76,7 +76,7 @@ function TargetESP.Init(UI, Core, notify)
         for i = 1, partsCount do
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = State.TargetESP.AnimateCircle.Value == "Orbit" and 1.5 or 1
+            quad.Thickness = (State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl") and 1.5 or 1
             quad.Filled = false
             quad.Color = State.TargetESP.TargetESPGradient.Value and
                 interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
@@ -85,23 +85,23 @@ function TargetESP.Init(UI, Core, notify)
 
             local oppositeQuad = Drawing.new("Quad")
             oppositeQuad.Visible = false
-            oppositeQuad.Thickness = State.TargetESP.AnimateCircle.Value == "Orbit" and 1.5 or 1
+            oppositeQuad.Thickness = (State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl") and 1.5 or 1
             oppositeQuad.Filled = false
             oppositeQuad.Color = quad.Color
             table.insert(targetESPOppositeQuads, oppositeQuad)
         end
 
-        if State.TargetESP.AnimateCircle.Value == "Orbit" then
+        if State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl" or State.TargetESP.AnimateCircle.Value == "Ripple" then
             for i = 1, partsCount do
                 local blurQuad = Drawing.new("Quad")
                 blurQuad.Visible = false
-                blurQuad.Thickness = 1.5
+                blurQuad.Thickness = (State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl") and 1.5 or 1
                 blurQuad.Filled = true
                 blurQuad.Color = targetESPQuads[i].Color
                 blurQuad.Transparency = 0.3
                 table.insert(targetESPBlurQuads, blurQuad)
             end
-        end -- Jello не создает Blur-круги
+        end -- Jello и None не создают Blur-круги
     end
 
     local function updateTargetESP()
@@ -136,9 +136,14 @@ function TargetESP.Init(UI, Core, notify)
         end
 
         local t = tick()
-        local yOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.sin(t * 2) * 0.5) or
-                        State.TargetESP.AnimateCircle.Value == "Jello" and 0 or
-                        State.TargetESP.TargetESPYOffset.Value
+        local yOffset
+        if State.TargetESP.AnimateCircle.Value == "Jello" then
+            yOffset = math.sin(t * 2) * 3 -- От -3 до 3
+        elseif State.TargetESP.AnimateCircle.Value == "Orbit" then
+            yOffset = math.sin(t * 2) * 0.5
+        else
+            yOffset = State.TargetESP.TargetESPYOffset.Value
+        end
 
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
@@ -158,23 +163,34 @@ function TargetESP.Init(UI, Core, notify)
         local espRadius = State.TargetESP.TargetESPRadius.Value
         local partsCount = #targetESPQuads
         for i, quad in ipairs(targetESPQuads) do
-            local angleOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.sin(t * 2) * 0.2) or 0
+            local angleOffset
+            if State.TargetESP.AnimateCircle.Value == "Jello" then
+                angleOffset = math.sin(t * 2) * 0.2
+            elseif State.TargetESP.AnimateCircle.Value == "OrbitSwirl" then
+                angleOffset = t * 1.5
+            else
+                angleOffset = 0
+            end
+
+            local radiusOffset = State.TargetESP.AnimateCircle.Value == "Ripple" and (math.sin(t + (i / partsCount) * 2 * math.pi) * 0.2) or 0
+            local localRadius = espRadius + radiusOffset
+
             local angle1 = ((i - 1) / partsCount) * 2 * math.pi + angleOffset
             local angle2 = (i / partsCount) * 2 * math.pi + angleOffset
             local oppositeAngle1 = -angle1
             local oppositeAngle2 = -angle2
 
-            local depthOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.5) or 0
-            local point1 = center + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
-            local point2 = center + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
+            local depthOffset = (State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl") and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.5) or 0
+            local point1 = center + Vector3.new(math.cos(angle1) * localRadius, depthOffset, math.sin(angle1) * localRadius)
+            local point2 = center + Vector3.new(math.cos(angle2) * localRadius, depthOffset, math.sin(angle2) * localRadius)
 
             local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
             local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
 
             if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
-                if State.TargetESP.AnimateCircle.Value == "Orbit" then
-                    local point3 = center + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
-                    local point4 = center + Vector3.new(math.cos(angle2) * espRadius * 0.95, depthOffset, math.sin(angle2) * espRadius * 0.95)
+                if State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl" then
+                    local point3 = center + Vector3.new(math.cos(angle1) * localRadius * 0.95, depthOffset, math.sin(angle1) * localRadius * 0.95)
+                    local point4 = center + Vector3.new(math.cos(angle2) * localRadius * 0.95, depthOffset, math.sin(angle2) * localRadius * 0.95)
                     local screenPoint3, onScreen3 = camera:WorldToViewportPoint(point3)
                     local screenPoint4, onScreen4 = camera:WorldToViewportPoint(point4)
 
@@ -203,16 +219,16 @@ function TargetESP.Init(UI, Core, notify)
                 end
 
                 local oppositeQuad = targetESPOppositeQuads[i]
-                local oppPoint1 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius, -depthOffset, math.sin(oppositeAngle1) * espRadius)
-                local oppPoint2 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius, -depthOffset, math.sin(oppositeAngle2) * espRadius)
+                local oppPoint1 = center + Vector3.new(math.cos(oppositeAngle1) * localRadius, -depthOffset, math.sin(oppositeAngle1) * localRadius)
+                local oppPoint2 = center + Vector3.new(math.cos(oppositeAngle2) * localRadius, -depthOffset, math.sin(oppositeAngle2) * localRadius)
 
                 local screenOppPoint1, onScreenOpp1 = camera:WorldToViewportPoint(oppPoint1)
                 local screenOppPoint2, onScreenOpp2 = camera:WorldToViewportPoint(oppPoint2)
 
                 if onScreenOpp1 and onScreenOpp2 and screenOppPoint1.Z > 0 and screenOppPoint2.Z > 0 then
-                    if State.TargetESP.AnimateCircle.Value == "Orbit" then
-                        local oppPoint3 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle1) * espRadius * 0.95)
-                        local oppPoint4 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle2) * espRadius * 0.95)
+                    if State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl" then
+                        local oppPoint3 = center + Vector3.new(math.cos(oppositeAngle1) * localRadius * 0.95, -depthOffset, math.sin(oppositeAngle1) * localRadius * 0.95)
+                        local oppPoint4 = center + Vector3.new(math.cos(oppositeAngle2) * localRadius * 0.95, -depthOffset, math.sin(oppositeAngle2) * localRadius * 0.95)
                         local screenOppPoint3, onScreenOpp3 = camera:WorldToViewportPoint(oppPoint3)
                         local screenOppPoint4, onScreenOpp4 = camera:WorldToViewportPoint(oppPoint4)
 
@@ -244,16 +260,17 @@ function TargetESP.Init(UI, Core, notify)
             end
         end
 
-        if State.TargetESP.AnimateCircle.Value == "Orbit" then
+        if State.TargetESP.AnimateCircle.Value == "Orbit" or State.TargetESP.AnimateCircle.Value == "OrbitSwirl" or State.TargetESP.AnimateCircle.Value == "Ripple" then
             for i, blurQuad in ipairs(targetESPBlurQuads) do
-                local angle1 = ((i - 1) / partsCount) * 2 * math.pi
-                local angle2 = (i / partsCount) * 2 * math.pi
+                local angle1 = ((i - 1) / partsCount) * 2 * math.pi + (State.TargetESP.AnimateCircle.Value == "OrbitSwirl" and (t * 1.5) or 0)
+                local angle2 = (i / partsCount) * 2 * math.pi + (State.TargetESP.AnimateCircle.Value == "OrbitSwirl" and (t * 1.5) or 0)
                 local blurOffset = 0.05
                 local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
-                local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
-                local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
-                local blurPoint3 = blurCenter + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
-                local blurPoint4 = blurCenter + Vector3.new(math.cos(angle2) * espRadius * 0.95, depthOffset, math.sin(angle2) * espRadius * 0.95)
+                local blurRadius = State.TargetESP.AnimateCircle.Value == "Ripple" and (espRadius + math.sin(t + (i / partsCount) * 2 * math.pi) * 0.2) or espRadius
+                local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * blurRadius, depthOffset, math.sin(angle1) * blurRadius)
+                local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * blurRadius, depthOffset, math.sin(angle2) * blurRadius)
+                local blurPoint3 = blurCenter + Vector3.new(math.cos(angle1) * blurRadius * 0.95, depthOffset, math.sin(angle1) * blurRadius * 0.95)
+                local blurPoint4 = blurCenter + Vector3.new(math.cos(angle2) * blurRadius * 0.95, depthOffset, math.sin(angle2) * blurRadius * 0.95)
 
                 local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
                 local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
