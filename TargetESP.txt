@@ -12,6 +12,7 @@ function TargetESP.Init(UI, Core, notify)
     local State = {
         TargetESP = {
             TargetESPActive = { Value = false, Default = false },
+            TargetESPMethod = { Value = "All", Default = "All", Options = {"All", "KillAura", "AutoDodge"} },
             TargetESPRadius = { Value = 1.7, Default = 1.7 },
             TargetESPParts = { Value = 30, Default = 30 },
             TargetESPGradientSpeed = { Value = 4, Default = 4 },
@@ -44,16 +45,20 @@ function TargetESP.Init(UI, Core, notify)
         )
     end
 
-    local function createTargetESP()
-        local targetName = nil
-        if Core.BulwarkTarget.CurrentTarget then
-            targetName = Core.BulwarkTarget.CurrentTarget
-        elseif Core.BulwarkTarget.KillAuraTarget then
-            targetName = Core.BulwarkTarget.KillAuraTarget
-        elseif Core.BulwarkTarget.AutoDodgeTarget then
-            targetName = Core.BulwarkTarget.AutoDodgeTarget
+    local function getTargetName()
+        local method = State.TargetESP.TargetESPMethod.Value
+        if method == "All" then
+            return Core.BulwarkTarget.CurrentTarget or Core.BulwarkTarget.KillAuraTarget or Core.BulwarkTarget.AutoDodgeTarget
+        elseif method == "KillAura" then
+            return Core.BulwarkTarget.KillAuraTarget
+        elseif method == "AutoDodge" then
+            return Core.BulwarkTarget.AutoDodgeTarget
         end
+        return nil
+    end
 
+    local function createTargetESP()
+        local targetName = getTargetName()
         if not targetName then
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
@@ -94,16 +99,7 @@ function TargetESP.Init(UI, Core, notify)
     end
 
     local function updateTargetESP()
-        if not State.TargetESP.TargetESPActive.Value or #targetESPQuads == 0 then return end
-        local targetName = nil
-        if Core.BulwarkTarget.CurrentTarget then
-            targetName = Core.BulwarkTarget.CurrentTarget
-        elseif Core.BulwarkTarget.KillAuraTarget then
-            targetName = Core.BulwarkTarget.KillAuraTarget
-        elseif Core.BulwarkTarget.AutoDodgeTarget then
-            targetName = Core.BulwarkTarget.AutoDodgeTarget
-        end
-
+        local targetName = getTargetName()
         if not targetName then
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
@@ -117,82 +113,94 @@ function TargetESP.Init(UI, Core, notify)
             end
         end
 
-        if targetName and Players:FindFirstChild(targetName) then
-            local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local rootPart = targetPlayer.Character.HumanoidRootPart
-                local t = tick()
-                local baseYOffset = State.TargetESP.TargetESPYOffset.Value
-                local yOffset = baseYOffset
+        if not State.TargetESP.TargetESPActive.Value or not targetName or not Players:FindFirstChild(targetName) then
+            removeParts(targetESPQuads)
+            removeParts(targetESPBlurQuads)
+            return
+        end
 
-                if State.TargetESP.AnimateCircle.Value == "Jello" then
-                    animationProgress = animationProgress + (RunService.RenderStepped:Wait() * 0.5 * animationDirection)
-                    if animationProgress >= 1 then
-                        animationProgress = 1
-                        animationDirection = -1
-                    elseif animationProgress <= 0 then
-                        animationProgress = 0
-                        animationDirection = 1
-                    end
-                    yOffset = baseYOffset + (2.5 * math.sin(animationProgress * math.pi)) - 3
-                end
-
-                local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
-                local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
-                if onScreenCenter and screenCenter.Z > 0 then
-                    local espRadius = State.TargetESP.TargetESPRadius.Value
-                    for i, quad in ipairs(targetESPQuads) do
-                        local angle1 = ((i - 1) / #targetESPQuads) * 2 * math.pi
-                        local angle2 = (i / #targetESPQuads) * 2 * math.pi
-                        local point1 = center + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                        local point2 = center + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-                        local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
-                        local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
-
-                        if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
-                            quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                            quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                            quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                            quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                            quad.Visible = true
-                            if State.TargetESP.TargetESPGradient.Value then
-                                local factor = (math.sin(t * State.TargetESP.TargetESPGradientSpeed.Value + (i / #targetESPQuads) * 2 * math.pi) + 1) / 2
-                                quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
-                            else
-                                quad.Color = State.TargetESP.TargetESPColor.Value
-                            end
-
-                            local blurQuad = targetESPBlurQuads[i]
-                            blurQuad.PointA = Vector2.new(screenPoint1.X + 2, screenPoint1.Y + 2)
-                            blurQuad.PointB = Vector2.new(screenPoint2.X + 2, screenPoint2.Y + 2)
-                            blurQuad.PointC = Vector2.new(screenPoint2.X + 2, screenPoint2.Y + 2)
-                            blurQuad.PointD = Vector2.new(screenPoint1.X + 2, screenPoint1.Y + 2)
-                            blurQuad.Visible = true
-                            blurQuad.Color = quad.Color
-                        else
-                            quad.Visible = false
-                            if targetESPBlurQuads[i] then
-                                targetESPBlurQuads[i].Visible = false
-                            end
-                        end
-                    end
-                else
-                    for _, quad in ipairs(targetESPQuads) do
-                        quad.Visible = false
-                    end
-                    for _, blurQuad in ipairs(targetESPBlurQuads) do
-                        blurQuad.Visible = false
-                    end
-                end
-            else
-                removeParts(targetESPQuads)
-                removeParts(targetESPBlurQuads)
-                createTargetESP()
-            end
-        else
+        local targetPlayer = Players:FindFirstChild(targetName)
+        if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             removeParts(targetESPQuads)
             removeParts(targetESPBlurQuads)
             createTargetESP()
+            return
+        end
+
+        local rootPart = targetPlayer.Character.HumanoidRootPart
+        local t = tick()
+        local baseYOffset = State.TargetESP.AnimateCircle.Value == "Jello" and 0 or State.TargetESP.TargetESPYOffset.Value
+        local yOffset = baseYOffset
+
+        if State.TargetESP.AnimateCircle.Value == "Jello" then
+            animationProgress = animationProgress + (RunService.RenderStepped:Wait() * 0.5 * animationDirection)
+            if animationProgress >= 1 then
+                animationProgress = 1
+                animationDirection = -1
+            elseif animationProgress <= 0 then
+                animationProgress = 0
+                animationDirection = 1
+            end
+            yOffset = (2.5 * math.sin(animationProgress * math.pi)) - 3
+        end
+
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
+        local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
+        if onScreenCenter and screenCenter.Z > 0 then
+            local espRadius = State.TargetESP.TargetESPRadius.Value
+            for i, quad in ipairs(targetESPQuads) do
+                local angle1 = ((i - 1) / #targetESPQuads) * 2 * math.pi
+                local angle2 = (i / #targetESPQuads) * 2 * math.pi
+                local point1 = center + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
+                local point2 = center + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
+                local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
+                local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
+
+                if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
+                    quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                    quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                    quad.Visible = true
+                    if State.TargetESP.TargetESPGradient.Value then
+                        local factor = (math.sin(t * State.TargetESP.TargetESPGradientSpeed.Value + (i / #targetESPQuads) * 2 * math.pi) + 1) / 2
+                        quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
+                    else
+                        quad.Color = State.TargetESP.TargetESPColor.Value
+                    end
+
+                    local blurQuad = targetESPBlurQuads[i]
+                    local blurOffset = 0.3
+                    local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
+                    local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
+                    local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
+                    local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
+                    local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
+
+                    if onScreenBlur1 and onScreenBlur2 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 then
+                        blurQuad.PointA = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
+                        blurQuad.PointB = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                        blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                        blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
+                        blurQuad.Visible = true
+                        blurQuad.Color = quad.Color
+                    else
+                        blurQuad.Visible = false
+                    end
+                else
+                    quad.Visible = false
+                    if targetESPBlurQuads[i] then
+                        targetESPBlurQuads[i].Visible = false
+                    end
+                end
+            end
+        else
+            for _, quad in ipairs(targetESPQuads) do
+                quad.Visible = false
+            end
+            for _, blurQuad in ipairs(targetESPBlurQuads) do
+                blurQuad.Visible = false
+            end
         end
     end
 
@@ -230,6 +238,19 @@ function TargetESP.Init(UI, Core, notify)
                 toggleTargetESP(value)
             end,
             'TargetESPEnabled'
+        })
+        targetESPSection:Dropdown({
+            Name = "Target ESP Method",
+            Default = State.TargetESP.TargetESPMethod.Default,
+            Options = State.TargetESP.TargetESPMethod.Options,
+            Callback = function(value)
+                State.TargetESP.TargetESPMethod.Value = value
+                if State.TargetESP.TargetESPActive.Value then
+                    createTargetESP()
+                end
+                notify("TargetESP", "Target ESP Method set to: " .. value, false)
+            end,
+            'TargetESPMethod'
         })
         targetESPSection:Slider({
             Name = "Target ESP Radius",
@@ -304,11 +325,13 @@ function TargetESP.Init(UI, Core, notify)
             Default = State.TargetESP.TargetESPYOffset.Default,
             Precision = 2,
             Callback = function(value)
-                State.TargetESP.TargetESPYOffset.Value = value
-                if State.TargetESP.TargetESPActive.Value then
-                    createTargetESP()
+                if State.TargetESP.AnimateCircle.Value ~= "Jello" then
+                    State.TargetESP.TargetESPYOffset.Value = value
+                    if State.TargetESP.TargetESPActive.Value then
+                        createTargetESP()
+                    end
+                    notify("TargetESP", "Target ESP Y Offset set to: " .. value, false)
                 end
-                notify("TargetESP", "Target ESP Y Offset set to: " .. value, false)
             end,
             'TargetESPYOffset'
         })
