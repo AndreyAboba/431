@@ -1,5 +1,5 @@
 local TargetESP = {}
-print('1')
+
 function TargetESP.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -45,12 +45,6 @@ function TargetESP.Init(UI, Core, notify)
         )
     end
 
-    local function logTargetDebug()
-        print("Debug - CurrentTarget: ", Core.BulwarkTarget.CurrentTarget or "nil")
-        print("Debug - KillAuraTarget: ", Core.BulwarkTarget.KillAuraTarget or "nil")
-        print("Debug - AutoDodgeTarget: ", Core.BulwarkTarget.AutoDodgeTarget or "nil")
-    end
-
     local function getTargetRootPart()
         local method = State.TargetESP.TargetESPMethod.Value
         local targetName = nil
@@ -63,21 +57,9 @@ function TargetESP.Init(UI, Core, notify)
             targetName = Core.BulwarkTarget.AutoDodgeTarget
         end
 
-        logTargetDebug()
-
         if targetName and Players:FindFirstChild(targetName) then
             local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character then
-                local rootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if not rootPart then
-                    print("Debug - No HumanoidRootPart for: ", targetName)
-                end
-                return rootPart
-            else
-                print("Debug - No Character for: ", targetName)
-            end
-        else
-            print("Debug - Player not found: ", targetName or "nil")
+            return targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         end
         return nil
     end
@@ -106,8 +88,6 @@ function TargetESP.Init(UI, Core, notify)
                     table.insert(targetESPBlurQuads, blurQuad)
                 end
             end
-        else
-            print("Debug - No rootPart to create ESP")
         end
     end
 
@@ -125,7 +105,6 @@ function TargetESP.Init(UI, Core, notify)
             return
         end
 
-        -- Пересоздаём квадраты при каждом обновлении, если таргет изменился
         createTargetESP()
 
         local t = tick()
