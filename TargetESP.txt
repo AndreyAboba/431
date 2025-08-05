@@ -101,7 +101,7 @@ function TargetESP.Init(UI, Core, notify)
                 blurQuad.Transparency = 0.3
                 table.insert(targetESPBlurQuads, blurQuad)
             end
-        end
+        end -- Jello не создает Blur-круги
     end
 
     local function updateTargetESP()
