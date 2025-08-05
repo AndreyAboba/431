@@ -106,9 +106,9 @@ local function isInputFocused()
     return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
 end
 
-local function getCustomMoveDirection(humanoid)
-    if not Services.UserInputService or not Services.Workspace.CurrentCamera or not humanoid then
-        return humanoid and humanoid.MoveDirection or Vector3.new(0, 0, 0)
+local function getCustomMoveDirection()
+    if not Services.UserInputService or not Services.Workspace.CurrentCamera then
+        return Vector3.new(0, 0, 0)
     end
 
     local camera = Services.Workspace.CurrentCamera
@@ -116,7 +116,7 @@ local function getCustomMoveDirection(humanoid)
     local flatCameraForward = Vector3.new(cameraCFrame.LookVector.X, 0, cameraCFrame.LookVector.Z)
     local flatCameraRight = Vector3.new(cameraCFrame.RightVector.X, 0, cameraCFrame.RightVector.Z)
     if flatCameraForward.Magnitude == 0 or flatCameraRight.Magnitude == 0 then
-        return humanoid.MoveDirection
+        return Vector3.new(0, 0, 0)
     end
     flatCameraForward = flatCameraForward.Unit
     flatCameraRight = flatCameraRight.Unit
@@ -134,8 +134,6 @@ local function getCustomMoveDirection(humanoid)
         if targetDirection.Magnitude > 0 then
             targetDirection = targetDirection.Unit
         end
-    elseif humanoid.MoveDirection.Magnitude > 0 then
-        targetDirection = humanoid.MoveDirection.Unit
     end
 
     -- Простое сглаживание с фиксированным коэффициентом
@@ -271,7 +269,7 @@ Speed.Start = function()
         local humanoid, rootPart = getCharacterData()
         if not isCharacterValid(humanoid, rootPart) then return end
         local currentTime = tick()
-        local moveDirection = getCustomMoveDirection(humanoid)
+        local moveDirection = getCustomMoveDirection()
         Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime)
         Speed.UpdateJumps(humanoid, rootPart, currentTime)
     end)
@@ -353,7 +351,7 @@ Fly.Start = function()
             Fly.Stop()
             return
         end
-        local moveDirection = getCustomMoveDirection(humanoid)
+        local moveDirection = getCustomMoveDirection()
         local vertical = 0
         if FlyStatus.VerticalKeys == "E/Q" then
             if Services.UserInputService:IsKeyDown(Enum.KeyCode.E) then
