@@ -62,35 +62,25 @@ function TargetESP.Init(UI, Core, notify)
         removeParts(targetESPQuads)
         removeParts(targetESPBlurQuads)
 
-        if not targetName then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    if Core.BulwarkTarget.CurrentTarget == player.Name or
-                       Core.BulwarkTarget.KillAuraTarget == player.Name or
-                       Core.BulwarkTarget.AutoDodgeTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    end
+        if targetName and Players:FindFirstChild(targetName) then
+            local targetPlayer = Players:FindFirstChild(targetName)
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                for i = 1, State.TargetESP.TargetESPParts.Value do
+                    local quad = Drawing.new("Quad")
+                    quad.Visible = false
+                    quad.Thickness = 1
+                    quad.Filled = false
+                    quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
+                    table.insert(targetESPQuads, quad)
+
+                    local blurQuad = Drawing.new("Quad")
+                    blurQuad.Visible = false
+                    blurQuad.Thickness = 1
+                    blurQuad.Filled = false
+                    blurQuad.Color = quad.Color
+                    blurQuad.Transparency = 0.3
+                    table.insert(targetESPBlurQuads, blurQuad)
                 end
-            end
-        end
-
-        if targetName and Players:FindFirstChild(targetName) and Players[targetName].Character and Players[targetName].Character:FindFirstChild("HumanoidRootPart") then
-            for i = 1, State.TargetESP.TargetESPParts.Value do
-                local quad = Drawing.new("Quad")
-                quad.Visible = false
-                quad.Thickness = 1
-                quad.Filled = false
-                quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
-                table.insert(targetESPQuads, quad)
-
-                local blurQuad = Drawing.new("Quad")
-                blurQuad.Visible = false
-                blurQuad.Thickness = 1
-                blurQuad.Filled = false
-                blurQuad.Color = quad.Color
-                blurQuad.Transparency = 0.3
-                table.insert(targetESPBlurQuads, blurQuad)
             end
         end
     end
@@ -99,7 +89,7 @@ function TargetESP.Init(UI, Core, notify)
         local targetName = getTargetName()
         if not targetName then
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                if player ~= LocalPlayer then
                     if Core.BulwarkTarget.CurrentTarget == player.Name or
                        Core.BulwarkTarget.KillAuraTarget == player.Name or
                        Core.BulwarkTarget.AutoDodgeTarget == player.Name then
@@ -118,11 +108,9 @@ function TargetESP.Init(UI, Core, notify)
 
         local targetPlayer = Players:FindFirstChild(targetName)
         if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            removeParts(targetESPQuads)
-            removeParts(targetESPBlurQuads)
             createTargetESP()
             return
-        }
+        end
 
         local rootPart = targetPlayer.Character.HumanoidRootPart
         local t = tick()
