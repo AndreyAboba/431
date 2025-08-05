@@ -1,5 +1,5 @@
 local TargetESP = {}
-
+print('1')
 function TargetESP.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -45,7 +45,7 @@ function TargetESP.Init(UI, Core, notify)
         )
     end
 
-    local function findTargetModel()
+    local function getTargetRootPart()
         local method = State.TargetESP.TargetESPMethod.Value
         local targetName = nil
 
@@ -59,15 +59,13 @@ function TargetESP.Init(UI, Core, notify)
 
         if targetName and Players:FindFirstChild(targetName) then
             local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                return targetPlayer.Character.HumanoidRootPart
-            end
+            return targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         end
         return nil
     end
 
     local function createTargetESP()
-        local rootPart = findTargetModel()
+        local rootPart = getTargetRootPart()
         removeParts(targetESPQuads)
         removeParts(targetESPBlurQuads)
 
@@ -94,8 +92,14 @@ function TargetESP.Init(UI, Core, notify)
     end
 
     local function updateTargetESP()
-        local rootPart = findTargetModel()
-        if not State.TargetESP.TargetESPActive.Value or not rootPart then
+        if not State.TargetESP.TargetESPActive.Value then
+            removeParts(targetESPQuads)
+            removeParts(targetESPBlurQuads)
+            return
+        end
+
+        local rootPart = getTargetRootPart()
+        if not rootPart then
             removeParts(targetESPQuads)
             removeParts(targetESPBlurQuads)
             return
