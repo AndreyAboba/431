@@ -13,7 +13,7 @@ function ChinaHat.Init(UI, Core, notify)
     local State = {
         ChinaHat = {
             HatActive = { Value = false, Default = false },
-            HatScale = { Value = 0.75, Default = 0.75 },
+            HatScale = { Value = 0.85, Default = 0.85 },
             HatParts = { Value = 50, Default = 50 },
             HatGradientSpeed = { Value = 4, Default = 4 },
             HatGradient = { Value = true, Default = true },
@@ -38,7 +38,7 @@ function ChinaHat.Init(UI, Core, notify)
             NimbGradientSpeed = { Value = 4, Default = 4 },
             NimbGradient = { Value = true, Default = true },
             NimbColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            NimbYOffset = { Value = 1.5, Default = 1.5 }
+            NimbYOffset = { Value = 2.7, Default = 2.7 }
         }
     }
 
@@ -399,17 +399,18 @@ function ChinaHat.Init(UI, Core, notify)
         local chinaHatSection = UI.Sections.ChinaHat or UI.Tabs.Visuals:Section({ Name = "ChinaHat", Side = "Left" })
         UI.Sections.ChinaHat = chinaHatSection
         chinaHatSection:Header({ Name = "China Hat" })
-        chinaHatSection:SubLabel({ Text = "Displays a hat-like effect above the player's head" })
+        chinaHatSection:SubLabel({ Text = "Displays a hat above the player head" })
         chinaHatSection:Toggle({
-            Name = "Hat Enabled",
+            Name = "Enabled",
             Default = State.ChinaHat.HatActive.Default,
             Callback = function(value)
                 toggleHat(value)
             end,
             'HatEnabled'
         })
+        chinaHatSection:Divider()
         chinaHatSection:Slider({
-            Name = "Hat Scale",
+            Name = "Scale",
             Minimum = 0.5,
             Maximum = 2.0,
             Default = State.ChinaHat.HatScale.Default,
@@ -424,7 +425,7 @@ function ChinaHat.Init(UI, Core, notify)
             'HatScale'
         })
         chinaHatSection:Slider({
-            Name = "Hat Parts",
+            Name = "Parts",
             Minimum = 20,
             Maximum = 150,
             Default = State.ChinaHat.HatParts.Value,
@@ -438,6 +439,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'HatParts'
         })
+        chinaHatSection:Divider()
         chinaHatSection:Slider({
             Name = "Gradient Speed",
             Minimum = 1,
@@ -474,6 +476,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'HatColor'
         })
+        chinaHatSection:Divider()
         chinaHatSection:Slider({
             Name = "Y Offset",
             Minimum = -5,
@@ -502,17 +505,18 @@ function ChinaHat.Init(UI, Core, notify)
         local circleSection = UI.Sections.Circle or UI.Tabs.Visuals:Section({ Name = "Circle", Side = "Left" })
         UI.Sections.Circle = circleSection
         circleSection:Header({ Name = "Circle" })
-        circleSection:SubLabel({ Text = "Displays a circle effect at the player's feet" })
+        circleSection:SubLabel({ Text = "Displays a circle at the player feet" })
         circleSection:Toggle({
-            Name = "Circle Enabled",
+            Name = "Enabled",
             Default = State.Circle.CircleActive.Default,
             Callback = function(value)
                 toggleCircle(value)
             end,
             'CircleEnabled'
         })
+        circleSection:Divider()
         circleSection:Slider({
-            Name = "Circle Radius",
+            Name = "Radius",
             Minimum = 1.0,
             Maximum = 3.0,
             Default = State.Circle.CircleRadius.Default,
@@ -527,7 +531,7 @@ function ChinaHat.Init(UI, Core, notify)
             'CircleRadius'
         })
         circleSection:Slider({
-            Name = "Circle Parts",
+            Name = "Parts",
             Minimum = 20,
             Maximum = 100,
             Default = State.Circle.CircleParts.Default,
@@ -541,6 +545,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'CircleParts'
         })
+        circleSection:Divider()
         circleSection:Slider({
             Name = "Gradient Speed",
             Minimum = 1,
@@ -577,6 +582,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'CircleColor'
         })
+        circleSection:Divider()
         circleSection:Toggle({
             Name = "Jump Animate",
             Default = State.Circle.JumpAnimate.Default,
@@ -590,7 +596,7 @@ function ChinaHat.Init(UI, Core, notify)
         local nimbSection = UI.Sections.Nimb or UI.Tabs.Visuals:Section({ Name = "Nimb", Side = "Right" })
         UI.Sections.Nimb = nimbSection
         nimbSection:Header({ Name = "Nimb" })
-        nimbSection:SubLabel({ Text = "Displays a circle effect above the player's head" })
+        nimbSection:SubLabel({ Text = "Displays a circle above the player head" })
         nimbSection:Toggle({
             Name = "Nimb Enabled",
             Default = State.Nimb.NimbActive.Default,
@@ -599,8 +605,9 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'NimbEnabled'
         })
+        nimbSection:Divider()
         nimbSection:Slider({
-            Name = "Nimb Radius",
+            Name = "Radius",
             Minimum = 1.0,
             Maximum = 3.0,
             Default = State.Nimb.NimbRadius.Default,
@@ -615,7 +622,7 @@ function ChinaHat.Init(UI, Core, notify)
             'NimbRadius'
         })
         nimbSection:Slider({
-            Name = "Nimb Parts",
+            Name = "Parts",
             Minimum = 20,
             Maximum = 100,
             Default = State.Nimb.NimbParts.Default,
@@ -629,6 +636,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'NimbParts'
         })
+        nimbSection:Divider()
         nimbSection:Slider({
             Name = "Gradient Speed",
             Minimum = 1,
@@ -665,6 +673,7 @@ function ChinaHat.Init(UI, Core, notify)
             end,
             'NimbColor'
         })
+        nimbSection:Divider()
         nimbSection:Slider({
             Name = "Y Offset",
             Minimum = 1,
