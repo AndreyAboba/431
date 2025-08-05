@@ -47,12 +47,12 @@ function TargetESP.Init(UI, Core, notify)
 
     local function getTargetName()
         local method = State.TargetESP.TargetESPMethod.Value
-        if method == "All" then
-            return Core.BulwarkTarget.CurrentTarget or Core.BulwarkTarget.KillAuraTarget or Core.BulwarkTarget.AutoDodgeTarget
-        elseif method == "KillAura" then
+        if method == "KillAura" then
             return Core.BulwarkTarget.KillAuraTarget
         elseif method == "AutoDodge" then
             return Core.BulwarkTarget.AutoDodgeTarget
+        elseif method == "All" then
+            return Core.BulwarkTarget.CurrentTarget or Core.BulwarkTarget.KillAuraTarget or Core.BulwarkTarget.AutoDodgeTarget
         end
         return nil
     end
@@ -89,13 +89,11 @@ function TargetESP.Init(UI, Core, notify)
         local targetName = getTargetName()
         if not targetName then
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    if Core.BulwarkTarget.CurrentTarget == player.Name or
-                       Core.BulwarkTarget.KillAuraTarget == player.Name or
-                       Core.BulwarkTarget.AutoDodgeTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    end
+                if player ~= LocalPlayer and (Core.BulwarkTarget.CurrentTarget == player.Name or
+                    Core.BulwarkTarget.KillAuraTarget == player.Name or
+                    Core.BulwarkTarget.AutoDodgeTarget == player.Name) then
+                    targetName = player.Name
+                    break
                 end
             end
         end
@@ -126,7 +124,7 @@ function TargetESP.Init(UI, Core, notify)
                 animationProgress = 0
                 animationDirection = 1
             end
-            yOffset = (6 * math.sin(animationProgress * math.pi)) - 3
+            yOffset = (5 * math.sin(animationProgress * math.pi)) - 3
         end
 
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
@@ -155,7 +153,7 @@ function TargetESP.Init(UI, Core, notify)
                     end
 
                     local blurQuad = targetESPBlurQuads[i]
-                    local blurOffset = 0.1
+                    local blurOffset = 0.05
                     local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
                     local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
                     local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
