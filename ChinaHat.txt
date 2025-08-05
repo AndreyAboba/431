@@ -28,8 +28,7 @@ function ChinaHat.Init(UI, Core, notify)
             CircleGradientSpeed = { Value = 4, Default = 4 },
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            JumpAnimate = { Value = false, Default = false },
-            CircleYOffset = { Value = -3, Default = -3 }
+            JumpAnimate = { Value = false, Default = false }
         },
         Nimb = {
             NimbActive = { Value = false, Default = false },
@@ -195,7 +194,7 @@ function ChinaHat.Init(UI, Core, notify)
         local rootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
         if not rootPart then return end
         local t = tick()
-        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Circle.CircleYOffset.Value, rootPart.Position.Z)
+        local center = rootPart.Position
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if onScreenCenter and screenCenter.Z > 0 then
             local circleRadius = State.Circle.CircleRadius.Value
