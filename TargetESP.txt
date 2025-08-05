@@ -19,14 +19,13 @@ function TargetESP.Init(UI, Core, notify)
             TargetESPGradient = { Value = true, Default = true },
             TargetESPColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             TargetESPYOffset = { Value = 0, Default = 0 },
-            AnimateCircle = { Value = "None", Default = "None", Options = {"None", "Jello"} }
+            AnimateCircle = { Value = "None", Default = "None", Options = {"None", "Orbit"} }
         }
     }
 
     local targetESPQuads = {}
     local targetESPBlurQuads = {}
-    local animationProgress = 0
-    local animationDirection = 1
+    local targetESPOppositeQuads = {} -- Второй круг с противоположным вращением
     local lastTarget = nil
 
     local function destroyParts(parts)
@@ -71,19 +70,30 @@ function TargetESP.Init(UI, Core, notify)
 
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
+        destroyParts(targetESPOppositeQuads)
 
         local partsCount = State.TargetESP.TargetESPParts.Value
         for i = 1, partsCount do
+            -- Основной круг
             local quad = Drawing.new("Quad")
             quad.Visible = false
-            quad.Thickness = 2 -- Увеличена толщина для более плавного вида
+            quad.Thickness = State.TargetESP.AnimateCircle.Value == "None" and 1 or 2
             quad.Filled = false
             quad.Color = State.TargetESP.TargetESPGradient.Value and
                 interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / partsCount) or
                 State.TargetESP.TargetESPColor.Value
             table.insert(targetESPQuads, quad)
 
-            if State.TargetESP.AnimateCircle.Value == "Jello" then
+            -- Противоположный круг
+            local oppositeQuad = Drawing.new("Quad")
+            oppositeQuad.Visible = false
+            oppositeQuad.Thickness = State.TargetESP.AnimateCircle.Value == "None" and 1 or 2
+            oppositeQuad.Filled = false
+            oppositeQuad.Color = quad.Color
+            table.insert(targetESPOppositeQuads, oppositeQuad)
+
+            -- BlurQuad для основного круга
+            if State.TargetESP.AnimateCircle.Value == "Orbit" then
                 local blurQuad = Drawing.new("Quad")
                 blurQuad.Visible = false
                 blurQuad.Thickness = 2
@@ -99,6 +109,7 @@ function TargetESP.Init(UI, Core, notify)
         if not State.TargetESP.TargetESPActive.Value then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            destroyParts(targetESPOppositeQuads)
             return
         end
 
@@ -106,6 +117,7 @@ function TargetESP.Init(UI, Core, notify)
         if not rootPart then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            destroyParts(targetESPOppositeQuads)
             lastTarget = nil
             return
         end
@@ -125,7 +137,7 @@ function TargetESP.Init(UI, Core, notify)
         end
 
         local t = tick()
-        local yOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.sin(t * 2) * 0.5) or
+        local yOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.sin(t * 2) * 0.5) or
             State.TargetESP.TargetESPYOffset.Value
 
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
@@ -137,6 +149,9 @@ function TargetESP.Init(UI, Core, notify)
             for _, blurQuad in ipairs(targetESPBlurQuads) do
                 blurQuad.Visible = false
             end
+            for _, oppositeQuad in ipairs(targetESPOppositeQuads) do
+                oppositeQuad.Visible = false
+            end
             return
         end
 
@@ -145,9 +160,11 @@ function TargetESP.Init(UI, Core, notify)
         for i, quad in ipairs(targetESPQuads) do
             local angle1 = ((i - 1) / partsCount) * 2 * math.pi
             local angle2 = (i / partsCount) * 2 * math.pi
+            local oppositeAngle1 = -angle1 -- Противоположное вращение
+            local oppositeAngle2 = -angle2
 
-            -- Улучшение для более плавных линий
-            local depthOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.15) or 0
+            -- Увеличенный наклон для Orbit
+            local depthOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.cos(t + (i / partsCount) * 2 * math.pi) * 0.3) or 0
             local point1 = center + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
             local point2 = center + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
             local point3 = center + Vector3.new(math.cos(angle1) * espRadius * 0.95, depthOffset, math.sin(angle1) * espRadius * 0.95)
@@ -171,9 +188,33 @@ function TargetESP.Init(UI, Core, notify)
                     quad.Color = State.TargetESP.TargetESPColor.Value
                 end
 
-                if State.TargetESP.AnimateCircle.Value == "Jello" and targetESPBlurQuads[i] then
+                -- Противоположный круг
+                local oppositeQuad = targetESPOppositeQuads[i]
+                local oppPoint1 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius, -depthOffset, math.sin(oppositeAngle1) * espRadius)
+                local oppPoint2 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius, -depthOffset, math.sin(oppositeAngle2) * espRadius)
+                local oppPoint3 = center + Vector3.new(math.cos(oppositeAngle1) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle1) * espRadius * 0.95)
+                local oppPoint4 = center + Vector3.new(math.cos(oppositeAngle2) * espRadius * 0.95, -depthOffset, math.sin(oppositeAngle2) * espRadius * 0.95)
+
+                local screenOppPoint1, onScreenOpp1 = camera:WorldToViewportPoint(oppPoint1)
+                local screenOppPoint2, onScreenOpp2 = camera:WorldToViewportPoint(oppPoint2)
+                local screenOppPoint3, onScreenOpp3 = camera:WorldToViewportPoint(oppPoint3)
+                local screenOppPoint4, onScreenOpp4 = camera:WorldToViewportPoint(oppPoint4)
+
+                if onScreenOpp1 and onScreenOpp2 and onScreenOpp3 and onScreenOpp4 and screenOppPoint1.Z > 0 and screenOppPoint2.Z > 0 and screenOppPoint3.Z > 0 and screenOppPoint4.Z > 0 then
+                    oppositeQuad.PointA = Vector2.new(screenOppPoint3.X, screenOppPoint3.Y)
+                    oppositeQuad.PointB = Vector2.new(screenOppPoint4.X, screenOppPoint4.Y)
+                    oppositeQuad.PointC = Vector2.new(screenOppPoint2.X, screenOppPoint2.Y)
+                    oppositeQuad.PointD = Vector2.new(screenOppPoint1.X, screenOppPoint1.Y)
+                    oppositeQuad.Visible = true
+                    oppositeQuad.Color = quad.Color
+                else
+                    oppositeQuad.Visible = false
+                end
+
+                -- BlurQuad для основного круга
+                if State.TargetESP.AnimateCircle.Value == "Orbit" and targetESPBlurQuads[i] then
                     local blurQuad = targetESPBlurQuads[i]
-                    local blurOffset = 0.1
+                    local blurOffset = 0.05 -- Уменьшен для приближения к основному кругу
                     local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
                     local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, depthOffset, math.sin(angle1) * espRadius)
                     local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, depthOffset, math.sin(angle2) * espRadius)
@@ -201,6 +242,9 @@ function TargetESP.Init(UI, Core, notify)
                 if targetESPBlurQuads[i] then
                     targetESPBlurQuads[i].Visible = false
                 end
+                if targetESPOppositeQuads[i] then
+                    targetESPOppositeQuads[i].Visible = false
+                end
             end
         end
     end
@@ -213,6 +257,7 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            destroyParts(targetESPOppositeQuads)
             lastTarget = nil
             notify("TargetESP", "Target ESP Disabled", true)
         end
@@ -225,6 +270,7 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
+            destroyParts(targetESPOppositeQuads)
             lastTarget = nil
         end
     end)
@@ -252,7 +298,7 @@ function TargetESP.Init(UI, Core, notify)
             Options = State.TargetESP.TargetESPMethod.Options,
             Callback = function(value)
                 State.TargetESP.TargetESPMethod.Value = value
-                lastTarget = nil -- Сбрасываем для пересоздания
+                lastTarget = nil
                 if State.TargetESP.TargetESPActive.Value then
                     createTargetESP()
                 end
@@ -333,7 +379,7 @@ function TargetESP.Init(UI, Core, notify)
             Default = State.TargetESP.TargetESPYOffset.Default,
             Precision = 2,
             Callback = function(value)
-                if State.TargetESP.AnimateCircle.Value ~= "Jello" then
+                if State.TargetESP.AnimateCircle.Value ~= "Orbit" then
                     State.TargetESP.TargetESPYOffset.Value = value
                     if State.TargetESP.TargetESPActive.Value then
                         createTargetESP()
@@ -361,6 +407,7 @@ function TargetESP.Init(UI, Core, notify)
     function TargetESP:Destroy()
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
+        destroyParts(targetESPOppositeQuads)
         if connection then
             connection:Disconnect()
         end
