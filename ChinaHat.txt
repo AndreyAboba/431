@@ -28,7 +28,8 @@ function ChinaHat.Init(UI, Core, notify)
             CircleGradientSpeed = { Value = 4, Default = 4 },
             CircleGradient = { Value = true, Default = true },
             CircleColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            JumpAnimate = { Value = false, Default = false }
+            JumpAnimate = { Value = false, Default = false },
+            CircleYOffset = { Value = -3, Default = -3 }
         },
         Nimb = {
             NimbActive = { Value = false, Default = false },
@@ -153,17 +154,34 @@ function ChinaHat.Init(UI, Core, notify)
         end
 
         if State.ChinaHat.OutlineCircle.Value and #hatCircleQuads > 0 then
-            local center = Vector3.new(head.Position.X, y, head.Position.Z)
-            local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
+            local topCenter = Vector3.new(0, 0, 0)
+            local visibleEnds = 0
+            for i, line in ipairs(hatLines) do
+                if line.Visible then
+                    local angle = (i / State.ChinaHat.HatParts.Value) * 2 * math.pi
+                    local x = math.cos(angle) * hatRadius
+                    local z = math.sin(angle) * hatRadius
+                    local topPosition = Vector3.new(head.Position.X + x, y - hatHeight / 3, head.Position.Z + z)
+                    topCenter = topCenter + topPosition
+                    visibleEnds = visibleEnds + 1
+                end
+            end
+            if visibleEnds > 0 then
+                topCenter = topCenter / visibleEnds
+            else
+                topCenter = Vector3.new(head.Position.X, y - hatHeight / 3, head.Position.Z)
+            end
+
+            local screenCenter, onScreenCenter = camera:WorldToViewportPoint(topCenter)
             if onScreenCenter and screenCenter.Z > 0 then
-                local circleRadius = 2.0 * State.ChinaHat.HatScale.Value
+                local circleRadius = 0.2 * State.ChinaHat.HatScale.Value
                 for i, quad in ipairs(hatCircleQuads) do
                     local angle1 = ((i - 1) / 40) * 2 * math.pi
                     local angle2 = (i / 40) * 2 * math.pi
-                    local point1Bottom = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
-                    local point2Bottom = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
-                    local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1Bottom)
-                    local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2Bottom)
+                    local point1 = topCenter + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
+                    local point2 = topCenter + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
+                    local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
+                    local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
 
                     if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
                         quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
@@ -194,7 +212,7 @@ function ChinaHat.Init(UI, Core, notify)
         local rootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
         if not rootPart then return end
         local t = tick()
-        local center = rootPart.Position
+        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Circle.CircleYOffset.Value, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if onScreenCenter and screenCenter.Z > 0 then
             local circleRadius = State.Circle.CircleRadius.Value
