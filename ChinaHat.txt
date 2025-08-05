@@ -3,7 +3,6 @@ local ChinaHat = {}
 function ChinaHat.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
-    local UserInputService = Core.Services.UserInputService
     local Workspace = Core.Services.Workspace
     local camera = Workspace.CurrentCamera
 
@@ -39,27 +38,15 @@ function ChinaHat.Init(UI, Core, notify)
             NimbGradient = { Value = true, Default = true },
             NimbColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
             NimbYOffset = { Value = 1.5, Default = 1.5 }
-        },
-        TargetESP = {
-            TargetESPActive = { Value = false, Default = false },
-            TargetESPRadius = { Value = 1.7, Default = 1.7 },
-            TargetESPParts = { Value = 30, Default = 30 },
-            TargetESPGradientSpeed = { Value = 4, Default = 4 },
-            TargetESPGradient = { Value = true, Default = true },
-            TargetESPColor = { Value = Color3.fromRGB(0, 0, 255), Default = Color3.fromRGB(0, 0, 255) },
-            TargetESPYOffset = { Value = 0, Default = 0 },
-            TargetESPType = { Value = "All", Default = "All", Options = {"All", "KillAura", "AutoDodge"} }
         }
     }
 
-    local hatLines = {} -- Для линий ChinaHat с Drawing.Line
-    local hatCircleQuads = {} -- Для 3D-круга ChinaHat с Drawing.Quad
-    local circleQuads = {} -- Для 3D-круга Circle с Drawing.Quad
-    local nimbQuads = {} -- Для 3D-круга Nimb с Drawing.Quad
-    local targetESPQuads = {} -- Для 3D-круга TargetESP с Drawing.Quad
+    local hatLines = {}
+    local hatCircleQuads = {}
+    local circleQuads = {}
+    local nimbQuads = {}
     local jumpAnimationActive = false
 
-    -- Определение removeParts перед использованием
     local function removeParts(parts)
         for _, part in ipairs(parts) do
             if part and part.Remove then
@@ -79,6 +66,8 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function createHat()
         if not localCharacter or not localCharacter:FindFirstChild("Head") then return end
+        removeParts(hatLines)
+        removeParts(hatCircleQuads)
         local head = localCharacter.Head
         for i = 1, State.ChinaHat.HatParts.Value do
             local line = Drawing.new("Line")
@@ -88,8 +77,8 @@ function ChinaHat.Init(UI, Core, notify)
             line.Color = State.ChinaHat.HatGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.ChinaHat.HatParts.Value) or State.ChinaHat.HatColor.Value
             table.insert(hatLines, line)
         end
-        if State.ChinaHat.OutlineCircle.Value and #hatCircleQuads == 0 then
-            for i = 1, 40 do -- 40 сегментов для 3D-круга
+        if State.ChinaHat.OutlineCircle.Value then
+            for i = 1, 40 do
                 local quad = Drawing.new("Quad")
                 quad.Visible = false
                 quad.Thickness = 1
@@ -102,6 +91,7 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function createCircle()
         if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
+        removeParts(circleQuads)
         for i = 1, State.Circle.CircleParts.Value do
             local quad = Drawing.new("Quad")
             quad.Visible = false
@@ -114,6 +104,7 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function createNimb()
         if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
+        removeParts(nimbQuads)
         for i = 1, State.Nimb.NimbParts.Value do
             local quad = Drawing.new("Quad")
             quad.Visible = false
@@ -124,60 +115,14 @@ function ChinaHat.Init(UI, Core, notify)
         end
     end
 
-    local function createTargetESP()
-        local targetName = nil
-        if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget then
-            targetName = Core.BulwarkTarget.CurrentTarget
-        elseif State.TargetESP.TargetESPType.Value == "KillAura" and Core.BulwarkTarget.KillAuraTarget then
-            targetName = Core.BulwarkTarget.KillAuraTarget
-        elseif State.TargetESP.TargetESPType.Value == "AutoDodge" and Core.BulwarkTarget.AutoDodgeTarget then
-            targetName = Core.BulwarkTarget.AutoDodgeTarget
-        end
-
-        if not targetName then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    elseif State.TargetESP.TargetESPType.Value == "KillAura" and Core.BulwarkTarget.KillAuraTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    elseif State.TargetESP.TargetESPType.Value == "AutoDodge" and Core.BulwarkTarget.AutoDodgeTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    end
-                end
-            end
-        end
-
-        if #targetESPQuads > 0 then
-            removeParts(targetESPQuads)
-        end
-
-        if targetName and Players:FindFirstChild(targetName) then
-            local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                for i = 1, State.TargetESP.TargetESPParts.Value do
-                    local quad = Drawing.new("Quad")
-                    quad.Visible = false
-                    quad.Thickness = 1
-                    quad.Filled = false
-                    quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
-                    table.insert(targetESPQuads, quad)
-                end
-            end
-        end
-    end
-
     local function updateHat()
         if not State.ChinaHat.HatActive.Value or #hatLines == 0 then return end
-        if not localCharacter or not localCharacter:FindFirstChild("Head") then return end
-        local head = localCharacter.Head
-        local hatHeight = 2.15 * State.ChinaHat.HatScale.Value
-        local hatRadius = 1.95 * State.ChinaHat.HatScale.Value
+        local head = localCharacter and localCharacter:FindFirstChild("Head")
+        if not head then return end
         local y = head.Position.Y + State.ChinaHat.HatYOffset.Value
         local t = tick()
+        local hatHeight = 2.15 * State.ChinaHat.HatScale.Value
+        local hatRadius = 1.95 * State.ChinaHat.HatScale.Value
 
         for i, line in ipairs(hatLines) do
             local angle = (i / State.ChinaHat.HatParts.Value) * 2 * math.pi
@@ -185,13 +130,11 @@ function ChinaHat.Init(UI, Core, notify)
             local z = math.sin(angle) * hatRadius
             local basePosition = Vector3.new(head.Position.X, y, head.Position.Z)
             local topPosition = Vector3.new(head.Position.X + x, y - hatHeight / 3, head.Position.Z + z)
-
             local offset = 0.03
             local direction = (topPosition - basePosition).Unit
-            local startPoint = basePosition
             local endPoint = topPosition + direction * offset
 
-            local screenStart, onScreenStart = camera:WorldToViewportPoint(startPoint)
+            local screenStart, onScreenStart = camera:WorldToViewportPoint(basePosition)
             local screenEnd, onScreenEnd = camera:WorldToViewportPoint(endPoint)
 
             if onScreenStart and onScreenEnd and screenStart.Z > 0 and screenEnd.Z > 0 then
@@ -210,53 +153,26 @@ function ChinaHat.Init(UI, Core, notify)
         end
 
         if State.ChinaHat.OutlineCircle.Value and #hatCircleQuads > 0 then
-            local center = Vector3.new(0, 0, 0)
-            local visibleEnds = 0
-            for i, line in ipairs(hatLines) do
-                if line.Visible then
-                    local angle = (i / State.ChinaHat.HatParts.Value) * 2 * math.pi
-                    local x = math.cos(angle) * hatRadius
-                    local z = math.sin(angle) * hatRadius
-                    local topPosition = Vector3.new(head.Position.X + x, y - hatHeight / 3, head.Position.Z + z)
-                    local offset = 0.03
-                    local direction = (topPosition - Vector3.new(head.Position.X, y, head.Position.Z)).Unit
-                    local endPoint = topPosition + direction * offset
-                    center = center + endPoint
-                    visibleEnds = visibleEnds + 1
-                end
-            end
-            if visibleEnds > 0 then
-                center = center / visibleEnds
-            else
-                center = Vector3.new(head.Position.X, y, head.Position.Z)
-            end
-
+            local center = Vector3.new(head.Position.X, y, head.Position.Z)
             local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
             if onScreenCenter and screenCenter.Z > 0 then
-                local circleSegments = #hatCircleQuads
                 local circleRadius = 2.0 * State.ChinaHat.HatScale.Value
                 for i, quad in ipairs(hatCircleQuads) do
-                    local angle1 = ((i - 1) / circleSegments) * 2 * math.pi
-                    local angle2 = (i / circleSegments) * 2 * math.pi
+                    local angle1 = ((i - 1) / 40) * 2 * math.pi
+                    local angle2 = (i / 40) * 2 * math.pi
                     local point1Bottom = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
                     local point2Bottom = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
-                    local point1Top = point1Bottom + Vector3.new(0, 0, 0)
-                    local point2Top = point2Bottom + Vector3.new(0, 0, 0)
-                    local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
-                    local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
-                    local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
-                    local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
+                    local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1Bottom)
+                    local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2Bottom)
 
-                    if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
-                       screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
-                       screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
-                        quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
-                        quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
-                        quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
-                        quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
+                    if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
+                        quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                        quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                        quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                        quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
                         quad.Visible = true
                         if State.ChinaHat.HatGradient.Value then
-                            local factor = (math.sin(t * State.ChinaHat.HatGradientSpeed.Value + (i / circleSegments) * 2 * math.pi) + 1) / 2
+                            local factor = (math.sin(t * State.ChinaHat.HatGradientSpeed.Value + (i / 40) * 2 * math.pi) + 1) / 2
                             quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
                         else
                             quad.Color = State.ChinaHat.HatColor.Value
@@ -275,36 +191,29 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function updateCircle()
         if not State.Circle.CircleActive.Value or #circleQuads == 0 then return end
-        if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
-        local rootPart = localCharacter.HumanoidRootPart
+        local rootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+        if not rootPart then return end
         local t = tick()
-        local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y, rootPart.Position.Z)
+        local center = rootPart.Position
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if onScreenCenter and screenCenter.Z > 0 then
-            local circleSegments = #circleQuads
             local circleRadius = State.Circle.CircleRadius.Value
             for i, quad in ipairs(circleQuads) do
-                local angle1 = ((i - 1) / circleSegments) * 2 * math.pi
-                local angle2 = (i / circleSegments) * 2 * math.pi
-                local point1Bottom = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
-                local point2Bottom = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
-                local point1Top = point1Bottom + Vector3.new(0, 0, 0)
-                local point2Top = point2Bottom + Vector3.new(0, 0, 0)
-                local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
-                local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
-                local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
-                local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
+                local angle1 = ((i - 1) / #circleQuads) * 2 * math.pi
+                local angle2 = (i / #circleQuads) * 2 * math.pi
+                local point1 = center + Vector3.new(math.cos(angle1) * circleRadius, 0, math.sin(angle1) * circleRadius)
+                local point2 = center + Vector3.new(math.cos(angle2) * circleRadius, 0, math.sin(angle2) * circleRadius)
+                local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
+                local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
 
-                if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
-                   screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
-                   screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
-                    quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
-                    quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
-                    quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
-                    quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
+                if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
+                    quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                    quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
                     quad.Visible = true
                     if State.Circle.CircleGradient.Value then
-                        local factor = (math.sin(t * State.Circle.CircleGradientSpeed.Value + (i / circleSegments) * 2 * math.pi) + 1) / 2
+                        local factor = (math.sin(t * State.Circle.CircleGradientSpeed.Value + (i / #circleQuads) * 2 * math.pi) + 1) / 2
                         quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
                     else
                         quad.Color = State.Circle.CircleColor.Value
@@ -322,36 +231,29 @@ function ChinaHat.Init(UI, Core, notify)
 
     local function updateNimb()
         if not State.Nimb.NimbActive.Value or #nimbQuads == 0 then return end
-        if not localCharacter or not localCharacter:FindFirstChild("HumanoidRootPart") then return end
-        local rootPart = localCharacter.HumanoidRootPart
+        local rootPart = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+        if not rootPart then return end
         local t = tick()
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.Nimb.NimbYOffset.Value, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
         if onScreenCenter and screenCenter.Z > 0 then
-            local nimbSegments = #nimbQuads
             local nimbRadius = State.Nimb.NimbRadius.Value
             for i, quad in ipairs(nimbQuads) do
-                local angle1 = ((i - 1) / nimbSegments) * 2 * math.pi
-                local angle2 = (i / nimbSegments) * 2 * math.pi
-                local point1Bottom = center + Vector3.new(math.cos(angle1) * nimbRadius, 0, math.sin(angle1) * nimbRadius)
-                local point2Bottom = center + Vector3.new(math.cos(angle2) * nimbRadius, 0, math.sin(angle2) * nimbRadius)
-                local point1Top = point1Bottom + Vector3.new(0, 0, 0)
-                local point2Top = point2Bottom + Vector3.new(0, 0, 0)
-                local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
-                local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
-                local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
-                local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
+                local angle1 = ((i - 1) / #nimbQuads) * 2 * math.pi
+                local angle2 = (i / #nimbQuads) * 2 * math.pi
+                local point1 = center + Vector3.new(math.cos(angle1) * nimbRadius, 0, math.sin(angle1) * nimbRadius)
+                local point2 = center + Vector3.new(math.cos(angle2) * nimbRadius, 0, math.sin(angle2) * nimbRadius)
+                local screenPoint1, onScreen1 = camera:WorldToViewportPoint(point1)
+                local screenPoint2, onScreen2 = camera:WorldToViewportPoint(point2)
 
-                if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
-                   screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
-                   screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
-                    quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
-                    quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
-                    quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
-                    quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
+                if onScreen1 and onScreen2 and screenPoint1.Z > 0 and screenPoint2.Z > 0 then
+                    quad.PointA = Vector2.new(screenPoint1.X, screenPoint1.Y)
+                    quad.PointB = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
+                    quad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
                     quad.Visible = true
                     if State.Nimb.NimbGradient.Value then
-                        local factor = (math.sin(t * State.Nimb.NimbGradientSpeed.Value + (i / nimbSegments) * 2 * math.pi) + 1) / 2
+                        local factor = (math.sin(t * State.Nimb.NimbGradientSpeed.Value + (i / #nimbQuads) * 2 * math.pi) + 1) / 2
                         quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
                     else
                         quad.Color = State.Nimb.NimbColor.Value
@@ -367,96 +269,13 @@ function ChinaHat.Init(UI, Core, notify)
         end
     end
 
-    local function updateTargetESP()
-        if not State.TargetESP.TargetESPActive.Value or #targetESPQuads == 0 then return end
-        local targetName = nil
-        if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget then
-            targetName = Core.BulwarkTarget.CurrentTarget
-        elseif State.TargetESP.TargetESPType.Value == "KillAura" and Core.BulwarkTarget.KillAuraTarget then
-            targetName = Core.BulwarkTarget.KillAuraTarget
-        elseif State.TargetESP.TargetESPType.Value == "AutoDodge" and Core.BulwarkTarget.AutoDodgeTarget then
-            targetName = Core.BulwarkTarget.AutoDodgeTarget
-        end
-
-        if not targetName then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    elseif State.TargetESP.TargetESPType.Value == "KillAura" and Core.BulwarkTarget.KillAuraTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    elseif State.TargetESP.TargetESPType.Value == "AutoDodge" and Core.BulwarkTarget.AutoDodgeTarget == player.Name then
-                        targetName = player.Name
-                        break
-                    end
-                end
-            end
-        end
-
-        if targetName and Players:FindFirstChild(targetName) then
-            local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local rootPart = targetPlayer.Character.HumanoidRootPart
-                local t = tick()
-                local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + State.TargetESP.TargetESPYOffset.Value, rootPart.Position.Z)
-                local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
-                if onScreenCenter and screenCenter.Z > 0 then
-                    local espSegments = #targetESPQuads
-                    local espRadius = State.TargetESP.TargetESPRadius.Value
-                    for i, quad in ipairs(targetESPQuads) do
-                        local angle1 = ((i - 1) / espSegments) * 2 * math.pi
-                        local angle2 = (i / espSegments) * 2 * math.pi
-                        local point1Bottom = center + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                        local point2Bottom = center + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-                        local point1Top = point1Bottom + Vector3.new(0, 0, 0)
-                        local point2Top = point2Bottom + Vector3.new(0, 0, 0)
-                        local screenPoint1Bottom, onScreen1Bottom = camera:WorldToViewportPoint(point1Bottom)
-                        local screenPoint2Bottom, onScreen2Bottom = camera:WorldToViewportPoint(point2Bottom)
-                        local screenPoint1Top, onScreen1Top = camera:WorldToViewportPoint(point1Top)
-                        local screenPoint2Top, onScreen2Top = camera:WorldToViewportPoint(point2Top)
-
-                        if onScreen1Bottom and onScreen2Bottom and onScreen1Top and onScreen2Top and
-                           screenPoint1Bottom.Z > 0 and screenPoint2Bottom.Z > 0 and
-                           screenPoint1Top.Z > 0 and screenPoint2Top.Z > 0 then
-                            quad.PointA = Vector2.new(screenPoint1Bottom.X, screenPoint1Bottom.Y)
-                            quad.PointB = Vector2.new(screenPoint2Bottom.X, screenPoint2Bottom.Y)
-                            quad.PointC = Vector2.new(screenPoint2Top.X, screenPoint2Top.Y)
-                            quad.PointD = Vector2.new(screenPoint1Top.X, screenPoint1Top.Y)
-                            quad.Visible = true
-                            if State.TargetESP.TargetESPGradient.Value then
-                                local factor = (math.sin(t * State.TargetESP.TargetESPGradientSpeed.Value + (i / espSegments) * 2 * math.pi) + 1) / 2
-                                quad.Color = interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, factor)
-                            else
-                                quad.Color = State.TargetESP.TargetESPColor.Value
-                            end
-                        else
-                            quad.Visible = false
-                        end
-                    end
-                else
-                    for _, quad in ipairs(targetESPQuads) do
-                        quad.Visible = false
-                    end
-                end
-            else
-                removeParts(targetESPQuads)
-                createTargetESP()
-            end
-        else
-            removeParts(targetESPQuads)
-            createTargetESP()
-        end
-    end
-
     local function animateJump()
         if not State.Circle.JumpAnimate.Value or #circleQuads == 0 or jumpAnimationActive then return end
         jumpAnimationActive = true
         local t = 0
         local duration = 0.55
         local initialRadius = State.Circle.CircleRadius.Value
-        local maxRadius = State.Circle.CircleRadius.Value * 1.6
+        local maxRadius = initialRadius * 1.6
         while t < duration do
             local dt = RunService.RenderStepped:Wait()
             t = t + dt
@@ -502,22 +321,12 @@ function ChinaHat.Init(UI, Core, notify)
         end
     end
 
-    local function toggleTargetESP(value)
-        State.TargetESP.TargetESPActive.Value = value
-        if value then
-            createTargetESP()
-            notify("TargetESP", "Target ESP Enabled", true)
-        else
-            removeParts(targetESPQuads)
-            notify("TargetESP", "Target ESP Disabled", true)
+    RunService.RenderStepped:Connect(function()
+        if localCharacter then
+            updateHat()
+            updateCircle()
+            updateNimb()
         end
-    end
-
-    RunService.Stepped:Connect(function(deltaTime)
-        updateHat()
-        updateCircle()
-        updateNimb()
-        updateTargetESP()
     end)
 
     local function onStateChanged(oldState, newState)
@@ -536,23 +345,6 @@ function ChinaHat.Init(UI, Core, notify)
         localHumanoid = localCharacter:WaitForChild("Humanoid", 5)
         localHumanoid.StateChanged:Connect(onStateChanged)
     end
-
-    -- Мониторинг изменений в Core.BulwarkTarget
-    local function monitorTargets()
-        while true do
-            if State.TargetESP.TargetESPActive.Value then
-                local currentTarget = Core.BulwarkTarget.CurrentTarget
-                local killAuraTarget = Core.BulwarkTarget.KillAuraTarget
-                local autoDodgeTarget = Core.BulwarkTarget.AutoDodgeTarget
-                if currentTarget or killAuraTarget or autoDodgeTarget then
-                    removeParts(targetESPQuads)
-                    createTargetESP()
-                end
-            end
-            wait(0.1)
-        end
-    end
-    spawn(monitorTargets)
 
     if UI.Tabs and UI.Tabs.Visuals then
         local chinaHatSection = UI.Sections.ChinaHat or UI.Tabs.Visuals:Section({ Name = "ChinaHat", Side = "Left" })
@@ -574,13 +366,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.ChinaHat.HatScale.Default,
             Precision = 2,
             Callback = function(value)
+                State.ChinaHat.HatScale.Value = value
                 if State.ChinaHat.HatActive.Value then
-                    removeParts(hatLines)
-                    removeParts(hatCircleQuads)
-                    State.ChinaHat.HatScale.Value = value
                     createHat()
-                else
-                    State.ChinaHat.HatScale.Value = value
                 end
                 notify("ChinaHat", "Hat Scale set to: " .. value, false)
             end,
@@ -593,13 +381,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.ChinaHat.HatParts.Default,
             Precision = 0,
             Callback = function(value)
+                State.ChinaHat.HatParts.Value = value
                 if State.ChinaHat.HatActive.Value then
-                    removeParts(hatLines)
-                    removeParts(hatCircleQuads)
-                    State.ChinaHat.HatParts.Value = value
                     createHat()
-                else
-                    State.ChinaHat.HatParts.Value = value
                 end
                 notify("ChinaHat", "Hat Parts set to: " .. value, false)
             end,
@@ -613,9 +397,6 @@ function ChinaHat.Init(UI, Core, notify)
             Precision = 1,
             Callback = function(value)
                 State.ChinaHat.HatGradientSpeed.Value = value
-                if State.ChinaHat.HatActive.Value then
-                    updateHat()
-                end
                 notify("ChinaHat", "Hat Gradient Speed set to: " .. value, false)
             end,
             'HatGradientSpeed'
@@ -626,8 +407,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.ChinaHat.HatGradient.Value = value
                 if State.ChinaHat.HatActive.Value then
-                    removeParts(hatLines)
-                    removeParts(hatCircleQuads)
                     createHat()
                 end
                 notify("ChinaHat", "Hat Gradient: " .. (value and "Enabled" or "Disabled"), true)
@@ -640,8 +419,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.ChinaHat.HatColor.Value = value
                 if State.ChinaHat.HatActive.Value and not State.ChinaHat.HatGradient.Value then
-                    removeParts(hatLines)
-                    removeParts(hatCircleQuads)
                     createHat()
                 end
                 notify("ChinaHat", "Hat Color updated", false)
@@ -655,13 +432,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.ChinaHat.HatYOffset.Default,
             Precision = 2,
             Callback = function(value)
+                State.ChinaHat.HatYOffset.Value = value
                 if State.ChinaHat.HatActive.Value then
-                    removeParts(hatLines)
-                    removeParts(hatCircleQuads)
-                    State.ChinaHat.HatYOffset.Value = value
                     createHat()
-                else
-                    State.ChinaHat.HatYOffset.Value = value
                 end
                 notify("ChinaHat", "Hat Y Offset set to: " .. value, false)
             end,
@@ -673,7 +446,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.ChinaHat.OutlineCircle.Value = value
                 if State.ChinaHat.HatActive.Value then
-                    removeParts(hatCircleQuads)
                     createHat()
                 end
                 notify("ChinaHat", "Outline Circle: " .. (value and "Enabled" or "Disabled"), true)
@@ -700,12 +472,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleRadius.Default,
             Precision = 1,
             Callback = function(value)
+                State.Circle.CircleRadius.Value = value
                 if State.Circle.CircleActive.Value then
-                    removeParts(circleQuads)
-                    State.Circle.CircleRadius.Value = value
                     createCircle()
-                else
-                    State.Circle.CircleRadius.Value = value
                 end
                 notify("Circle", "Circle Radius set to: " .. value, false)
             end,
@@ -718,12 +487,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleParts.Default,
             Precision = 0,
             Callback = function(value)
+                State.Circle.CircleParts.Value = value
                 if State.Circle.CircleActive.Value then
-                    removeParts(circleQuads)
-                    State.Circle.CircleParts.Value = value
                     createCircle()
-                else
-                    State.Circle.CircleParts.Value = value
                 end
                 notify("Circle", "Circle Parts set to: " .. value, false)
             end,
@@ -737,9 +503,6 @@ function ChinaHat.Init(UI, Core, notify)
             Precision = 1,
             Callback = function(value)
                 State.Circle.CircleGradientSpeed.Value = value
-                if State.Circle.CircleActive.Value then
-                    updateCircle()
-                end
                 notify("Circle", "Circle Gradient Speed set to: " .. value, false)
             end,
             'CircleGradientSpeed'
@@ -750,7 +513,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Circle.CircleGradient.Value = value
                 if State.Circle.CircleActive.Value then
-                    removeParts(circleQuads)
                     createCircle()
                 end
                 notify("Circle", "Circle Gradient: " .. (value and "Enabled" or "Disabled"), true)
@@ -763,7 +525,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Circle.CircleColor.Value = value
                 if State.Circle.CircleActive.Value and not State.Circle.CircleGradient.Value then
-                    removeParts(circleQuads)
                     createCircle()
                 end
                 notify("Circle", "Circle Color updated", false)
@@ -799,12 +560,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Nimb.NimbRadius.Default,
             Precision = 1,
             Callback = function(value)
+                State.Nimb.NimbRadius.Value = value
                 if State.Nimb.NimbActive.Value then
-                    removeParts(nimbQuads)
-                    State.Nimb.NimbRadius.Value = value
                     createNimb()
-                else
-                    State.Nimb.NimbRadius.Value = value
                 end
                 notify("Nimb", "Nimb Radius set to: " .. value, false)
             end,
@@ -817,12 +575,9 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Nimb.NimbParts.Default,
             Precision = 0,
             Callback = function(value)
+                State.Nimb.NimbParts.Value = value
                 if State.Nimb.NimbActive.Value then
-                    removeParts(nimbQuads)
-                    State.Nimb.NimbParts.Value = value
                     createNimb()
-                else
-                    State.Nimb.NimbParts.Value = value
                 end
                 notify("Nimb", "Nimb Parts set to: " .. value, false)
             end,
@@ -836,9 +591,6 @@ function ChinaHat.Init(UI, Core, notify)
             Precision = 1,
             Callback = function(value)
                 State.Nimb.NimbGradientSpeed.Value = value
-                if State.Nimb.NimbActive.Value then
-                    updateNimb()
-                end
                 notify("Nimb", "Nimb Gradient Speed set to: " .. value, false)
             end,
             'NimbGradientSpeed'
@@ -849,7 +601,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Nimb.NimbGradient.Value = value
                 if State.Nimb.NimbActive.Value then
-                    removeParts(nimbQuads)
                     createNimb()
                 end
                 notify("Nimb", "Nimb Gradient: " .. (value and "Enabled" or "Disabled"), true)
@@ -862,7 +613,6 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Nimb.NimbColor.Value = value
                 if State.Nimb.NimbActive.Value and not State.Nimb.NimbGradient.Value then
-                    removeParts(nimbQuads)
                     createNimb()
                 end
                 notify("Nimb", "Nimb Color updated", false)
@@ -876,138 +626,13 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Nimb.NimbYOffset.Default,
             Precision = 2,
             Callback = function(value)
+                State.Nimb.NimbYOffset.Value = value
                 if State.Nimb.NimbActive.Value then
-                    removeParts(nimbQuads)
-                    State.Nimb.NimbYOffset.Value = value
                     createNimb()
-                else
-                    State.Nimb.NimbYOffset.Value = value
                 end
                 notify("Nimb", "Nimb Y Offset set to: " .. value, false)
             end,
             'NimbYOffset'
-        })
-
-        local targetESPSection = UI.Sections.TargetESP or UI.Tabs.Visuals:Section({ Name = "TargetESP", Side = "Right" })
-        UI.Sections.TargetESP = targetESPSection
-        targetESPSection:Header({ Name = "Target ESP" })
-        targetESPSection:SubLabel({ Text = "Displays a circle effect above the target player" })
-        targetESPSection:Toggle({
-            Name = "Target ESP Enabled",
-            Default = State.TargetESP.TargetESPActive.Default,
-            Callback = function(value)
-                toggleTargetESP(value)
-            end,
-            'TargetESPEnabled'
-        })
-        targetESPSection:Slider({
-            Name = "Target ESP Radius",
-            Minimum = 1.0,
-            Maximum = 3.0,
-            Default = State.TargetESP.TargetESPRadius.Default,
-            Precision = 1,
-            Callback = function(value)
-                if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    State.TargetESP.TargetESPRadius.Value = value
-                    createTargetESP()
-                else
-                    State.TargetESP.TargetESPRadius.Value = value
-                end
-                notify("TargetESP", "Target ESP Radius set to: " .. value, false)
-            end,
-            'TargetESPRadius'
-        })
-        targetESPSection:Slider({
-            Name = "Target ESP Parts",
-            Minimum = 20,
-            Maximum = 100,
-            Default = State.TargetESP.TargetESPParts.Default,
-            Precision = 0,
-            Callback = function(value)
-                if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    State.TargetESP.TargetESPParts.Value = value
-                    createTargetESP()
-                else
-                    State.TargetESP.TargetESPParts.Value = value
-                end
-                notify("TargetESP", "Target ESP Parts set to: " .. value, false)
-            end,
-            'TargetESPParts'
-        })
-        targetESPSection:Slider({
-            Name = "Gradient Speed",
-            Minimum = 1,
-            Maximum = 10,
-            Default = State.TargetESP.TargetESPGradientSpeed.Default,
-            Precision = 1,
-            Callback = function(value)
-                State.TargetESP.TargetESPGradientSpeed.Value = value
-                if State.TargetESP.TargetESPActive.Value then
-                    updateTargetESP()
-                end
-                notify("TargetESP", "Target ESP Gradient Speed set to: " .. value, false)
-            end,
-            'TargetESPGradientSpeed'
-        })
-        targetESPSection:Toggle({
-            Name = "Gradient",
-            Default = State.TargetESP.TargetESPGradient.Default,
-            Callback = function(value)
-                State.TargetESP.TargetESPGradient.Value = value
-                if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    createTargetESP()
-                end
-                notify("TargetESP", "Target ESP Gradient: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'TargetESPGradient'
-        })
-        targetESPSection:Colorpicker({
-            Name = "Color",
-            Default = State.TargetESP.TargetESPColor.Default,
-            Callback = function(value)
-                State.TargetESP.TargetESPColor.Value = value
-                if State.TargetESP.TargetESPActive.Value and not State.TargetESP.TargetESPGradient.Value then
-                    removeParts(targetESPQuads)
-                    createTargetESP()
-                end
-                notify("TargetESP", "Target ESP Color updated", false)
-            end,
-            'TargetESPColor'
-        })
-        targetESPSection:Slider({
-            Name = "Y Offset",
-            Minimum = -5,
-            Maximum = 5,
-            Default = State.TargetESP.TargetESPYOffset.Default,
-            Precision = 2,
-            Callback = function(value)
-                if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    State.TargetESP.TargetESPYOffset.Value = value
-                    createTargetESP()
-                else
-                    State.TargetESP.TargetESPYOffset.Value = value
-                end
-                notify("TargetESP", "Target ESP Y Offset set to: " .. value, false)
-            end,
-            'TargetESPYOffset'
-        })
-        targetESPSection:Dropdown({
-            Name = "Target Type",
-            Default = State.TargetESP.TargetESPType.Default,
-            Options = State.TargetESP.TargetESPType.Options,
-            Callback = function(value)
-                State.TargetESP.TargetESPType.Value = value
-                if State.TargetESP.TargetESPActive.Value then
-                    removeParts(targetESPQuads)
-                    createTargetESP()
-                end
-                notify("TargetESP", "Target Type set to: " .. value, false)
-            end,
-            'TargetESPType'
         })
     end
 
