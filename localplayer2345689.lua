@@ -20,7 +20,7 @@ MovementEnhancements.Config = {
         Enabled = false,
         AutoJump = false,
         Method = "CFrame",
-        Speed = 16,
+        Speed = 12,
         JumpInterval = 0.3,
         PulseTPDist = 5,
         PulseTPDelay = 0.2,
@@ -29,8 +29,8 @@ MovementEnhancements.Config = {
     },
     Fly = {
         Enabled = false,
-        Speed = 50,
-        VerticalSpeed = 50,
+        Speed = 24,
+        VerticalSpeed = 18,
         ToggleKey = nil,
         VerticalKeys = "E/Q"
     },
@@ -609,8 +609,8 @@ local function SetupUI(UI)
         }, "SpeedMethod")
         uiElements.Speed = UI.Sections.Speed:Slider({
             Name = "Speed",
-            Minimum = 16,
-            Maximum = 250,
+            Minimum = 10,
+            Maximum = 50,
             Default = MovementEnhancements.Config.Speed.Speed,
             Precision = 1,
             Callback = function(value)
