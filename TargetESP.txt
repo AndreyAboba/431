@@ -1,5 +1,5 @@
 local TargetESP = {}
-print('2')
+
 function TargetESP.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -29,9 +29,11 @@ function TargetESP.Init(UI, Core, notify)
     local animationDirection = 1
 
     local function removeParts(parts)
-        for _, part in ipairs(parts) do
+        for i = #parts, 1, -1 do
+            local part = parts[i]
             if part and part.Remove then
                 part:Remove()
+                parts[i] = nil
             end
         end
         table.clear(parts)
@@ -66,27 +68,27 @@ function TargetESP.Init(UI, Core, notify)
 
     local function createTargetESP()
         local rootPart = getTargetRootPart()
+        if not rootPart then return end
+
         removeParts(targetESPQuads)
         removeParts(targetESPBlurQuads)
 
-        if rootPart then
-            for i = 1, State.TargetESP.TargetESPParts.Value do
-                local quad = Drawing.new("Quad")
-                quad.Visible = false
-                quad.Thickness = 1
-                quad.Filled = false
-                quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
-                table.insert(targetESPQuads, quad)
+        for i = 1, State.TargetESP.TargetESPParts.Value do
+            local quad = Drawing.new("Quad")
+            quad.Visible = false
+            quad.Thickness = 1
+            quad.Filled = false
+            quad.Color = State.TargetESP.TargetESPGradient.Value and interpolateColor(Core.GradientColors.Color1.Value, Core.GradientColors.Color2.Value, i / State.TargetESP.TargetESPParts.Value) or State.TargetESP.TargetESPColor.Value
+            table.insert(targetESPQuads, quad)
 
-                if State.TargetESP.AnimateCircle.Value == "Jello" then
-                    local blurQuad = Drawing.new("Quad")
-                    blurQuad.Visible = false
-                    blurQuad.Thickness = 1
-                    blurQuad.Filled = true
-                    blurQuad.Color = quad.Color
-                    blurQuad.Transparency = 0.3
-                    table.insert(targetESPBlurQuads, blurQuad)
-                end
+            if State.TargetESP.AnimateCircle.Value == "Jello" then
+                local blurQuad = Drawing.new("Quad")
+                blurQuad.Visible = false
+                blurQuad.Thickness = 1
+                blurQuad.Filled = true
+                blurQuad.Color = quad.Color
+                blurQuad.Transparency = 0.3
+                table.insert(targetESPBlurQuads, blurQuad)
             end
         end
     end
@@ -105,23 +107,8 @@ function TargetESP.Init(UI, Core, notify)
             return
         end
 
-        createTargetESP()
-
         local t = tick()
-        local baseYOffset = State.TargetESP.AnimateCircle.Value == "Jello" and 0 or State.TargetESP.TargetESPYOffset.Value
-        local yOffset = baseYOffset
-
-        if State.TargetESP.AnimateCircle.Value == "Jello" then
-            animationProgress = animationProgress + (RunService.RenderStepped:Wait() * 0.5 * animationDirection)
-            if animationProgress >= 1 then
-                animationProgress = 1
-                animationDirection = -1
-            elseif animationProgress <= 0 then
-                animationProgress = 0
-                animationDirection = 1
-            end
-            yOffset = (5.5 * math.sin(animationProgress * math.pi)) - 3
-        end
+        local yOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.sin(t) * 2) or State.TargetESP.TargetESPYOffset.Value
 
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
