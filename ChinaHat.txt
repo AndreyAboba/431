@@ -59,6 +59,16 @@ function ChinaHat.Init(UI, Core, notify)
     local targetESPQuads = {} -- Для 3D-круга TargetESP с Drawing.Quad
     local jumpAnimationActive = false
 
+    -- Определение removeParts перед использованием
+    local function removeParts(parts)
+        for _, part in ipairs(parts) do
+            if part and part.Remove then
+                part:Remove()
+            end
+        end
+        table.clear(parts)
+    end
+
     local function interpolateColor(color1, color2, factor)
         return Color3.new(
             color1.R + (color2.R - color1.R) * factor,
@@ -115,7 +125,6 @@ function ChinaHat.Init(UI, Core, notify)
     end
 
     local function createTargetESP()
-        removeParts(targetESPQuads)
         local targetName = nil
         if State.TargetESP.TargetESPType.Value == "All" and Core.BulwarkTarget.CurrentTarget then
             targetName = Core.BulwarkTarget.CurrentTarget
@@ -142,6 +151,10 @@ function ChinaHat.Init(UI, Core, notify)
             end
         end
 
+        if #targetESPQuads > 0 then
+            removeParts(targetESPQuads)
+        end
+
         if targetName and Players:FindFirstChild(targetName) then
             local targetPlayer = Players:FindFirstChild(targetName)
             if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -155,13 +168,6 @@ function ChinaHat.Init(UI, Core, notify)
                 end
             end
         end
-    end
-
-    local function removeParts(parts)
-        for _, part in ipairs(parts) do
-            part:Remove()
-        end
-        table.clear(parts)
     end
 
     local function updateHat()
