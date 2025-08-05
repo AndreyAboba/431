@@ -25,7 +25,6 @@ function TargetESP.Init(UI, Core, notify)
 
     local targetESPQuads = {}
     local targetESPBlurQuads = {}
-    local targetESPBlurQuadsExtra = {} -- Для дополнительных 9 кругов в Jello (итого 10)
     local targetESPOppositeQuads = {}
     local lastTarget = nil
 
@@ -71,7 +70,6 @@ function TargetESP.Init(UI, Core, notify)
 
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
-        destroyParts(targetESPBlurQuadsExtra)
         destroyParts(targetESPOppositeQuads)
 
         local partsCount = State.TargetESP.TargetESPParts.Value
@@ -103,19 +101,6 @@ function TargetESP.Init(UI, Core, notify)
                 blurQuad.Transparency = 0.3
                 table.insert(targetESPBlurQuads, blurQuad)
             end
-        elseif State.TargetESP.AnimateCircle.Value == "Jello" then
-            local blurPartsCount = 14
-            for i = 1, blurPartsCount do
-                for j = 1, 10 do
-                    local blurQuad = Drawing.new("Quad")
-                    blurQuad.Visible = false
-                    blurQuad.Thickness = 1
-                    blurQuad.Filled = true
-                    blurQuad.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
-                    blurQuad.Transparency = 0.6 - (j - 1) * (0.45 / 9) -- От 0.6 до 0.15
-                    table.insert(targetESPBlurQuadsExtra, blurQuad)
-                end
-            end
         end
     end
 
@@ -123,7 +108,6 @@ function TargetESP.Init(UI, Core, notify)
         if not State.TargetESP.TargetESPActive.Value then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             return
         end
@@ -132,7 +116,6 @@ function TargetESP.Init(UI, Core, notify)
         if not rootPart then
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             lastTarget = nil
             return
@@ -153,14 +136,9 @@ function TargetESP.Init(UI, Core, notify)
         end
 
         local t = tick()
-        local yOffset
-        if State.TargetESP.AnimateCircle.Value == "Jello" then
-            yOffset = math.sin(t * 4) * 3 -- От -3 до 3
-        elseif State.TargetESP.AnimateCircle.Value == "Orbit" then
-            yOffset = math.sin(t * 2) * 0.5
-        else
-            yOffset = State.TargetESP.TargetESPYOffset.Value
-        end
+        local yOffset = State.TargetESP.AnimateCircle.Value == "Orbit" and (math.sin(t * 2) * 0.5) or
+                        State.TargetESP.AnimateCircle.Value == "Jello" and 0 or
+                        State.TargetESP.TargetESPYOffset.Value
 
         local center = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset, rootPart.Position.Z)
         local screenCenter, onScreenCenter = camera:WorldToViewportPoint(center)
@@ -171,9 +149,6 @@ function TargetESP.Init(UI, Core, notify)
             for _, blurQuad in ipairs(targetESPBlurQuads) do
                 blurQuad.Visible = false
             end
-            for _, blurQuadExtra in ipairs(targetESPBlurQuadsExtra) do
-                blurQuadExtra.Visible = false
-            end
             for _, oppositeQuad in ipairs(targetESPOppositeQuads) do
                 oppositeQuad.Visible = false
             end
@@ -182,10 +157,10 @@ function TargetESP.Init(UI, Core, notify)
 
         local espRadius = State.TargetESP.TargetESPRadius.Value
         local partsCount = #targetESPQuads
-        local blurPartsCount = State.TargetESP.AnimateCircle.Value == "Jello" and 14 or partsCount
         for i, quad in ipairs(targetESPQuads) do
-            local angle1 = ((i - 1) / partsCount) * 2 * math.pi
-            local angle2 = (i / partsCount) * 2 * math.pi
+            local angleOffset = State.TargetESP.AnimateCircle.Value == "Jello" and (math.sin(t * 2) * 0.2) or 0
+            local angle1 = ((i - 1) / partsCount) * 2 * math.pi + angleOffset
+            local angle2 = (i / partsCount) * 2 * math.pi + angleOffset
             local oppositeAngle1 = -angle1
             local oppositeAngle2 = -angle2
 
@@ -296,32 +271,6 @@ function TargetESP.Init(UI, Core, notify)
                     blurQuad.Visible = false
                 end
             end
-        elseif State.TargetESP.AnimateCircle.Value == "Jello" then
-            for i = 1, blurPartsCount do
-                local angle1 = ((i - 1) / blurPartsCount) * 2 * math.pi
-                local angle2 = (i / blurPartsCount) * 2 * math.pi
-                for j = 1, 10 do
-                    local blurOffset = 0.05 + (j - 1) * 0.02 -- От 0.05 до 0.23
-                    local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
-                    local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
-                    local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
-
-                    local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
-                    local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
-
-                    if onScreenBlur1 and onScreenBlur2 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 then
-                        local blurQuad = targetESPBlurQuadsExtra[(i - 1) * 10 + j]
-                        blurQuad.PointA = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                        blurQuad.PointB = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
-                        blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
-                        blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                        blurQuad.Visible = true
-                        blurQuad.Color = targetESPQuads[math.ceil(i * partsCount / blurPartsCount)].Color
-                    else
-                        targetESPBlurQuadsExtra[(i - 1) * 10 + j].Visible = false
-                    end
-                end
-            end
         end
     end
 
@@ -333,7 +282,6 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             lastTarget = nil
             notify("TargetESP", "Target ESP Disabled", true)
@@ -347,7 +295,6 @@ function TargetESP.Init(UI, Core, notify)
         else
             destroyParts(targetESPQuads)
             destroyParts(targetESPBlurQuads)
-            destroyParts(targetESPBlurQuadsExtra)
             destroyParts(targetESPOppositeQuads)
             lastTarget = nil
         end
@@ -406,7 +353,7 @@ function TargetESP.Init(UI, Core, notify)
             Default = State.TargetESP.TargetESPParts.Default,
             Precision = 0,
             Callback = function(value)
-                State.TargetESP.TargetESPRadius.Value = value
+                State.TargetESP.TargetESPParts.Value = value
                 if State.TargetESP.TargetESPActive.Value then
                     createTargetESP()
                 end
@@ -485,7 +432,6 @@ function TargetESP.Init(UI, Core, notify)
     function TargetESP:Destroy()
         destroyParts(targetESPQuads)
         destroyParts(targetESPBlurQuads)
-        destroyParts(targetESPBlurQuadsExtra)
         destroyParts(targetESPOppositeQuads)
         if connection then
             connection:Disconnect()
