@@ -1,5 +1,5 @@
 local TargetESP = {}
-
+print('2')
 function TargetESP.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -79,16 +79,13 @@ function TargetESP.Init(UI, Core, notify)
                 table.insert(targetESPQuads, quad)
 
                 if State.TargetESP.AnimateCircle.Value == "Jello" then
-                    -- Создаём несколько слоёв для мягких краёв
-                    for j = 0, 2 do
-                        local blurQuad = Drawing.new("Quad")
-                        blurQuad.Visible = false
-                        blurQuad.Thickness = 1
-                        blurQuad.Filled = true
-                        blurQuad.Color = quad.Color
-                        blurQuad.Transparency = 0.3 - (j * 0.1) -- Уменьшаем прозрачность для эффекта мягкости
-                        table.insert(targetESPBlurQuads, blurQuad)
-                    end
+                    local blurQuad = Drawing.new("Quad")
+                    blurQuad.Visible = false
+                    blurQuad.Thickness = 1
+                    blurQuad.Filled = true
+                    blurQuad.Color = quad.Color
+                    blurQuad.Transparency = 0.3
+                    table.insert(targetESPBlurQuads, blurQuad)
                 end
             end
         end
@@ -151,40 +148,30 @@ function TargetESP.Init(UI, Core, notify)
                         quad.Color = State.TargetESP.TargetESPColor.Value
                     end
 
-                    if State.TargetESP.AnimateCircle.Value == "Jello" then
-                        local blurIndex = (i - 1) * 3 + 1 -- Индекс первого блюр-квадрата для текущего сегмента
-                        for j = 0, 2 do
-                            local blurQuad = targetESPBlurQuads[blurIndex + j]
-                            if blurQuad then
-                                local blurOffset = 0.07 + (j * 0.02) -- Увеличиваем радиус для каждого слоя
-                                local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
-                                local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * (espRadius + j * 0.05), 0, math.sin(angle1) * (espRadius + j * 0.05))
-                                local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * (espRadius + j * 0.05), 0, math.sin(angle2) * (espRadius + j * 0.05))
-                                local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
-                                local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
+                    if State.TargetESP.AnimateCircle.Value == "Jello" and targetESPBlurQuads[i] then
+                        local blurQuad = targetESPBlurQuads[i]
+                        local blurOffset = 0.07
+                        local blurCenter = Vector3.new(rootPart.Position.X, rootPart.Position.Y + yOffset - blurOffset, rootPart.Position.Z)
+                        local blurPoint1 = blurCenter + Vector3.new(math.cos(angle1) * espRadius, 0, math.sin(angle1) * espRadius)
+                        local blurPoint2 = blurCenter + Vector3.new(math.cos(angle2) * espRadius, 0, math.sin(angle2) * espRadius)
+                        local screenBlurPoint1, onScreenBlur1 = camera:WorldToViewportPoint(blurPoint1)
+                        local screenBlurPoint2, onScreenBlur2 = camera:WorldToViewportPoint(blurPoint2)
 
-                                if onScreenBlur1 and onScreenBlur2 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 then
-                                    blurQuad.PointA = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
-                                    blurQuad.PointB = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
-                                    blurQuad.PointC = Vector2.new(screenPoint2.X, screenPoint2.Y)
-                                    blurQuad.PointD = Vector2.new(screenPoint1.X, screenPoint1.Y)
-                                    blurQuad.Visible = true
-                                    blurQuad.Color = quad.Color
-                                else
-                                    blurQuad.Visible = false
-                                end
-                            end
+                        if onScreenBlur1 and onScreenBlur2 and screenBlurPoint1.Z > 0 and screenBlurPoint2.Z > 0 then
+                            blurQuad.PointA = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
+                            blurQuad.PointB = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                            blurQuad.PointC = Vector2.new(screenBlurPoint2.X, screenBlurPoint2.Y)
+                            blurQuad.PointD = Vector2.new(screenBlurPoint1.X, screenBlurPoint1.Y)
+                            blurQuad.Visible = true
+                            blurQuad.Color = quad.Color
+                        else
+                            blurQuad.Visible = false
                         end
                     end
                 else
                     quad.Visible = false
-                    if State.TargetESP.AnimateCircle.Value == "Jello" then
-                        for j = 0, 2 do
-                            local blurIndex = (i - 1) * 3 + j + 1
-                            if targetESPBlurQuads[blurIndex] then
-                                targetESPBlurQuads[blurIndex].Visible = false
-                            end
-                        end
+                    if targetESPBlurQuads[i] then
+                        targetESPBlurQuads[i].Visible = false
                     end
                 end
             end
