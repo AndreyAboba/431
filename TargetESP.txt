@@ -49,18 +49,18 @@ function TargetESP.Init(UI, Core, notify)
         local method = State.TargetESP.TargetESPMethod.Value
         local targetName = nil
 
-        if method == "KillAura" then
+        if method == "All" then
+            targetName = Core.BulwarkTarget.CurrentTarget
+        elseif method == "KillAura" then
             targetName = Core.BulwarkTarget.KillAuraTarget
         elseif method == "AutoDodge" then
             targetName = Core.BulwarkTarget.AutoDodgeTarget
-        elseif method == "All" then
-            targetName = Core.BulwarkTarget.CurrentTarget or Core.BulwarkTarget.KillAuraTarget or Core.BulwarkTarget.AutoDodgeTarget
         end
 
         if targetName and Players:FindFirstChild(targetName) then
             local targetPlayer = Players:FindFirstChild(targetName)
-            if targetPlayer.Character then
-                return targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                return targetPlayer.Character.HumanoidRootPart
             end
         end
         return nil
