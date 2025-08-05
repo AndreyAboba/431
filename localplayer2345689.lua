@@ -20,17 +20,17 @@ MovementEnhancements.Config = {
         Enabled = false,
         AutoJump = false,
         Method = "CFrame",
-        Speed = 12,
+        Speed = 16,
         JumpInterval = 0.3,
         PulseTPDist = 5,
         PulseTPDelay = 0.2,
         ToggleKey = nil,
-        SmoothnessFactor = 0.5
+        SmoothnessFactor = 0.2 -- Уменьшено для более плавного разгона
     },
     Fly = {
         Enabled = false,
-        Speed = 24,
-        VerticalSpeed = 18,
+        Speed = 50,
+        VerticalSpeed = 50,
         ToggleKey = nil,
         VerticalKeys = "E/Q"
     },
@@ -261,9 +261,9 @@ Speed.UpdateMovement = function(humanoid, rootPart, moveDirection, currentTime)
     end
 end
 
-Speed.UpdateJumps = function(humanoid, rootPart, currentTime)
+Speed.UpdateJumps = function(humanoid, rootPart, currentTime, moveDirection)
     if not isCharacterValid(humanoid, rootPart) then return end
-    if SpeedStatus.AutoJump and currentTime - SpeedStatus.LastJumpTime >= SpeedStatus.JumpInterval then
+    if SpeedStatus.AutoJump and moveDirection.Magnitude > 0 and currentTime - SpeedStatus.LastJumpTime >= SpeedStatus.JumpInterval then
         local state = humanoid:GetState()
         if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Landed then
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
@@ -285,7 +285,7 @@ Speed.Start = function()
         local currentTime = tick()
         local moveDirection = getCustomMoveDirection()
         Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime)
-        Speed.UpdateJumps(humanoid, rootPart, currentTime)
+        Speed.UpdateJumps(humanoid, rootPart, currentTime, moveDirection)
     end)
     notify("Speed", "Started with Method: " .. SpeedStatus.Method, true)
 end
@@ -489,7 +489,6 @@ NoStamina.Stop = function()
         NoStaminaStatus.Connection = nil
     end
     if NoStaminaStatus.OriginalFireServer and hookmetamethod then
-        -- Restore original FireServer if hooked
         hookmetamethod(game, "__namecall", NoStaminaStatus.OriginalFireServer)
         NoStaminaStatus.OriginalFireServer = nil
     end
@@ -609,7 +608,7 @@ local function SetupUI(UI)
         }, "SpeedMethod")
         uiElements.Speed = UI.Sections.Speed:Slider({
             Name = "Speed",
-            Minimum = 5,
+            Minimum = 2,
             Maximum = 40,
             Default = MovementEnhancements.Config.Speed.Speed,
             Precision = 1,
