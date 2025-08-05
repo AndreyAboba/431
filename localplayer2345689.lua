@@ -21,7 +21,6 @@ MovementEnhancements.Config = {
         AutoJump = false,
         Method = "CFrame",
         Speed = 16,
-        JumpPower = 50,
         JumpInterval = 0.3,
         PulseTPDist = 5,
         PulseTPDelay = 0.2,
@@ -54,7 +53,6 @@ local SpeedStatus = {
     AutoJump = MovementEnhancements.Config.Speed.AutoJump,
     LastJumpTime = 0,
     JumpCooldown = 0.5,
-    JumpPower = MovementEnhancements.Config.Speed.JumpPower,
     JumpInterval = MovementEnhancements.Config.Speed.JumpInterval,
     PulseTPDistance = MovementEnhancements.Config.Speed.PulseTPDist,
     PulseTPFrequency = MovementEnhancements.Config.Speed.PulseTPDelay,
@@ -86,6 +84,28 @@ end
 
 local function isInputFocused()
     return Services and Services.UserInputService and Services.UserInputService:GetFocusedTextBox() ~= nil
+end
+
+local function getCustomMoveDirection(humanoid)
+    if not Services.UserInputService or not humanoid then return humanoid.MoveDirection end
+    local moveDirection = Vector3.new(0, 0, 0)
+    local camera = Services.Workspace.CurrentCamera
+    local forward = Services.UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0
+    local backward = Services.UserInputService:IsKeyDown(Enum.KeyCode.S) and -1 or 0
+    local left = Services.UserInputService:IsKeyDown(Enum.KeyCode.A) and -1 or 0
+    local right = Services.UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0
+
+    local inputVector = Vector3.new(left + right, 0, forward + backward)
+    if inputVector.Magnitude > 0 then
+        local cameraCFrame = camera.CFrame
+        local flatCameraDirection = (cameraCFrame - cameraCFrame.Position).LookVector
+        flatCameraDirection = Vector3.new(flatCameraDirection.X, 0, flatCameraDirection.Z).Unit
+        moveDirection = flatCameraDirection * inputVector.Z + cameraCFrame.RightVector * inputVector.X
+        moveDirection = moveDirection.Unit
+    elseif humanoid.MoveDirection.Magnitude > 0 then
+        moveDirection = humanoid.MoveDirection.Unit
+    end
+    return moveDirection
 end
 
 local Timer = {}
@@ -193,8 +213,8 @@ end
 Speed.UpdateJumps = function(humanoid, rootPart, currentTime)
     if not isCharacterValid(humanoid, rootPart) then return end
     if SpeedStatus.AutoJump and currentTime - SpeedStatus.LastJumpTime >= SpeedStatus.JumpInterval then
-        if humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
-            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, SpeedStatus.JumpPower, rootPart.Velocity.Z)
+        local state = humanoid:GetState()
+        if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Landed then
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             SpeedStatus.LastJumpTime = currentTime
         end
@@ -212,7 +232,7 @@ Speed.Start = function()
         local humanoid, rootPart = getCharacterData()
         if not isCharacterValid(humanoid, rootPart) then return end
         local currentTime = tick()
-        local moveDirection = humanoid.MoveDirection
+        local moveDirection = getCustomMoveDirection(humanoid)
         Speed.UpdateMovement(humanoid, rootPart, moveDirection, currentTime)
         Speed.UpdateJumps(humanoid, rootPart, currentTime)
     end)
@@ -254,12 +274,6 @@ Speed.SetPulseTPFrequency = function(value)
     SpeedStatus.PulseTPFrequency = math.clamp(value, 0.1, 1)
     MovementEnhancements.Config.Speed.PulseTPDelay = SpeedStatus.PulseTPFrequency
     notify("Speed", "PulseTP Frequency set to: " .. SpeedStatus.PulseTPFrequency, false)
-end
-
-Speed.SetJumpPower = function(newPower)
-    SpeedStatus.JumpPower = math.clamp(newPower, 10, 100)
-    MovementEnhancements.Config.Speed.JumpPower = SpeedStatus.JumpPower
-    notify("Speed", "JumpPower set to: " .. SpeedStatus.JumpPower, false)
 end
 
 Speed.SetJumpInterval = function(newInterval)
@@ -373,16 +387,6 @@ local function SetupUI(UI)
                 Speed.SetSpeed(value)
             end
         }, "Speed")
-        uiElements.SpeedJumpPower = UI.Sections.Speed:Slider({
-            Name = "Jump Power",
-            Minimum = 10,
-            Maximum = 100,
-            Default = MovementEnhancements.Config.Speed.JumpPower,
-            Precision = 1,
-            Callback = function(value)
-                Speed.SetJumpPower(value)
-            end
-        }, "SpeedJumpPower")
         uiElements.SpeedJumpInterval = UI.Sections.Speed:Slider({
             Name = "Jump Interval",
             Minimum = 0.1,
@@ -451,7 +455,6 @@ local function SetupUI(UI)
                 end
             end
             MovementEnhancements.Config.Speed.Speed = uiElements.Speed:GetValue()
-            MovementEnhancements.Config.Speed.JumpPower = uiElements.SpeedJumpPower:GetValue()
             MovementEnhancements.Config.Speed.JumpInterval = uiElements.SpeedJumpInterval:GetValue()
             MovementEnhancements.Config.Speed.PulseTPDist = uiElements.SpeedPulseTPDistance:GetValue()
             MovementEnhancements.Config.Speed.PulseTPDelay = uiElements.SpeedPulseTPFrequency:GetValue()
@@ -478,7 +481,6 @@ local function SetupUI(UI)
             SpeedStatus.AutoJump = MovementEnhancements.Config.Speed.AutoJump
             SpeedStatus.Method = MovementEnhancements.Config.Speed.Method
             SpeedStatus.Speed = MovementEnhancements.Config.Speed.Speed
-            SpeedStatus.JumpPower = MovementEnhancements.Config.Speed.JumpPower
             SpeedStatus.JumpInterval = MovementEnhancements.Config.Speed.JumpInterval
             SpeedStatus.PulseTPDistance = MovementEnhancements.Config.Speed.PulseTPDist
             SpeedStatus.PulseTPFrequency = MovementEnhancements.Config.Speed.PulseTPDelay
