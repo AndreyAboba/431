@@ -543,11 +543,11 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleRadius.Default,
             Precision = 1,
             Callback = function(value)
-                State.ChinaHat.HatScale.Value = value
-                if State.ChinaHat.HatActive.Value then
-                    createHat()
+                State.Circle.CircleRadius.Value = value
+                if State.Circle.CircleActive.Value then
+                    createCircle()
                 end
-                notify("ChinaHat", "Hat Scale set to: " .. value, false)
+                notify("Circle", "Circle Radius set to: " .. value, false)
             end
         }, "CircleRadius")
         circleSection:Slider({
@@ -702,17 +702,10 @@ function ChinaHat.Init(UI, Core, notify)
         configSection:Button({
             Name = "Sync Config",
             Callback = function()
-                -- Ожидание инициализации UI
-                local maxWaitTime = 5 -- Максимальное время ожидания в секундах
-                local startTime = tick()
-                while not (UI.Sections.ChinaHat and UI.Sections.Circle and UI.Sections.Nimb) and tick() - startTime < maxWaitTime do
-                    task.wait()
-                end
-
                 local synced = false
                 local syncMessages = {}
 
-                -- Подход 1: Прямой доступ через :GetValue()
+                -- Вспомогательная функция для синхронизации слайдера
                 local function trySyncSlider(section, name, stateTable, displayName)
                     if section and section[name] then
                         local success, value = pcall(function()
@@ -723,7 +716,7 @@ function ChinaHat.Init(UI, Core, notify)
                             table.insert(syncMessages, string.format("%s synced to: %s", displayName, tostring(value)))
                             return true
                         else
-                            table.insert(syncMessages, string.format("Failed to sync %s", displayName))
+                            table.insert(syncMessages, string.format("Failed to sync %s: %s", displayName, tostring(value)))
                             return false
                         end
                     else
