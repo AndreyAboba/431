@@ -543,11 +543,11 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleRadius.Default,
             Precision = 1,
             Callback = function(value)
-                State.Circle.CircleRadius.Value = value
-                if State.Circle.CircleActive.Value then
-                    createCircle()
+                State.ChinaHat.HatScale.Value = value
+                if State.ChinaHat.HatActive.Value then
+                    createHat()
                 end
-                notify("Circle", "Circle Radius set to: " .. value, false)
+                notify("ChinaHat", "Hat Scale set to: " .. value, false)
             end
         }, "CircleRadius")
         circleSection:Slider({
@@ -702,104 +702,58 @@ function ChinaHat.Init(UI, Core, notify)
         configSection:Button({
             Name = "Sync Config",
             Callback = function()
+                -- Ожидание инициализации UI
+                local maxWaitTime = 5 -- Максимальное время ожидания в секундах
+                local startTime = tick()
+                while not (UI.Sections.ChinaHat and UI.Sections.Circle and UI.Sections.Nimb) and tick() - startTime < maxWaitTime do
+                    task.wait()
+                end
+
                 local synced = false
+                local syncMessages = {}
+
+                -- Подход 1: Прямой доступ через :GetValue()
+                local function trySyncSlider(section, name, stateTable, displayName)
+                    if section and section[name] then
+                        local success, value = pcall(function()
+                            return section[name]:GetValue()
+                        end)
+                        if success and value then
+                            stateTable.Value = value
+                            table.insert(syncMessages, string.format("%s synced to: %s", displayName, tostring(value)))
+                            return true
+                        else
+                            table.insert(syncMessages, string.format("Failed to sync %s", displayName))
+                            return false
+                        end
+                    else
+                        table.insert(syncMessages, string.format("Failed to sync %s: UI element not found", displayName))
+                        return false
+                    end
+                end
 
                 -- Синхронизация ChinaHat
-                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatScale and UI.Sections.ChinaHat.HatScale.Value then
-                    State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale.Value:GetValue()
-                    notify("ChinaHat", "Hat Scale synced to: " .. State.ChinaHat.HatScale.Value, false)
-                    synced = true
-                else
-                    notify("ChinaHat", "Failed to sync Hat Scale", false)
-                end
-
-                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatParts and UI.Sections.ChinaHat.HatParts.Value then
-                    State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts.Value:GetValue()
-                    notify("ChinaHat", "Hat Parts synced to: " .. State.ChinaHat.HatParts.Value, false)
-                    synced = true
-                else
-                    notify("ChinaHat", "Failed to sync Hat Parts", false)
-                end
-
-                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatGradientSpeed and UI.Sections.ChinaHat.HatGradientSpeed.Value then
-                    State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed.Value:GetValue()
-                    notify("ChinaHat", "Hat Gradient Speed synced to: " .. State.ChinaHat.HatGradientSpeed.Value, false)
-                    synced = true
-                else
-                    notify("ChinaHat", "Failed to sync Hat Gradient Speed", false)
-                end
-
-                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatYOffset and UI.Sections.ChinaHat.HatYOffset.Value then
-                    State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset.Value:GetValue()
-                    notify("ChinaHat", "Hat Y Offset synced to: " .. State.ChinaHat.HatYOffset.Value, false)
-                    synced = true
-                else
-                    notify("ChinaHat", "Failed to sync Hat Y Offset", false)
-                end
+                synced = trySyncSlider(UI.Sections.ChinaHat, "HatScale", State.ChinaHat.HatScale, "Hat Scale") or synced
+                synced = trySyncSlider(UI.Sections.ChinaHat, "HatParts", State.ChinaHat.HatParts, "Hat Parts") or synced
+                synced = trySyncSlider(UI.Sections.ChinaHat, "HatGradientSpeed", State.ChinaHat.HatGradientSpeed, "Hat Gradient Speed") or synced
+                synced = trySyncSlider(UI.Sections.ChinaHat, "HatYOffset", State.ChinaHat.HatYOffset, "Hat Y Offset") or synced
 
                 -- Синхронизация Circle
-                if UI.Sections.Circle and UI.Sections.Circle.CircleRadius and UI.Sections.Circle.CircleRadius.Value then
-                    State.Circle.CircleRadius.Value = UI.Sections.Circle.CircleRadius.Value:GetValue()
-                    notify("Circle", "Circle Radius synced to: " .. State.Circle.CircleRadius.Value, false)
-                    synced = true
-                else
-                    notify("Circle", "Failed to sync Circle Radius", false)
-                end
-
-                if UI.Sections.Circle and UI.Sections.Circle.CircleParts and UI.Sections.Circle.CircleParts.Value then
-                    State.Circle.CircleParts.Value = UI.Sections.Circle.CircleParts.Value:GetValue()
-                    notify("Circle", "Circle Parts synced to: " .. State.Circle.CircleParts.Value, false)
-                    synced = true
-                else
-                    notify("Circle", "Failed to sync Circle Parts", false)
-                end
-
-                if UI.Sections.Circle and UI.Sections.Circle.CircleGradientSpeed and UI.Sections.Circle.CircleGradientSpeed.Value then
-                    State.Circle.CircleGradientSpeed.Value = UI.Sections.Circle.CircleGradientSpeed.Value:GetValue()
-                    notify("Circle", "Circle Gradient Speed synced to: " .. State.Circle.CircleGradientSpeed.Value, false)
-                    synced = true
-                else
-                    notify("Circle", "Failed to sync Circle Gradient Speed", false)
-                end
+                synced = trySyncSlider(UI.Sections.Circle, "CircleRadius", State.Circle.CircleRadius, "Circle Radius") or synced
+                synced = trySyncSlider(UI.Sections.Circle, "CircleParts", State.Circle.CircleParts, "Circle Parts") or synced
+                synced = trySyncSlider(UI.Sections.Circle, "CircleGradientSpeed", State.Circle.CircleGradientSpeed, "Circle Gradient Speed") or synced
 
                 -- Синхронизация Nimb
-                if UI.Sections.Nimb and UI.Sections.Nimb.NimbRadius and UI.Sections.Nimb.NimbRadius.Value then
-                    State.Nimb.NimbRadius.Value = UI.Sections.Nimb.NimbRadius.Value:GetValue()
-                    notify("Nimb", "Nimb Radius synced to: " .. State.Nimb.NimbRadius.Value, false)
-                    synced = true
-                else
-                    notify("Nimb", "Failed to sync Nimb Radius", false)
-                end
+                synced = trySyncSlider(UI.Sections.Nimb, "NimbRadius", State.Nimb.NimbRadius, "Nimb Radius") or synced
+                synced = trySyncSlider(UI.Sections.Nimb, "NimbParts", State.Nimb.NimbParts, "Nimb Parts") or synced
+                synced = trySyncSlider(UI.Sections.Nimb, "NimbGradientSpeed", State.Nimb.NimbGradientSpeed, "Nimb Gradient Speed") or synced
+                synced = trySyncSlider(UI.Sections.Nimb, "NimbYOffset", State.Nimb.NimbYOffset, "Nimb Y Offset") or synced
 
-                if UI.Sections.Nimb and UI.Sections.Nimb.NimbParts and UI.Sections.Nimb.NimbParts.Value then
-                    State.Nimb.NimbParts.Value = UI.Sections.Nimb.NimbParts.Value:GetValue()
-                    notify("Nimb", "Nimb Parts synced to: " .. State.Nimb.NimbParts.Value, false)
-                    synced = true
-                else
-                    notify("Nimb", "Failed to sync Nimb Parts", false)
+                -- Вывод уведомлений
+                for _, msg in ipairs(syncMessages) do
+                    notify("ChinaHat", msg, false)
                 end
-
-                if UI.Sections.Nimb and UI.Sections.Nimb.NimbGradientSpeed and UI.Sections.Nimb.NimbGradientSpeed.Value then
-                    State.Nimb.NimbGradientSpeed.Value = UI.Sections.Nimb.NimbGradientSpeed.Value:GetValue()
-                    notify("Nimb", "Nimb Gradient Speed synced to: " .. State.Nimb.NimbGradientSpeed.Value, false)
-                    synced = true
-                else
-                    notify("Nimb", "Failed to sync Nimb Gradient Speed", false)
-                end
-
-                if UI.Sections.Nimb and UI.Sections.Nimb.NimbYOffset and UI.Sections.Nimb.NimbYOffset.Value then
-                    State.Nimb.NimbYOffset.Value = UI.Sections.Nimb.NimbYOffset.Value:GetValue()
-                    notify("Nimb", "Nimb Y Offset synced to: " .. State.Nimb.NimbYOffset.Value, false)
-                    synced = true
-                else
-                    notify("Nimb", "Failed to sync Nimb Y Offset", false)
-                end
-
-                if synced then
-                    notify("ChinaHat", "Config synchronized!", true)
-                else
-                    notify("ChinaHat", "No settings were synced", true)
-                end
+                notify("ChinaHat", synced and "Config synchronized!" or "No settings were synced", true)
             end
         }, "SyncConfig")
     end
