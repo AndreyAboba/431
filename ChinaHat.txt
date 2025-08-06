@@ -434,9 +434,8 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.ChinaHat.HatActive.Default,
             Callback = function(value)
                 toggleHat(value)
-            end,
-            'HatEnabled'
-        })
+            end
+        }, "HatEnabled")
         chinaHatSection:Divider()
         chinaHatSection:Slider({
             Name = "Scale",
@@ -450,9 +449,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createHat()
                 end
                 notify("ChinaHat", "Hat Scale set to: " .. value, false)
-            end,
-            'HatScale'
-        })
+            end
+        }, "HatScale")
         chinaHatSection:Slider({
             Name = "Parts",
             Minimum = 20,
@@ -465,9 +463,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createHat()
                 end
                 notify("ChinaHat", "Hat Parts set to: " .. value, false)
-            end,
-            'HatParts'
-        })
+            end
+        }, "HatParts")
         chinaHatSection:Divider()
         chinaHatSection:Slider({
             Name = "Gradient Speed",
@@ -478,9 +475,8 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.ChinaHat.HatGradientSpeed.Value = value
                 notify("ChinaHat", "Hat Gradient Speed set to: " .. value, false)
-            end,
-            'HatGradientSpeed'
-        })
+            end
+        }, "HatGradientSpeed")
         chinaHatSection:Toggle({
             Name = "Gradient",
             Default = State.ChinaHat.HatGradient.Default,
@@ -490,9 +486,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createHat()
                 end
                 notify("ChinaHat", "Hat Gradient: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'HatGradient'
-        })
+            end
+        }, "HatGradient")
         chinaHatSection:Colorpicker({
             Name = "Color",
             Default = State.ChinaHat.HatColor.Default,
@@ -502,9 +497,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createHat()
                 end
                 notify("ChinaHat", "Hat Color updated", false)
-            end,
-            'HatColor'
-        })
+            end
+        }, "HatColor")
         chinaHatSection:Divider()
         chinaHatSection:Slider({
             Name = "Y Offset",
@@ -515,9 +509,8 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.ChinaHat.HatYOffset.Value = value
                 notify("ChinaHat", "Hat Y Offset set to: " .. value, false)
-            end,
-            'HatYOffset'
-        })
+            end
+        }, "HatYOffset")
         chinaHatSection:Toggle({
             Name = "Outline Circle",
             Default = State.ChinaHat.OutlineCircle.Default,
@@ -527,9 +520,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createHat()
                 end
                 notify("ChinaHat", "Outline Circle: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'OutlineCircle'
-        })
+            end
+        }, "OutlineCircle")
 
         -- Секция Circle
         local circleSection = UI.Sections.Circle or visualsTab:Section({ Name = "Circle", Side = "Left" })
@@ -541,9 +533,8 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Circle.CircleActive.Default,
             Callback = function(value)
                 toggleCircle(value)
-            end,
-            'CircleEnabled'
-        })
+            end
+        }, "CircleEnabled")
         circleSection:Divider()
         circleSection:Slider({
             Name = "Radius",
@@ -557,9 +548,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createCircle()
                 end
                 notify("Circle", "Circle Radius set to: " .. value, false)
-            end,
-            'CircleRadius'
-        })
+            end
+        }, "CircleRadius")
         circleSection:Slider({
             Name = "Parts",
             Minimum = 20,
@@ -572,9 +562,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createCircle()
                 end
                 notify("Circle", "Circle Parts set to: " .. value, false)
-            end,
-            'CircleParts'
-        })
+            end
+        }, "CircleParts")
         circleSection:Divider()
         circleSection:Slider({
             Name = "Gradient Speed",
@@ -585,9 +574,8 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Circle.CircleGradientSpeed.Value = value
                 notify("Circle", "Circle Gradient Speed set to: " .. value, false)
-            end,
-            'CircleGradientSpeed'
-        })
+            end
+        }, "CircleGradientSpeed")
         circleSection:Toggle({
             Name = "Gradient",
             Default = State.Circle.CircleGradient.Default,
@@ -597,9 +585,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createCircle()
                 end
                 notify("Circle", "Circle Gradient: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'CircleGradient'
-        })
+            end
+        }, "CircleGradient")
         circleSection:Colorpicker({
             Name = "Color",
             Default = State.Circle.CircleColor.Default,
@@ -609,9 +596,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createCircle()
                 end
                 notify("Circle", "Circle Color updated", false)
-            end,
-            'CircleColor'
-        })
+            end
+        }, "CircleColor")
         circleSection:Divider()
         circleSection:Toggle({
             Name = "Jump Animate",
@@ -619,9 +605,8 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Circle.JumpAnimate.Value = value
                 notify("Circle", "Jump Animation: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'JumpAnimate'
-        })
+            end
+        }, "JumpAnimate")
 
         -- Секция Nimb
         local nimbSection = UI.Sections.Nimb or visualsTab:Section({ Name = "Nimb", Side = "Right" })
@@ -633,9 +618,8 @@ function ChinaHat.Init(UI, Core, notify)
             Default = State.Nimb.NimbActive.Default,
             Callback = function(value)
                 toggleNimb(value)
-            end,
-            'NimbEnabled'
-        })
+            end
+        }, "NimbEnabled")
         nimbSection:Divider()
         nimbSection:Slider({
             Name = "Radius",
@@ -649,9 +633,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createNimb()
                 end
                 notify("Nimb", "Nimb Radius set to: " .. value, false)
-            end,
-            'NimbRadius'
-        })
+            end
+        }, "NimbRadius")
         nimbSection:Slider({
             Name = "Parts",
             Minimum = 20,
@@ -664,9 +647,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createNimb()
                 end
                 notify("Nimb", "Nimb Parts set to: " .. value, false)
-            end,
-            'NimbParts'
-        })
+            end
+        }, "NimbParts")
         nimbSection:Divider()
         nimbSection:Slider({
             Name = "Gradient Speed",
@@ -677,9 +659,8 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Nimb.NimbGradientSpeed.Value = value
                 notify("Nimb", "Nimb Gradient Speed set to: " .. value, false)
-            end,
-            'NimbGradientSpeed'
-        })
+            end
+        }, "NimbGradientSpeed")
         nimbSection:Toggle({
             Name = "Gradient",
             Default = State.Nimb.NimbGradient.Default,
@@ -689,9 +670,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createNimb()
                 end
                 notify("Nimb", "Nimb Gradient: " .. (value and "Enabled" or "Disabled"), true)
-            end,
-            'NimbGradient'
-        })
+            end
+        }, "NimbGradient")
         nimbSection:Colorpicker({
             Name = "Color",
             Default = State.Nimb.NimbColor.Default,
@@ -701,9 +681,8 @@ function ChinaHat.Init(UI, Core, notify)
                     createNimb()
                 end
                 notify("Nimb", "Nimb Color updated", false)
-            end,
-            'NimbColor'
-        })
+            end
+        }, "NimbColor")
         nimbSection:Divider()
         nimbSection:Slider({
             Name = "Y Offset",
@@ -714,9 +693,8 @@ function ChinaHat.Init(UI, Core, notify)
             Callback = function(value)
                 State.Nimb.NimbYOffset.Value = value
                 notify("Nimb", "Nimb Y Offset set to: " .. value, false)
-            end,
-            'NimbYOffset'
-        })
+            end
+        }, "NimbYOffset")
 
         -- Секция ChinaHat Sync в вкладке Config
         local configSection = configTab:Section({ Name = "ChinaHat Sync", Side = "Right" })
@@ -727,7 +705,7 @@ function ChinaHat.Init(UI, Core, notify)
                 local synced = false
 
                 -- Синхронизация ChinaHat
-                if UI.Sections.ChinaHat.HatScale and UI.Sections.ChinaHat.HatScale.Value then
+                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatScale and UI.Sections.ChinaHat.HatScale.Value then
                     State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale.Value:GetValue()
                     notify("ChinaHat", "Hat Scale synced to: " .. State.ChinaHat.HatScale.Value, false)
                     synced = true
@@ -735,7 +713,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("ChinaHat", "Failed to sync Hat Scale", false)
                 end
 
-                if UI.Sections.ChinaHat.HatParts and UI.Sections.ChinaHat.HatParts.Value then
+                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatParts and UI.Sections.ChinaHat.HatParts.Value then
                     State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts.Value:GetValue()
                     notify("ChinaHat", "Hat Parts synced to: " .. State.ChinaHat.HatParts.Value, false)
                     synced = true
@@ -743,7 +721,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("ChinaHat", "Failed to sync Hat Parts", false)
                 end
 
-                if UI.Sections.ChinaHat.HatGradientSpeed and UI.Sections.ChinaHat.HatGradientSpeed.Value then
+                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatGradientSpeed and UI.Sections.ChinaHat.HatGradientSpeed.Value then
                     State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed.Value:GetValue()
                     notify("ChinaHat", "Hat Gradient Speed synced to: " .. State.ChinaHat.HatGradientSpeed.Value, false)
                     synced = true
@@ -751,7 +729,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("ChinaHat", "Failed to sync Hat Gradient Speed", false)
                 end
 
-                if UI.Sections.ChinaHat.HatYOffset and UI.Sections.ChinaHat.HatYOffset.Value then
+                if UI.Sections.ChinaHat and UI.Sections.ChinaHat.HatYOffset and UI.Sections.ChinaHat.HatYOffset.Value then
                     State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset.Value:GetValue()
                     notify("ChinaHat", "Hat Y Offset synced to: " .. State.ChinaHat.HatYOffset.Value, false)
                     synced = true
@@ -760,7 +738,7 @@ function ChinaHat.Init(UI, Core, notify)
                 end
 
                 -- Синхронизация Circle
-                if UI.Sections.Circle.CircleRadius and UI.Sections.Circle.CircleRadius.Value then
+                if UI.Sections.Circle and UI.Sections.Circle.CircleRadius and UI.Sections.Circle.CircleRadius.Value then
                     State.Circle.CircleRadius.Value = UI.Sections.Circle.CircleRadius.Value:GetValue()
                     notify("Circle", "Circle Radius synced to: " .. State.Circle.CircleRadius.Value, false)
                     synced = true
@@ -768,7 +746,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("Circle", "Failed to sync Circle Radius", false)
                 end
 
-                if UI.Sections.Circle.CircleParts and UI.Sections.Circle.CircleParts.Value then
+                if UI.Sections.Circle and UI.Sections.Circle.CircleParts and UI.Sections.Circle.CircleParts.Value then
                     State.Circle.CircleParts.Value = UI.Sections.Circle.CircleParts.Value:GetValue()
                     notify("Circle", "Circle Parts synced to: " .. State.Circle.CircleParts.Value, false)
                     synced = true
@@ -776,7 +754,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("Circle", "Failed to sync Circle Parts", false)
                 end
 
-                if UI.Sections.Circle.CircleGradientSpeed and UI.Sections.Circle.CircleGradientSpeed.Value then
+                if UI.Sections.Circle and UI.Sections.Circle.CircleGradientSpeed and UI.Sections.Circle.CircleGradientSpeed.Value then
                     State.Circle.CircleGradientSpeed.Value = UI.Sections.Circle.CircleGradientSpeed.Value:GetValue()
                     notify("Circle", "Circle Gradient Speed synced to: " .. State.Circle.CircleGradientSpeed.Value, false)
                     synced = true
@@ -785,7 +763,7 @@ function ChinaHat.Init(UI, Core, notify)
                 end
 
                 -- Синхронизация Nimb
-                if UI.Sections.Nimb.NimbRadius and UI.Sections.Nimb.NimbRadius.Value then
+                if UI.Sections.Nimb and UI.Sections.Nimb.NimbRadius and UI.Sections.Nimb.NimbRadius.Value then
                     State.Nimb.NimbRadius.Value = UI.Sections.Nimb.NimbRadius.Value:GetValue()
                     notify("Nimb", "Nimb Radius synced to: " .. State.Nimb.NimbRadius.Value, false)
                     synced = true
@@ -793,7 +771,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("Nimb", "Failed to sync Nimb Radius", false)
                 end
 
-                if UI.Sections.Nimb.NimbParts and UI.Sections.Nimb.NimbParts.Value then
+                if UI.Sections.Nimb and UI.Sections.Nimb.NimbParts and UI.Sections.Nimb.NimbParts.Value then
                     State.Nimb.NimbParts.Value = UI.Sections.Nimb.NimbParts.Value:GetValue()
                     notify("Nimb", "Nimb Parts synced to: " .. State.Nimb.NimbParts.Value, false)
                     synced = true
@@ -801,7 +779,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("Nimb", "Failed to sync Nimb Parts", false)
                 end
 
-                if UI.Sections.Nimb.NimbGradientSpeed and UI.Sections.Nimb.NimbGradientSpeed.Value then
+                if UI.Sections.Nimb and UI.Sections.Nimb.NimbGradientSpeed and UI.Sections.Nimb.NimbGradientSpeed.Value then
                     State.Nimb.NimbGradientSpeed.Value = UI.Sections.Nimb.NimbGradientSpeed.Value:GetValue()
                     notify("Nimb", "Nimb Gradient Speed synced to: " .. State.Nimb.NimbGradientSpeed.Value, false)
                     synced = true
@@ -809,7 +787,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("Nimb", "Failed to sync Nimb Gradient Speed", false)
                 end
 
-                if UI.Sections.Nimb.NimbYOffset and UI.Sections.Nimb.NimbYOffset.Value then
+                if UI.Sections.Nimb and UI.Sections.Nimb.NimbYOffset and UI.Sections.Nimb.NimbYOffset.Value then
                     State.Nimb.NimbYOffset.Value = UI.Sections.Nimb.NimbYOffset.Value:GetValue()
                     notify("Nimb", "Nimb Y Offset synced to: " .. State.Nimb.NimbYOffset.Value, false)
                     synced = true
@@ -823,7 +801,7 @@ function ChinaHat.Init(UI, Core, notify)
                     notify("ChinaHat", "No settings were synced", true)
                 end
             end
-        })
+        }, "SyncConfig")
     end
 
     function ChinaHat:Destroy()
