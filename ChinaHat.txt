@@ -376,7 +376,6 @@ function ChinaHat.Init(UI, Core, notify)
             localHumanoid = humanoid
             humanoidConnection = humanoid.StateChanged:Connect(onStateChanged)
         end
-        -- Воссоздаем элементы, если они активны
         if State.ChinaHat.HatActive.Value then
             createHat()
         end
@@ -394,7 +393,6 @@ function ChinaHat.Init(UI, Core, notify)
             updateCircle()
             updateNimb()
         else
-            -- Не уничтожаем части, а просто скрываем их
             for _, line in ipairs(hatLines) do
                 line.Visible = false
             end
@@ -416,15 +414,11 @@ function ChinaHat.Init(UI, Core, notify)
     end
 
     if UI.Tabs then
-        -- Создание вкладки Visuals, если она не существует
         local visualsTab = UI.Tabs.Visuals or UI:Tab({ Name = "Visuals" })
         UI.Tabs.Visuals = visualsTab
-
-        -- Создание вкладки Config, если она не существует
         local configTab = UI.Tabs.Config or UI:Tab({ Name = "Config" })
         UI.Tabs.Config = configTab
 
-        -- Секция ChinaHat
         local chinaHatSection = UI.Sections.ChinaHat or visualsTab:Section({ Name = "ChinaHat", Side = "Left" })
         UI.Sections.ChinaHat = chinaHatSection
         chinaHatSection:Header({ Name = "China Hat" })
@@ -523,7 +517,6 @@ function ChinaHat.Init(UI, Core, notify)
             end
         }, "OutlineCircle")
 
-        -- Секция Circle
         local circleSection = UI.Sections.Circle or visualsTab:Section({ Name = "Circle", Side = "Left" })
         UI.Sections.Circle = circleSection
         circleSection:Header({ Name = "Circle" })
@@ -608,7 +601,6 @@ function ChinaHat.Init(UI, Core, notify)
             end
         }, "JumpAnimate")
 
-        -- Секция Nimb
         local nimbSection = UI.Sections.Nimb or visualsTab:Section({ Name = "Nimb", Side = "Right" })
         UI.Sections.Nimb = nimbSection
         nimbSection:Header({ Name = "Nimb" })
@@ -696,57 +688,29 @@ function ChinaHat.Init(UI, Core, notify)
             end
         }, "NimbYOffset")
 
-        -- Секция ChinaHat Sync в вкладке Config
         local configSection = configTab:Section({ Name = "ChinaHat Sync", Side = "Right" })
         configSection:Header({ Name = "ChinaHat Settings Sync" })
         configSection:Button({
             Name = "Sync Config",
             Callback = function()
-                local synced = false
-                local syncMessages = {}
-
-                -- Вспомогательная функция для синхронизации слайдера
-                local function trySyncSlider(section, name, stateTable, displayName)
-                    if section and section[name] then
-                        local success, value = pcall(function()
-                            return section[name]:GetValue()
-                        end)
-                        if success and value then
-                            stateTable.Value = value
-                            table.insert(syncMessages, string.format("%s synced to: %s", displayName, tostring(value)))
-                            return true
-                        else
-                            table.insert(syncMessages, string.format("Failed to sync %s: %s", displayName, tostring(value)))
-                            return false
-                        end
-                    else
-                        table.insert(syncMessages, string.format("Failed to sync %s: UI element not found", displayName))
-                        return false
-                    end
+                if UI.Sections.ChinaHat then
+                    State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale:GetValue()
+                    State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts:GetValue()
+                    State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed:GetValue()
+                    State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset:GetValue()
                 end
-
-                -- Синхронизация ChinaHat
-                synced = trySyncSlider(UI.Sections.ChinaHat, "HatScale", State.ChinaHat.HatScale, "Hat Scale") or synced
-                synced = trySyncSlider(UI.Sections.ChinaHat, "HatParts", State.ChinaHat.HatParts, "Hat Parts") or synced
-                synced = trySyncSlider(UI.Sections.ChinaHat, "HatGradientSpeed", State.ChinaHat.HatGradientSpeed, "Hat Gradient Speed") or synced
-                synced = trySyncSlider(UI.Sections.ChinaHat, "HatYOffset", State.ChinaHat.HatYOffset, "Hat Y Offset") or synced
-
-                -- Синхронизация Circle
-                synced = trySyncSlider(UI.Sections.Circle, "CircleRadius", State.Circle.CircleRadius, "Circle Radius") or synced
-                synced = trySyncSlider(UI.Sections.Circle, "CircleParts", State.Circle.CircleParts, "Circle Parts") or synced
-                synced = trySyncSlider(UI.Sections.Circle, "CircleGradientSpeed", State.Circle.CircleGradientSpeed, "Circle Gradient Speed") or synced
-
-                -- Синхронизация Nimb
-                synced = trySyncSlider(UI.Sections.Nimb, "NimbRadius", State.Nimb.NimbRadius, "Nimb Radius") or synced
-                synced = trySyncSlider(UI.Sections.Nimb, "NimbParts", State.Nimb.NimbParts, "Nimb Parts") or synced
-                synced = trySyncSlider(UI.Sections.Nimb, "NimbGradientSpeed", State.Nimb.NimbGradientSpeed, "Nimb Gradient Speed") or synced
-                synced = trySyncSlider(UI.Sections.Nimb, "NimbYOffset", State.Nimb.NimbYOffset, "Nimb Y Offset") or synced
-
-                -- Вывод уведомлений
-                for _, msg in ipairs(syncMessages) do
-                    notify("ChinaHat", msg, false)
+                if UI.Sections.Circle then
+                    State.Circle.CircleRadius.Value = UI.Sections.Circle.CircleRadius:GetValue()
+                    State.Circle.CircleParts.Value = UI.Sections.Circle.CircleParts:GetValue()
+                    State.Circle.CircleGradientSpeed.Value = UI.Sections.Circle.CircleGradientSpeed:GetValue()
                 end
-                notify("ChinaHat", synced and "Config synchronized!" or "No settings were synced", true)
+                if UI.Sections.Nimb then
+                    State.Nimb.NimbRadius.Value = UI.Sections.Nimb.NimbRadius:GetValue()
+                    State.Nimb.NimbParts.Value = UI.Sections.Nimb.NimbParts:GetValue()
+                    State.Nimb.NimbGradientSpeed.Value = UI.Sections.Nimb.NimbGradientSpeed:GetValue()
+                    State.Nimb.NimbYOffset.Value = UI.Sections.Nimb.NimbYOffset:GetValue()
+                end
+                notify("ChinaHat", "Config synchronized!", true)
             end
         }, "SyncConfig")
     end
