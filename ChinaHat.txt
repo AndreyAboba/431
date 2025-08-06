@@ -694,7 +694,7 @@ function ChinaHat.Init(UI, Core, notify)
         })
         nimbSection:Colorpicker({
             Name = "Color",
-            Default criatura: Nimb.NimbColor.Default,
+            Default = State.Nimb.NimbColor.Default,
             Callback = function(value)
                 State.Nimb.NimbColor.Value = value
                 if State.Nimb.NimbActive.Value and not State.Nimb.NimbGradient.Value then
