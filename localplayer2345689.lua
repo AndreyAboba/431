@@ -751,7 +751,7 @@ local function SetupUI(UI)
     end
 
     local localconfigSection = UI.Tabs.Config:Section({ Name = "Movement Enhancements Sync", Side = "Right" })
-    localconfigSection:Header({ Name = "Movement Enhancements Settings Sync" })
+    localconfigSection:Header({ Name = "LocalPlayer Settings Sync" })
     localconfigSection:Button({
         Name = "Sync Config",
         Callback = function()
@@ -850,7 +850,7 @@ local function SetupUI(UI)
                 if NoStaminaStatus.Running then NoStamina.Stop() end
             end
 
-            notify("MovementEnhancements", "Config synchronized!", true)
+            notify("Syllinse", "Config synchronized!", true)
         end
     })
 end
