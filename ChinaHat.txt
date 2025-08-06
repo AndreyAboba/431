@@ -724,43 +724,104 @@ function ChinaHat.Init(UI, Core, notify)
         configSection:Button({
             Name = "Sync Config",
             Callback = function()
+                local synced = false
+
                 -- Синхронизация ChinaHat
-                State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale.Value:GetValue()
-                notify("ChinaHat", "Hat Scale synced to: " .. State.ChinaHat.HatScale.Value, false)
-                
-                State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts.Value:GetValue()
-                notify("ChinaHat", "Hat Parts synced to: " .. State.ChinaHat.HatParts.Value, false)
-                
-                State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed.Value:GetValue()
-                notify("ChinaHat", "Hat Gradient Speed synced to: " .. State.ChinaHat.HatGradientSpeed.Value, false)
-                
-                State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset.Value:GetValue()
-                notify("ChinaHat", "Hat Y Offset synced to: " .. State.ChinaHat.HatYOffset.Value, false)
+                if UI.Sections.ChinaHat.HatScale and UI.Sections.ChinaHat.HatScale.Value then
+                    State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale.Value:GetValue()
+                    notify("ChinaHat", "Hat Scale synced to: " .. State.ChinaHat.HatScale.Value, false)
+                    synced = true
+                else
+                    notify("ChinaHat", "Failed to sync Hat Scale", false)
+                end
+
+                if UI.Sections.ChinaHat.HatParts and UI.Sections.ChinaHat.HatParts.Value then
+                    State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts.Value:GetValue()
+                    notify("ChinaHat", "Hat Parts synced to: " .. State.ChinaHat.HatParts.Value, false)
+                    synced = true
+                else
+                    notify("ChinaHat", "Failed to sync Hat Parts", false)
+                end
+
+                if UI.Sections.ChinaHat.HatGradientSpeed and UI.Sections.ChinaHat.HatGradientSpeed.Value then
+                    State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed.Value:GetValue()
+                    notify("ChinaHat", "Hat Gradient Speed synced to: " .. State.ChinaHat.HatGradientSpeed.Value, false)
+                    synced = true
+                else
+                    notify("ChinaHat", "Failed to sync Hat Gradient Speed", false)
+                end
+
+                if UI.Sections.ChinaHat.HatYOffset and UI.Sections.ChinaHat.HatYOffset.Value then
+                    State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset.Value:GetValue()
+                    notify("ChinaHat", "Hat Y Offset synced to: " .. State.ChinaHat.HatYOffset.Value, false)
+                    synced = true
+                else
+                    notify("ChinaHat", "Failed to sync Hat Y Offset", false)
+                end
 
                 -- Синхронизация Circle
-                State.Circle.CircleRadius.Value = UI.Sections.Circle.CircleRadius.Value:GetValue()
-                notify("Circle", "Circle Radius synced to: " .. State.Circle.CircleRadius.Value, false)
-                
-                State.Circle.CircleParts.Value = UI.Sections.Circle.CircleParts.Value:GetValue()
-                notify("Circle", "Circle Parts synced to: " .. State.Circle.CircleParts.Value, false)
-                
-                State.Circle.CircleGradientSpeed.Value = UI.Sections.Circle.CircleGradientSpeed.Value:GetValue()
-                notify("Circle", "Circle Gradient Speed synced to: " .. State.Circle.CircleGradientSpeed.Value, false)
+                if UI.Sections.Circle.CircleRadius and UI.Sections.Circle.CircleRadius.Value then
+                    State.Circle.CircleRadius.Value = UI.Sections.Circle.CircleRadius.Value:GetValue()
+                    notify("Circle", "Circle Radius synced to: " .. State.Circle.CircleRadius.Value, false)
+                    synced = true
+                else
+                    notify("Circle", "Failed to sync Circle Radius", false)
+                end
+
+                if UI.Sections.Circle.CircleParts and UI.Sections.Circle.CircleParts.Value then
+                    State.Circle.CircleParts.Value = UI.Sections.Circle.CircleParts.Value:GetValue()
+                    notify("Circle", "Circle Parts synced to: " .. State.Circle.CircleParts.Value, false)
+                    synced = true
+                else
+                    notify("Circle", "Failed to sync Circle Parts", false)
+                end
+
+                if UI.Sections.Circle.CircleGradientSpeed and UI.Sections.Circle.CircleGradientSpeed.Value then
+                    State.Circle.CircleGradientSpeed.Value = UI.Sections.Circle.CircleGradientSpeed.Value:GetValue()
+                    notify("Circle", "Circle Gradient Speed synced to: " .. State.Circle.CircleGradientSpeed.Value, false)
+                    synced = true
+                else
+                    notify("Circle", "Failed to sync Circle Gradient Speed", false)
+                end
 
                 -- Синхронизация Nimb
-                State.Nimb.NimbRadius.Value = UI.Sections.Nimb.NimbRadius.Value:GetValue()
-                notify("Nimb", "Nimb Radius synced to: " .. State.Nimb.NimbRadius.Value, false)
-                
-                State.Nimb.NimbParts.Value = UI.Sections.Nimb.NimbParts.Value:GetValue()
-                notify("Nimb", "Nimb Parts synced to: " .. State.Nimb.NimbParts.Value, false)
-                
-                State.Nimb.NimbGradientSpeed.Value = UI.Sections.Nimb.NimbGradientSpeed.Value:GetValue()
-                notify("Nimb", "Nimb Gradient Speed synced to: " .. State.Nimb.NimbGradientSpeed.Value, false)
-                
-                State.Nimb.NimbYOffset.Value = UI.Sections.Nimb.NimbYOffset.Value:GetValue()
-                notify("Nimb", "Nimb Y Offset synced to: " .. State.Nimb.NimbYOffset.Value, false)
+                if UI.Sections.Nimb.NimbRadius and UI.Sections.Nimb.NimbRadius.Value then
+                    State.Nimb.NimbRadius.Value = UI.Sections.Nimb.NimbRadius.Value:GetValue()
+                    notify("Nimb", "Nimb Radius synced to: " .. State.Nimb.NimbRadius.Value, false)
+                    synced = true
+                else
+                    notify("Nimb", "Failed to sync Nimb Radius", false)
+                end
 
-                notify("ChinaHat", "Config synchronized!", true)
+                if UI.Sections.Nimb.NimbParts and UI.Sections.Nimb.NimbParts.Value then
+                    State.Nimb.NimbParts.Value = UI.Sections.Nimb.NimbParts.Value:GetValue()
+                    notify("Nimb", "Nimb Parts synced to: " .. State.Nimb.NimbParts.Value, false)
+                    synced = true
+                else
+                    notify("Nimb", "Failed to sync Nimb Parts", false)
+                end
+
+                if UI.Sections.Nimb.NimbGradientSpeed and UI.Sections.Nimb.NimbGradientSpeed.Value then
+                    State.Nimb.NimbGradientSpeed.Value = UI.Sections.Nimb.NimbGradientSpeed.Value:GetValue()
+                    notify("Nimb", "Nimb Gradient Speed synced to: " .. State.Nimb.NimbGradientSpeed.Value, false)
+                    synced = true
+                else
+                    notify("Nimb", "Failed to sync Nimb Gradient Speed", false)
+                end
+
+                if UI.Sections.Nimb.NimbYOffset and UI.Sections.Nimb.NimbYOffset.Value then
+                    State.Nimb.NimbYOffset.Value = UI.Sections.Nimb.NimbYOffset.Value:GetValue()
+                    notify("Nimb", "Nimb Y Offset synced to: " .. State.Nimb.NimbYOffset.Value, false)
+                    synced = true
+                else
+                    notify("Nimb", "Failed to sync Nimb Y Offset", false)
+                end
+
+                if synced then
+                    notify("ChinaHat", "Config synchronized!", true)
+                else
+                    notify("ChinaHat", "No settings were synced", true)
+                end
             end
         })
     end
