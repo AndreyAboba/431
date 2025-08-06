@@ -1,5 +1,5 @@
 local ChinaHat = {}
-
+print('1')
 function ChinaHat.Init(UI, Core, notify)
     local Players = Core.Services.Players
     local RunService = Core.Services.RunService
@@ -694,7 +694,7 @@ function ChinaHat.Init(UI, Core, notify)
             Name = "Sync Config",
             Callback = function()
                 if UI.Sections.ChinaHat then
-                    State.ChinaHat.HatScale.Value = UI.Sections.ChinaHat.HatScale:GetValue()
+                    State.ChinaHat.HatScale.Value = chinaHatSection.HatScale:GetValue() or State.ChinaHat.HatScale.Value = chinaHatSection.Scale:GetValue()
                     State.ChinaHat.HatParts.Value = UI.Sections.ChinaHat.HatParts:GetValue()
                     State.ChinaHat.HatGradientSpeed.Value = UI.Sections.ChinaHat.HatGradientSpeed:GetValue()
                     State.ChinaHat.HatYOffset.Value = UI.Sections.ChinaHat.HatYOffset:GetValue()
